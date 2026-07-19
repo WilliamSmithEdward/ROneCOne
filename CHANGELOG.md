@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.9.0 - 2026-07-19
+
+### Added
+
+- The complete .NET-aligned ordering family: `Order`, `OrderDescending`, `OrderBy`,
+  `OrderByDescending`, `ThenBy`, and `ThenByDescending`.
+- Independent comparers for every ordering level, including direct ordering of user-defined class
+  instances through an explicit comparer.
+- Live contracts for stable composite keys, reset and continuation rules, deferred execution,
+  selector-once evaluation, Null, Boolean, ordinal strings, and rejected mixed Variant coercion.
+- A 10,000-element composite-ordering benchmark with a 1.0-second isolated-suite gate and a
+  2.5-second living-workbook gate sized from fresh Excel-process measurements.
+
+### Changed
+
+- Replaced quadratic insertion sorting with a stable O(n log n) bottom-up merge sort that caches
+  every selected key exactly once per element and enumeration.
+- Removed the earlier identity-order aliases in favor of the .NET names `Order` and
+  `OrderDescending`; the current API, demos, tests, and documentation move together.
+- Made `ThenBy` legal only on an immediately active ordered query and made a new primary ordering
+  operation replace the prior ordering chain.
+- Expanded the live collection suite from 122 to 146 assertions and upgraded the existing
+  Collections workbook with composite ordering and a measured ordering release gate.
+
 ## 0.8.0 - 2026-07-19
 
 ### Added
@@ -108,8 +132,7 @@
 - Expanded the Excel harness to report exact delegate assertion failures as well as modal VBE
   compiler selections.
 
-The public surface remains pre-stability: demos, tests, and documentation now use the preferred
-universal model without compatibility shims.
+Demos, tests, and documentation use the preferred universal model without compatibility shims.
 
 ## 0.4.0 - 2026-07-18
 
@@ -122,9 +145,9 @@ universal model without compatibility shims.
 - Updated the collections demo, workbook examples, quick start, and deep documentation to lead
   with `Element` rather than the less familiar `It` terminology.
 - Made `Element` the canonical implementation used by identity sorting.
-- Removed the less familiar `It` sequence-parameter name under the current pre-stability API policy.
+- Removed the less familiar `It` sequence-parameter name in favor of `Element`.
 
-The pre-stability API intentionally prefers the clearer public surface over compatibility aliases.
+The API intentionally prefers the clearer public surface over compatibility aliases.
 
 ## 0.3.0 - 2026-07-18
 
@@ -135,7 +158,7 @@ The pre-stability API intentionally prefers the clearer public surface over comp
   parameter list.
 - Sequence-typed `It` parameters and scalar object-member expressions through `value("Member")`
   or the explicit `Member` API.
-- `Map`, `Exists`, `Sorted`, `SortedDescending`, `AtLeast`, and `AtMost` syntax sugar.
+- `Map`, `Exists`, identity ordering, `AtLeast`, and `AtMost` syntax sugar.
 - Deterministic `MemberAccessError` handling for invalid object-member expressions.
 - Live Excel coverage for concise primitive queries, user-class queries, member failures, inferred
   unary/binary delegates, and `VarLike` object delegates.
@@ -150,8 +173,8 @@ The pre-stability API intentionally prefers the clearer public surface over comp
   performance gate.
 - Recorded maximal safe syntax sugar as a foundational repository product direction.
 
-All existing `Parameter`, `ParameterLike`, explicit `Lambda`, `FromMethod`, `SelectItems`,
-`AnyItem`, and selector APIs remain backward compatible.
+Canonical `Parameter`, `ParameterLike`, explicit `Lambda`, `SelectItems`, `AnyItem`, and selector
+APIs remain available for explicit construction and debugging.
 
 ## 0.2.1 - 2026-07-18
 

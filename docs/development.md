@@ -22,8 +22,8 @@ The collection suite adds strict primitive/user-class lists, atomic mutation fai
 indexing, populated/inferred initializers, atomic heterogeneous inputs, deferred source mutation,
 universal procedure delegates in LINQ, `ForEach(Action)`, text joining, query chaining, numeric
 terminals, predicate algebra, collection membership, null-safe paths, custom comparers, nested
-quantifiers, and enumerator refresh after mutation. The current live totals are 58
-delegate/event/exception and 122 collection assertions.
+quantifiers, stable composite ordering, and enumerator refresh after mutation. The current live
+totals are 58 delegate/event/exception and 146 collection assertions.
 
 The invocation benchmark has a configurable release ceiling (`-MaxBenchmarkSeconds`, default
 `0.5` for 10,000 calls). The v0.1.0 measurements are stored in
@@ -53,11 +53,17 @@ The v0.8.0 baseline adds a repeated object-member query to measure the cached me
 repeats both established release gates across five fresh Excel processes. Measurements are stored
 in `benchmarks/v0.8.0-baseline.json`.
 
-pyVBAanalysis 1.2.0 treats a VBA bang identifier such as `!Age` as an ordinary undeclared
-variable. Live bang examples carry line-scoped `undeclared-variable` suppressions with
-an explicit reason. The normal complete-project gate is clean; an audit run with
-`--no-inline-suppression` reports exactly five known false positives. Excel compilation and
-execution are the decisive host-level checks for that syntax.
+The v0.9.0 baseline adds a 10,000-element `OrderBy.ThenByDescending.ToList` scenario after the
+stable O(n log n) ordering rewrite. Three fresh Excel processes establish a `1.0`-second release
+ceiling for the isolated suite. The living Collections workbook has a separate `2.5`-second ceiling
+to cover its observed host-level variance. Both are recorded in
+`benchmarks/v0.9.0-baseline.json`.
+
+pyVBAanalysis 1.2.0 treats a VBA bang identifier such as `!Age` as an ordinary variable token.
+Live bang examples therefore declare the token name in their local scope even though VBA uses it
+as a default-member name, not a variable value. This keeps both the normal and
+`--no-inline-suppression` complete-project gates clean. Excel compilation and execution remain the
+decisive host-level checks for that syntax.
 
 ## Popup-adaptive Excel harness
 

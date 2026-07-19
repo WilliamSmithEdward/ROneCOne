@@ -36,6 +36,8 @@ Public Sub RunROneCOneCollectionTests()
     TestDeferredWhere
     mCurrentTest = "TestProjectionAndChaining"
     TestProjectionAndChaining
+    mCurrentTest = "TestOrderingSystem"
+    TestOrderingSystem
     mCurrentTest = "TestSequenceOperators"
     TestSequenceOperators
     mCurrentTest = "TestTerminals"
@@ -66,6 +68,7 @@ Private Sub TestPredicateSystem()
     Dim actualError As Long
     Dim ada As GenericCustomer
     Dim allowedCities As ROneCOne
+    Dim City As Variant
     Dim comparer As ROneCOne
     Dim customers As ROneCOne
     Dim equalityComparer As ROneCOne
@@ -99,7 +102,6 @@ Private Sub TestPredicateSystem()
     Set result = customers.Where("City") _
         .OneOf(Array("London", "Cleveland")).ToList
     AssertEqual "OneOf array", CLng(2), result.Count
-    '@pyvba-ignore-next-line: undeclared-variable -- City is a bang identifier.
     Set result = customers.Where(allowedCities.Contains(customers!City)).ToList
     AssertEqual "collection.Contains expression", CLng(2), result.Count
     Set result = customers.Where( _
@@ -166,7 +168,7 @@ Private Sub TestPredicateSystem()
             strings.Element, equalityComparer)).ToList
     AssertEqual "custom predicate membership comparer", CLng(2), result.Count
     AssertEqual "custom ordering comparer", "Ada", _
-        strings.Sorted(comparer).First
+        strings.Order(comparer).First
     AssertTrue "SequenceEqual comparer", _
         ROneCOne.ListOf(vbString, "ada", "Grace").SequenceEqual( _
             Array("ADA", "grace"), equalityComparer)
@@ -257,6 +259,7 @@ Private Sub TestCollectionActions()
 End Sub
 
 Private Sub TestSyntaxSugar()
+    Dim Age As Variant
     Dim actualError As Long
     Dim ada As GenericCustomer
     Dim customers As ROneCOne
@@ -300,7 +303,7 @@ Private Sub TestSyntaxSugar()
     Set experienced = customers.Where("Age").AtLeast(CLng(40))
     Set names = experienced _
         .Map("CustomerName", vbString) _
-        .Sorted _
+        .Order _
         .ToList
     Set oldest = customers.OrderByDescending("Age").First
     Set youngest = customers.MinBy("Age")
@@ -308,8 +311,8 @@ Private Sub TestSyntaxSugar()
 
     AssertEqual "sugar Where count", CLng(2), experienced.Count
     AssertEqual "sugar Map count", CLng(2), names.Count
-    AssertEqual "sugar Sorted first", "Grace", names.Item(0)
-    AssertEqual "sugar Sorted last", "Katherine", names.Item(1)
+    AssertEqual "sugar Order first", "Grace", names.Item(0)
+    AssertEqual "sugar Order last", "Katherine", names.Item(1)
     AssertEqual "sugar object ordering", "Katherine", oldest.CustomerName
     AssertEqual "sugar MinBy", "Ada", youngest.CustomerName
     AssertEqual "sugar MaxBy", "Katherine", _
@@ -383,11 +386,9 @@ Private Sub TestSyntaxSugar()
     AssertEqual "predicate type mismatch fails early", _
         ROneCOne.TypeMismatchError, actualError
 
-    '@pyvba-ignore-next-line: undeclared-variable -- Age is a bang identifier.
     Set result = customers.Where(customers!Age.AtLeast(CLng(40))).ToList
     AssertEqual "native bang member", CLng(2), result.Count
     With customers
-        '@pyvba-ignore-next-line: undeclared-variable -- Age is a bang identifier.
         Set result = .Where(!Age.AtLeast(CLng(40))).ToList
     End With
     AssertEqual "With bang member", CLng(2), result.Count
@@ -397,7 +398,7 @@ Private Sub TestSyntaxSugar()
     Set result = numbers _
         .Where(value.AtLeast(CLng(2))) _
         .Map(value.Multiply(CLng(2)), vbLong) _
-        .SortedDescending _
+        .OrderDescending _
         .ToList
     AssertEqual "sugar primitive first", CLng(8), result.First
     AssertEqual "sugar primitive last", CLng(4), result.Last
@@ -452,6 +453,8 @@ End Sub
 Public Sub RunROneCOneCollectionBenchmark()
     Dim elapsed As Double
     Dim filtered As ROneCOne
+    Dim ordered As ROneCOne
+    Dim orderingElapsed As Double
     Dim started As Double
     Dim values As ROneCOne
     Dim x As ROneCOne
@@ -465,10 +468,22 @@ Public Sub RunROneCOneCollectionBenchmark()
     elapsed = Timer - started
     If elapsed < 0 Then elapsed = elapsed + 86400#
 
+    started = Timer
+    Set ordered = values _
+        .OrderBy(ROneCOne.Lambda(x.Modulo(CLng(100)), x)) _
+        .ThenByDescending(ROneCOne.Lambda(x, x)) _
+        .ToList
+    orderingElapsed = Timer - started
+    If orderingElapsed < 0 Then orderingElapsed = orderingElapsed + 86400#
+
     With ThisWorkbook.Worksheets("Collection Benchmarks")
         .Range("B2").Value2 = 10000
         .Range("B3").Value2 = elapsed
         .Range("B4").Value2 = filtered.Count
+        .Range("B5").Value2 = 10000
+        .Range("B6").Value2 = orderingElapsed
+        .Range("B7").Value2 = ordered.Count
+        .Range("B8").Value2 = ordered.First
     End With
 End Sub
 
@@ -610,6 +625,152 @@ Private Sub TestProjectionAndChaining()
     AssertEqual "chain second", CLng(40), projected.Item(1)
 End Sub
 
+Private Sub TestOrderingSystem()
+    Dim actualError As Long
+    Dim ada As GenericCustomer
+    Dim booleans As ROneCOne
+    Dim comparer As ROneCOne
+    Dim customers As ROneCOne
+    Dim grace As GenericCustomer
+    Dim katherine As GenericCustomer
+    Dim margaret As GenericCustomer
+    Dim mixedValues As ROneCOne
+    Dim ordered As ROneCOne
+    Dim prototype As GenericCustomer
+    Dim query As ROneCOne
+    Dim selector As ROneCOne
+    Dim strings As ROneCOne
+    Dim values As ROneCOne
+    Dim variantValues As ROneCOne
+
+    Set values = ROneCOne.ListOf(vbLong, CLng(3), CLng(1), CLng(2))
+    Set ordered = values.Order.ToList
+    AssertEqual "Order first", CLng(1), ordered.First
+    AssertEqual "Order last", CLng(3), ordered.Last
+    Set ordered = values.OrderDescending.ToList
+    AssertEqual "OrderDescending first", CLng(3), ordered.First
+    AssertEqual "OrderDescending last", CLng(1), ordered.Last
+
+    Set strings = ROneCOne.ListOf(vbString, "a", "Z")
+    AssertEqual "ordinal string order", "Z", strings.Order.First
+    Set booleans = ROneCOne.ListOf(vbBoolean, True, False)
+    AssertTrue "Boolean False first", Not CBool(booleans.Order.First)
+
+    Set variantValues = ROneCOne.ListOf(vbVariant, "b", Null, "a")
+    Set ordered = variantValues.Order.ToList
+    AssertTrue "Null first ascending", IsNull(ordered.First)
+    Set ordered = variantValues.OrderDescending.ToList
+    AssertTrue "Null last descending", IsNull(ordered.Last)
+
+    Set mixedValues = ROneCOne.ListOf(vbVariant, CLng(1), "2")
+    On Error Resume Next
+    Set ordered = mixedValues.Order.ToList
+    actualError = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertEqual "mixed Variant keys reject coercion", _
+        ROneCOne.TypeMismatchError, actualError
+
+    Set prototype = New GenericCustomer
+    Set ada = New GenericCustomer
+    ada.CustomerName = "Ada"
+    ada.Age = 36
+    ada.City = "London"
+    Set grace = New GenericCustomer
+    grace.CustomerName = "Grace"
+    grace.Age = 40
+    grace.City = "London"
+    Set katherine = New GenericCustomer
+    katherine.CustomerName = "Katherine"
+    katherine.Age = 49
+    katherine.City = "Cleveland"
+    Set margaret = New GenericCustomer
+    margaret.CustomerName = "Margaret"
+    margaret.Age = 40
+    margaret.City = "London"
+    Set customers = ROneCOne.ListOf(prototype, ada, grace, katherine, margaret)
+
+    Set ordered = customers _
+        .OrderBy("City") _
+        .ThenByDescending("Age") _
+        .ToList
+    AssertEqual "composite primary", "Katherine", ordered.Item(0).CustomerName
+    AssertEqual "composite secondary", "Grace", ordered.Item(1).CustomerName
+    AssertEqual "stable equal keys", "Margaret", ordered.Item(2).CustomerName
+    AssertEqual "composite tail", "Ada", ordered.Item(3).CustomerName
+
+    Set ordered = customers _
+        .OrderBy("City") _
+        .ThenBy("Age") _
+        .ThenBy("CustomerName") _
+        .ToList
+    AssertEqual "ThenBy ascending", "Ada", ordered.Item(1).CustomerName
+    AssertEqual "multiple ThenBy", "Grace", ordered.Item(2).CustomerName
+    Set ordered = customers _
+        .OrderByDescending("Age") _
+        .ThenBy("CustomerName") _
+        .ToList
+    AssertEqual "OrderByDescending", "Katherine", ordered.First.CustomerName
+
+    Set comparer = ROneCOne.Comparer( _
+        "DelegateProcedures.CompareTextIgnoreCase")
+    Set ordered = customers _
+        .OrderBy("City", comparer) _
+        .ThenBy("CustomerName", comparer) _
+        .ToList
+    AssertEqual "per-level comparer", "Katherine", ordered.First.CustomerName
+
+    Set comparer = ROneCOne.Comparer( _
+        "DelegateProcedures.CompareCustomerAge")
+    Set ordered = customers.Order(comparer).ToList
+    AssertEqual "object comparer", "Ada", ordered.First.CustomerName
+    On Error Resume Next
+    Set ordered = customers.Order.ToList
+    actualError = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertEqual "objects require comparer", ROneCOne.TypeMismatchError, actualError
+
+    On Error Resume Next
+    Set ordered = values.ThenBy(values.Element).ToList
+    actualError = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertEqual "ThenBy requires ordered query", _
+        ROneCOne.InvalidOperationError, actualError
+    Set query = values.Where(values.Element.AtLeast(CLng(1)))
+    On Error Resume Next
+    Set ordered = query.ThenBy(query.Element).ToList
+    actualError = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertEqual "Where terminates ordered query", _
+        ROneCOne.InvalidOperationError, actualError
+
+    Set ordered = customers _
+        .OrderByDescending("Age") _
+        .OrderBy("CustomerName") _
+        .ToList
+    AssertEqual "OrderBy resets chain", "Ada", ordered.First.CustomerName
+
+    Set query = values.Order
+    values.Add CLng(0)
+    Set ordered = query.ToList
+    AssertEqual "deferred Order sees mutation", CLng(0), ordered.First
+
+    Set selector = ROneCOne.Func( _
+        "DelegateProcedures.CountedLongIdentity") _
+        .Takes(vbLong) _
+        .Returns(vbLong)
+    DelegateProcedures.ResetSelectorCalls
+    Set ordered = values _
+        .OrderBy(selector) _
+        .ThenBy(selector) _
+        .ToList
+    AssertEqual "selectors evaluate once per level", _
+        values.Count * CLng(2), DelegateProcedures.CurrentSelectorCalls
+End Sub
+
 Private Sub TestSequenceOperators()
     Dim values As ROneCOne
     Dim result As ROneCOne
@@ -699,7 +860,11 @@ Private Sub ResetResults()
     mCurrentTest = vbNullString
 End Sub
 
-Private Sub AssertEqual(ByVal testName As String, ByVal expected As Variant, ByVal actual As Variant)
+Private Sub AssertEqual( _
+    ByVal testName As String, _
+    ByVal expected As Variant, _
+    ByVal actual As Variant _
+)
     If expected = actual Then
         RecordResult testName, True, vbNullString
     Else

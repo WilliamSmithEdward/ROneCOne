@@ -148,8 +148,12 @@ class SourceContractTests(unittest.TestCase):
             "Skip",
             "Distinct",
             "DistinctBy",
+            "Order",
+            "OrderDescending",
             "OrderBy",
             "OrderByDescending",
+            "ThenBy",
+            "ThenByDescending",
             "Append",
             "Prepend",
             "Reverse",
@@ -172,8 +176,6 @@ class SourceContractTests(unittest.TestCase):
             "Exists",
             "ForEach",
             "JoinText",
-            "Sorted",
-            "SortedDescending",
             "AtLeast",
             "AtMost",
             "Between",
@@ -201,13 +203,29 @@ class SourceContractTests(unittest.TestCase):
             )
             self.assertRegex(self.source, re.compile(pattern, re.IGNORECASE), member)
 
+        for removed_member in ("Sorted", "SortedDescending"):
+            pattern = (
+                rf"Public\s+(?:Function|Sub|Property\s+(?:Get|Let|Set))\s+"
+                rf"\[?{removed_member}\]?(?![A-Za-z0-9_])"
+            )
+            self.assertNotRegex(
+                self.source,
+                re.compile(pattern, re.IGNORECASE),
+                removed_member,
+            )
+
     def test_contextual_linq_contract_accepts_member_names(self) -> None:
         contextual_signatures = (
             r"Public Function Where\(ByVal predicateOrMember As Variant\)",
             r"Public Function SelectItems\(\s*_\s*\n\s*ByVal selector As Variant",
             r"Public Function Map\(\s*_\s*\n\s*ByVal selector As Variant",
+            r"Public Function Order\(Optional ByVal comparer As Variant\)",
+            r"Public Function OrderDescending\(Optional ByVal comparer As Variant\)",
             r"Public Function OrderBy\(\s*_\s*\n\s*ByVal keySelector As Variant",
             r"Public Function OrderByDescending\(\s*_\s*\n\s*"
+            r"ByVal keySelector As Variant",
+            r"Public Function ThenBy\(\s*_\s*\n\s*ByVal keySelector As Variant",
+            r"Public Function ThenByDescending\(\s*_\s*\n\s*"
             r"ByVal keySelector As Variant",
         )
         for signature in contextual_signatures:

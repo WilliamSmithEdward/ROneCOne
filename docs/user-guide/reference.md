@@ -27,7 +27,7 @@ Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 |---|---|
 | Filter | `Where`, `WhereNot` |
 | Project | `Map`, `SelectItems` |
-| Order | `OrderBy`, `OrderByDescending`, `Sorted`, `SortedDescending` |
+| Order | `Order`, `OrderDescending`, `OrderBy`, `OrderByDescending`, `ThenBy`, `ThenByDescending` |
 | Page | `Take`, `Skip` |
 | Remove duplicates | `Distinct`, `DistinctBy` |
 | Add around a sequence | `Append`, `Prepend` |

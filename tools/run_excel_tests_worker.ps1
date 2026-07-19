@@ -11,7 +11,11 @@ param(
 
     [Parameter(Mandatory = $true)]
     [ValidateRange(0.01, 60)]
-    [double]$MaxCollectionBenchmarkSeconds
+    [double]$MaxCollectionBenchmarkSeconds,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(0.01, 60)]
+    [double]$MaxOrderingBenchmarkSeconds
 )
 
 $ErrorActionPreference = "Stop"
@@ -134,11 +138,15 @@ public static class ROneCOneExcelProcess
     $collectionSheet.Range("A3").Value2 = "Failed"
     $collectionSheet.Range("A4").Value2 = "Status"
     $collectionSheet.Range("A5").Value2 = "Error"
-    $collectionBenchmarkSheet.Range("A1:B4").ClearContents()
+    $collectionBenchmarkSheet.Range("A1:B8").ClearContents()
     $collectionBenchmarkSheet.Range("A1").Value2 = "ROneCOne collection benchmark"
     $collectionBenchmarkSheet.Range("A2").Value2 = "Source elements"
     $collectionBenchmarkSheet.Range("A3").Value2 = "Seconds"
     $collectionBenchmarkSheet.Range("A4").Value2 = "Filtered elements"
+    $collectionBenchmarkSheet.Range("A5").Value2 = "Ordering source elements"
+    $collectionBenchmarkSheet.Range("A6").Value2 = "Composite ordering seconds"
+    $collectionBenchmarkSheet.Range("A7").Value2 = "Ordered elements"
+    $collectionBenchmarkSheet.Range("A8").Value2 = "First ordered result"
     $macroPrefix = "'" + $workbook.Name.Replace("'", "''") + "'!"
     $stage = "run delegate tests"
     $excel.Run($macroPrefix + "RunROneCOneTests") | Out-Null
@@ -167,6 +175,7 @@ public static class ROneCOneExcelProcess
     $collectionFailed = [int]$collectionSheet.Range("B3").Value2
     $seconds = [double]$benchmarkSheet.Range("B3").Value2
     $collectionSeconds = [double]$collectionBenchmarkSheet.Range("B3").Value2
+    $orderingSeconds = [double]$collectionBenchmarkSheet.Range("B6").Value2
 
     $stage = "validate observed results"
     if ($status -ne "PASS" -or $failed -ne 0) {
@@ -206,6 +215,14 @@ public static class ROneCOneExcelProcess
         $collectionSeconds -gt $MaxCollectionBenchmarkSeconds) {
         throw "Collection benchmark missed gate: seconds=$collectionSeconds maximum=$MaxCollectionBenchmarkSeconds"
     }
+    if ($orderingSeconds -le 0 -or `
+        $orderingSeconds -gt $MaxOrderingBenchmarkSeconds) {
+        throw "Ordering benchmark missed gate: seconds=$orderingSeconds maximum=$MaxOrderingBenchmarkSeconds"
+    }
+    if ([int]$collectionBenchmarkSheet.Range("B7").Value2 -ne 10000 -or `
+        [int]$collectionBenchmarkSheet.Range("B8").Value2 -ne 10000) {
+        throw "Ordering benchmark produced an invalid composite order."
+    }
 
     [pscustomobject]@{
         workbook = $resolvedWorkbook
@@ -221,6 +238,9 @@ public static class ROneCOneExcelProcess
         collection_benchmark_elements = [int]$collectionBenchmarkSheet.Range("B2").Value2
         collection_benchmark_seconds = $collectionSeconds
         collection_benchmark_gate_seconds = $MaxCollectionBenchmarkSeconds
+        ordering_benchmark_elements = [int]$collectionBenchmarkSheet.Range("B5").Value2
+        ordering_benchmark_seconds = $orderingSeconds
+        ordering_benchmark_gate_seconds = $MaxOrderingBenchmarkSeconds
     } | ConvertTo-Json -Compress
 }
 catch {

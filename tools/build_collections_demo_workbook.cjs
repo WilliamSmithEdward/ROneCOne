@@ -163,7 +163,7 @@ async function main() {
     ["Strict T", "Compile-time element type", "values.Add \"not a Long\"", true],
     ["User class", "new List<DemoCustomer> { ada, grace }", "ROneCOne.ListFrom(ada, grace)", "List<DemoCustomer>:Grace"],
     ["Deferred Where", "query observes later mutation", "Set element = values.Element\nSet query = values.Where(element.AtLeast(10))\nvalues.Add 30", "2|30"],
-    ["LINQ pipeline", "Where.Select.OrderBy.Take", ".Where(...).Map(...).SortedDescending.Take(2)", "60,40"],
+    ["LINQ pipeline", "Where.Select.OrderBy.Take", ".Where(...).Map(...).OrderDescending.Take(2)", "60,40"],
     ["Sequence ops", "Distinct.Prepend.Append.Reverse.Skip", "values.Distinct.Prepend(1).Append(4).Reverse.Skip(1)", "3,2,1"],
     ["Terminals", "Sum/Average/Min/Max", "Range(1, 5).Sum / Average / Min / Max", "15|3|1|5"],
     ["ForEach Action", "values.ForEach(action)", "values.ForEach ROneCOne.Action(...)", 10],
@@ -231,14 +231,14 @@ async function main() {
     [
       "Projection + ordering",
       ".Select(c => c.Name).OrderBy(name => name)",
-      'Set names = experienced.Map("CustomerName", vbString).Sorted.ToList',
+      'Set names = experienced.Map("CustomerName", vbString).Order.ToList',
       "Grace|Katherine|Margaret",
     ],
     [
-      "Object ordering",
-      ".OrderByDescending(c => c.Age).First()",
-      'Set oldest = customers.OrderByDescending("Age").First',
-      "Katherine|49",
+      "Composite ordering",
+      ".OrderBy(c => c.City).ThenByDescending(c => c.Age).First()",
+      'Set first = customers.OrderBy("City").ThenByDescending("Age").First',
+      "Margaret|45",
     ],
     [
       "Quantifiers",
@@ -317,7 +317,7 @@ async function main() {
       "IEqualityComparer<T> / IComparer<T>",
       "strings.Distinct(equalityComparer)\n" +
         "strings.Contains(\"ada\", equalityComparer)\n" +
-        "strings.Sorted(comparer)",
+        "strings.Order(comparer)",
       "2|True|Ada",
     ],
     [
@@ -370,27 +370,28 @@ async function main() {
     "Scenario",
     "Source elements",
     "Seconds",
-    "Filtered elements",
+    "Result elements",
     "Elements / second",
   ]];
   tableHeader(benchmarks.getRange("A5:E5"));
-  benchmarks.getRange("A6:A7").values = [
+  benchmarks.getRange("A6:A8").values = [
     ["Range.Where.ToList"],
     ["Repeated object member Where"],
+    ["OrderBy.ThenByDescending.ToList"],
   ];
   benchmarks.getRange("E6").formulas = [["=IF(C6=0,0,B6/C6)"]];
-  benchmarks.getRange("E6:E7").fillDown();
-  benchmarks.getRange("A6:E7").format = {
+  benchmarks.getRange("E6:E8").fillDown();
+  benchmarks.getRange("A6:E8").format = {
     borders: { preset: "all", style: "thin", color: colors.line },
   };
-  benchmarks.getRange("B6:B7").format.numberFormat = "#,##0";
-  benchmarks.getRange("C6:C7").format.numberFormat = "0.000000";
-  benchmarks.getRange("D6:E7").format.numberFormat = "#,##0";
-  benchmarks.getRange("A9:F9").merge();
-  benchmarks.getRange("A9").values = [[
-    "Release gate: 10,000-element query pipelines must remain bounded in one Excel process.",
+  benchmarks.getRange("B6:B8").format.numberFormat = "#,##0";
+  benchmarks.getRange("C6:C8").format.numberFormat = "0.000000";
+  benchmarks.getRange("D6:E8").format.numberFormat = "#,##0";
+  benchmarks.getRange("A10:F10").merge();
+  benchmarks.getRange("A10").values = [[
+    "Release gates: 10,000-element filtering and composite ordering stay bounded in one Excel process.",
   ]];
-  benchmarks.getRange("A9:F9").format = {
+  benchmarks.getRange("A10:F10").format = {
     fill: "#FFF4E8",
     font: { color: "#9A4A00" },
     wrapText: true,
@@ -414,22 +415,23 @@ async function main() {
     "Dependencies",
   ]];
   tableHeader(architecture.getRange("A5:F5"));
-  architecture.getRange("A6:F13").values = [
+  architecture.getRange("A6:F14").values = [
     ["Concrete T", "VarType or exact class name", "Reject before mutation", "ENFORCED", 1, 0],
     ["User classes", "ListFrom or prototype token", "Exact class identity", "ENFORCED", 1, 0],
     ["Deferred LINQ", "Immutable query nodes", "Evaluate on consumption", "ENFORCED", 1, 0],
     ["Syntax sugar", "Contextual members + native bang", "Canonical API remains available", "ENFORCED", 1, 0],
     ["Predicate algebra", "Composable immutable nodes", "Membership, null-safe paths, quantifiers", "ENFORCED", 1, 0],
+    ["Stable ordering", "OrderBy + ThenBy chain", "Cached keys and O(n log n) merge sort", "ENFORCED", 1, 0],
     ["Enumeration", "Persistent list mirror", "Nested For Each works", "ENFORCED", 1, 0],
     ["One process", "In-process execution", "Never launches Excel", "ENFORCED", 1, 0],
     ["Privacy", "No transmission", "Workbook data stays local", "ENFORCED", 1, 0],
   ];
-  architecture.getRange("A6:F13").format = {
+  architecture.getRange("A6:F14").format = {
     borders: { preset: "all", style: "thin", color: colors.line },
     wrapText: true,
     verticalAlignment: "top",
   };
-  architecture.getRange("D6:D13").format = {
+  architecture.getRange("D6:D14").format = {
     fill: colors.pale,
     font: { bold: true, color: colors.green },
   };
@@ -438,7 +440,7 @@ async function main() {
   architecture.getRange("C:C").format.columnWidth = 30;
   architecture.getRange("D:D").format.columnWidth = 18;
   architecture.getRange("E:F").format.columnWidth = 16;
-  architecture.getRange("6:13").format.rowHeight = 40;
+  architecture.getRange("6:14").format.rowHeight = 40;
   architecture.freezePanes.freezeRows(5);
 
   await fs.mkdir(outputDir, { recursive: true });

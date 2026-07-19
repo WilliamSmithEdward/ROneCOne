@@ -81,6 +81,12 @@ node. Repeated evaluation therefore follows a cached member-access plan and perf
 unavoidable host property dispatch. Membership and nested-quantifier nodes retain their typed
 sequence or predicate directly, so they compose without source generation or global state.
 
+Contiguous ordering nodes form an ordered-query chain. A primary `Order` or `OrderBy` establishes
+the chain; `ThenBy` adds levels only while that chain remains the immediate receiver. Materializing
+the chain evaluates each selector once into a key matrix, then applies a stable bottom-up merge
+sort. This keeps composite ordering O(n log n), preserves equal-key source order, and avoids
+repeated property or delegate calls inside the comparison loop.
+
 The sequence default member distinguishes numeric indices from String member names. Numeric values
 retain zero-based indexing; names return `Condition(name)`. This makes VBA's native `sequence!Age`
 syntax an expression selector without code generation, parsing a new language, or accessing VBIDE.
@@ -122,6 +128,7 @@ contexts are keyed to one workbook, and process-global mutable state never coupl
 | Available | Inferred `Func` and LINQ syntax sugar |
 | Available | Contextual member LINQ, bang expressions, and key operators |
 | Available | Predicate algebra, membership, null-safe paths, nested quantifiers, and comparers |
+| Available | Stable composite `Order`/`OrderBy`/`ThenBy` queries with per-level comparers |
 | Available | Typed events over universal Actions |
 | Available | Structured `Try/Catch/Finally` over callable blocks |
 | Scheduled | Tasks, async/await, cancellation, progress, and captured exceptions |

@@ -78,9 +78,10 @@ class DemoContractTests(unittest.TestCase):
         required_syntax = (
             'customers.Where("Age").AtLeast(CLng(40))',
             '.Map("CustomerName", vbString)',
-            ".Sorted",
+            ".Order",
             'customers.Condition("City").EqualTo("London")',
-            '.OrderByDescending("Age")',
+            '.OrderBy("City")',
+            '.ThenByDescending("Age")',
             '.Where("CustomerName").StartsWith("G")',
             '.DistinctBy("City")',
             '"CollectionsDemoUsage.IsExperiencedCustomer").ToList',
@@ -133,12 +134,13 @@ class DemoContractTests(unittest.TestCase):
 
         self.assertIn('workbook.worksheets.add("User Class LINQ")', source)
         self.assertIn("Deferred class Where", source)
-        self.assertIn("Object ordering", source)
+        self.assertIn("Composite ordering", source)
         self.assertIn("Quantifiers", source)
         self.assertIn("Aggregate projection", source)
         self.assertIn('.Where("Age").AtLeast(40)', source)
         self.assertIn('.Map("CustomerName", vbString)', source)
-        self.assertIn('.OrderByDescending("Age")', source)
+        self.assertIn('.OrderBy("City")', source)
+        self.assertIn('.ThenByDescending("Age")', source)
         self.assertIn('.DistinctBy("City")', source)
 
     def test_collections_packager_removes_obsolete_query_helper(self) -> None:

@@ -90,8 +90,9 @@ Debug.Print filtered.Last    ' 30
 ```
 
 The sequence operators are `Where`, `SelectItems`, `Take`, `Skip`, `Distinct`, `DistinctBy`,
-`OrderBy`, `OrderByDescending`, `Append`, `Prepend`, and `Reverse`. `Range` and `Repeat` create typed
-source sequences. Immediate terminals are `Exists`, `AnyItem`, `All`, `None`, `First`,
+`Order`, `OrderDescending`, `OrderBy`, `OrderByDescending`, `ThenBy`, `ThenByDescending`, `Append`,
+`Prepend`, and `Reverse`. `Range` and `Repeat` create typed source sequences. Immediate terminals
+are `Exists`, `AnyItem`, `All`, `None`, `First`,
 `FirstOrDefault`, `Last`, `LastOrDefault`, `SingleItem`, `SingleOrDefault`, `Sum`, `Average`,
 `Min`, `Max`, `MinBy`, `MaxBy`, `Count`, `ForEach`, `JoinText`, `SequenceEqual`, `ToList`, and
 `ToArray`.
@@ -100,7 +101,7 @@ source sequences. Immediate terminals are `Exists`, `AnyItem`, `All`, `None`, `F
 Set result = ROneCOne.Range(CLng(1), CLng(6)) _
     .Where(x.Modulo(CLng(2)).EqualTo(CLng(0))) _
     .Map(x.Multiply(CLng(10)), vbLong) _
-    .SortedDescending _
+    .OrderDescending _
     .Take(CLng(2)) _
     .ToList
 
@@ -125,6 +126,7 @@ contract. The canonical members remain public for explicit construction, teachin
 | `values.Map(x.Multiply(2), vbLong)` | `values.SelectItems(ROneCOne.Lambda(x.Multiply(2), x), vbLong)` | Typed projection |
 | `values.Map("Name", vbString)` | `values.Map(values.Condition("Name"), vbString)` | Member-name projection |
 | `values.OrderBy("Age")` | `values.OrderBy(values.Condition("Age"))` | Member-name key selector |
+| `values.ThenBy("Name")` | `values.ThenBy(values.Condition("Name"))` | Adds a secondary key |
 | `values.WhereMethod("Queries.IsActive")` | `values.Where(values.Predicate("Queries.IsActive"))` | Inferred `Func<T, Boolean>` |
 | `values.Exists(predicate)` | `values.AnyItem(predicate)` | Predicate-based existence test |
 | `values.Exists` | `values.AnyItem` | Tests whether the sequence has an element |
@@ -133,14 +135,40 @@ contract. The canonical members remain public for explicit construction, teachin
 | `values.WhereAny("Items", p)` | `values.Where(values.Condition("Items", True).AnyMatch(p))` | Nested Any |
 | `values.ForEach(action)` | explicit `For Each` plus `action.Execute` | Typed side effects |
 | `values.JoinText("|")` | explicit string-building loop | Scalar text joining |
-| `values.Sorted` | `values.OrderBy(values.Element)` | Identity-key ascending order |
-| `values.SortedDescending` | `values.OrderByDescending(values.Element)` | Identity-key descending order |
+| `values.Order` | `values.OrderBy(values.Element)` | Identity-key ascending order |
+| `values.OrderDescending` | `values.OrderByDescending(values.Element)` | Identity-key descending order |
 
 `Where`, `Map`, ordering, quantifiers, element terminals, and selector-based numeric terminals all
 accept either any universal unary `Func` or an expression containing exactly one parameter. Member
 selectors additionally accept a member-path string. That includes object, callable-object,
 workbook-procedure, native, composition, and multicast delegates. The runtime infers expression
 parameters once when the query is built, not once per element.
+
+## Stable composite ordering
+
+The ordering surface mirrors .NET's distinction between primary and secondary keys. `Order` and
+`OrderDescending` compare each element directly. `OrderBy` and `OrderByDescending` select a new
+primary key. `ThenBy` and `ThenByDescending` extend only the immediately active ordered query:
+
+```vba
+Set ranked = customers _
+    .OrderBy("City") _
+    .ThenByDescending("Age") _
+    .ThenBy("CustomerName") _
+    .ToList
+```
+
+Starting another `Order` or `OrderBy` replaces the active ordering chain. An intervening operator
+such as `Where`, `Map`, or `Take` ends the ordered-query capability, so a following `ThenBy` raises
+`InvalidOperationError`. This makes an invalid chain fail at construction instead of quietly
+changing its meaning.
+
+Ordering is deferred and stable. Every key selector runs exactly once per element per enumeration,
+and a stable O(n log n) merge sort preserves source order when all keys compare equal. Null scalar
+keys come first in ascending order and last in descending order. Boolean order is `False`, then
+`True`; default string order is binary and ordinal. Incompatible mixed Variant key types raise
+`TypeMismatchError` instead of using VBA's implicit coercion. User-defined objects can be ordered
+directly only when an explicit comparer is supplied.
 
 ## Contextual conditions
 
@@ -246,15 +274,16 @@ As in LINQ, `AllMatch` is True for an empty nested sequence, while `AnyMatch` is
 `EqualityComparer(callable)` builds a `Func<T, T, Boolean>` and `Comparer(callable)` builds a
 `Func<T, T, Long>`. Both accept the universal object, callable-object, workbook-procedure, native,
 or expression delegate surface. Equality comparers are accepted by `Contains`, `IndexOf`,
-`Distinct`, `DistinctBy`, and `SequenceEqual`. Ordering comparers are accepted by `OrderBy`,
-`OrderByDescending`, `Sorted`, `SortedDescending`, `Min`, `Max`, `MinBy`, and `MaxBy`.
+`Distinct`, `DistinctBy`, and `SequenceEqual`. Ordering comparers are accepted independently by
+`Order`, `OrderDescending`, `OrderBy`, `OrderByDescending`, `ThenBy`, `ThenByDescending`, `Min`,
+`Max`, `MinBy`, and `MaxBy`.
 
 ```vba
 Set equality = ROneCOne.EqualityComparer("Queries.TextEqualsIgnoreCase")
 Set ordering = ROneCOne.Comparer("Queries.CompareTextIgnoreCase")
 
 Set unique = names.Distinct(equality)
-Set ordered = names.Sorted(ordering)
+Set ordered = names.Order(ordering)
 Debug.Print names.Contains("ada", equality)
 ```
 
@@ -268,18 +297,21 @@ member names are the primary readable surface.
 Dim customers As ROneCOne
 Dim experienced As ROneCOne
 Dim names As ROneCOne
-Dim oldest As DemoCustomer
+Dim firstCustomer As DemoCustomer
 Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 
 Set experienced = customers.Where("Age").AtLeast(CLng(40))
 Set names = experienced _
     .Map("CustomerName", vbString) _
-    .Sorted _
+    .Order _
     .ToList
-Set oldest = customers.OrderByDescending("Age").First
+Set firstCustomer = customers _
+    .OrderBy("City") _
+    .ThenByDescending("Age") _
+    .First
 
 Debug.Print names.GenericTypeName  ' List<String>
-Debug.Print oldest.CustomerName
+Debug.Print firstCustomer.CustomerName
 ```
 
 The same query expressed through canonical primitives is:
@@ -323,9 +355,8 @@ code; the deployed runtime remains the single `ROneCOne.cls` file.
 
 VBA reserves `Select`, `Any`, `In`, and `Single`, and the VBE rejects those words as class member
 declarations. ROneCOne therefore uses `Map`, `Exists`, `IsIn`, and `SingleItem`; `SelectItems` and
-`AnyItem` remain the explicit core members. `AtLeast`, `AtMost`, `Sorted`, and
-`SortedDescending` similarly expand to longer comparison and ordering primitives without changing
-their behavior.
+`AnyItem` remain the explicit core members. Legal .NET names are used directly throughout the
+ordering surface.
 
 The feature roadmap covers the standard LINQ and generic-collection surface. Operators that
 need new result abstractions, including dictionaries, lookups, groupings, joins, sets, queues, and

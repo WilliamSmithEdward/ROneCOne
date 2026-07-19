@@ -106,13 +106,17 @@ Private Const QUERY_SELECT As Long = 2
 Private Const QUERY_TAKE As Long = 3
 Private Const QUERY_SKIP As Long = 4
 Private Const QUERY_DISTINCT As Long = 5
-Private Const QUERY_ORDER_BY As Long = 6
-Private Const QUERY_ORDER_BY_DESCENDING As Long = 7
-Private Const QUERY_APPEND As Long = 8
-Private Const QUERY_PREPEND As Long = 9
-Private Const QUERY_REVERSE As Long = 10
-Private Const QUERY_DISTINCT_BY As Long = 11
-Private Const QUERY_WHERE_NOT As Long = 12
+Private Const QUERY_ORDER As Long = 6
+Private Const QUERY_ORDER_DESCENDING As Long = 7
+Private Const QUERY_ORDER_BY As Long = 8
+Private Const QUERY_ORDER_BY_DESCENDING As Long = 9
+Private Const QUERY_THEN_BY As Long = 10
+Private Const QUERY_THEN_BY_DESCENDING As Long = 11
+Private Const QUERY_APPEND As Long = 12
+Private Const QUERY_PREPEND As Long = 13
+Private Const QUERY_REVERSE As Long = 14
+Private Const QUERY_DISTINCT_BY As Long = 15
+Private Const QUERY_WHERE_NOT As Long = 16
 
 Private Const ERROR_INVALID_ARGUMENT As Long = vbObjectError + 4100
 Private Const ERROR_INVALID_OPERATION As Long = vbObjectError + 4101
@@ -1656,7 +1660,8 @@ Attribute OrderBy.VB_Description = "Defers stable ascending ordering by a select
     If Not IsMissing(comparer) Then
         Set comparerValue = NormalizeComparer(comparer, False, "OrderBy")
     End If
-    Set OrderBy = CreateQuery(QUERY_ORDER_BY, selectorDelegate, Nothing, 0, _
+    Set OrderBy = CreatePrimaryOrderQuery( _
+        QUERY_ORDER_BY, selectorDelegate, _
         mElementType, mElementObjectType, comparerValue)
 End Function
 
@@ -1674,27 +1679,81 @@ Attribute OrderByDescending.VB_Description = "Defers stable descending ordering 
         Set comparerValue = NormalizeComparer( _
             comparer, False, "OrderByDescending")
     End If
-    Set OrderByDescending = CreateQuery( _
-        QUERY_ORDER_BY_DESCENDING, selectorDelegate, Nothing, 0, _
+    Set OrderByDescending = CreatePrimaryOrderQuery( _
+        QUERY_ORDER_BY_DESCENDING, selectorDelegate, _
         mElementType, mElementObjectType, comparerValue)
 End Function
 
-Public Function Sorted(Optional ByVal comparer As Variant) As ROneCOne
-Attribute Sorted.VB_Description = "Orders a sequence ascending by each element itself."
+Public Function Order(Optional ByVal comparer As Variant) As ROneCOne
+Attribute Order.VB_Description = "Defers stable ascending ordering by each element."
+    Dim comparerValue As ROneCOne
+    Dim selectorDelegate As ROneCOne
+
+    Set selectorDelegate = NormalizeContextUnary(Element, "Order", False)
     If IsMissing(comparer) Then
-        Set Sorted = OrderBy(Element)
+        Set comparerValue = Nothing
     Else
-        Set Sorted = OrderBy(Element, comparer)
+        Set comparerValue = NormalizeComparer(comparer, False, "Order")
     End If
+    Set Order = CreatePrimaryOrderQuery( _
+        QUERY_ORDER, selectorDelegate, _
+        mElementType, mElementObjectType, comparerValue)
 End Function
 
-Public Function SortedDescending(Optional ByVal comparer As Variant) As ROneCOne
-Attribute SortedDescending.VB_Description = "Orders a sequence descending by each element itself."
+Public Function OrderDescending(Optional ByVal comparer As Variant) As ROneCOne
+Attribute OrderDescending.VB_Description = "Defers stable descending ordering by each element."
+    Dim comparerValue As ROneCOne
+    Dim selectorDelegate As ROneCOne
+
+    Set selectorDelegate = NormalizeContextUnary( _
+        Element, "OrderDescending", False)
     If IsMissing(comparer) Then
-        Set SortedDescending = OrderByDescending(Element)
+        Set comparerValue = Nothing
     Else
-        Set SortedDescending = OrderByDescending(Element, comparer)
+        Set comparerValue = NormalizeComparer( _
+            comparer, False, "OrderDescending")
     End If
+    Set OrderDescending = CreatePrimaryOrderQuery( _
+        QUERY_ORDER_DESCENDING, selectorDelegate, _
+        mElementType, mElementObjectType, comparerValue)
+End Function
+
+Public Function ThenBy( _
+    ByVal keySelector As Variant, _
+    Optional ByVal comparer As Variant _
+) As ROneCOne
+Attribute ThenBy.VB_Description = "Adds a stable ascending key to an active ordered query."
+    Dim comparerValue As ROneCOne
+    Dim selectorDelegate As ROneCOne
+
+    RequireOrderedQuery Me, "ThenBy"
+    Set selectorDelegate = NormalizeContextUnary( _
+        keySelector, "ThenBy", False)
+    If Not IsMissing(comparer) Then
+        Set comparerValue = NormalizeComparer(comparer, False, "ThenBy")
+    End If
+    Set ThenBy = CreateQuery(QUERY_THEN_BY, selectorDelegate, Nothing, 0, _
+        mElementType, mElementObjectType, comparerValue)
+End Function
+
+Public Function ThenByDescending( _
+    ByVal keySelector As Variant, _
+    Optional ByVal comparer As Variant _
+) As ROneCOne
+Attribute ThenByDescending.VB_Description = "Adds a stable descending key to an ordered query."
+    Dim comparerValue As ROneCOne
+    Dim selectorDelegate As ROneCOne
+
+    RequireOrderedQuery Me, "ThenByDescending"
+    Set selectorDelegate = NormalizeContextUnary( _
+        keySelector, "ThenByDescending", False)
+    If Not IsMissing(comparer) Then
+        Set comparerValue = NormalizeComparer( _
+            comparer, False, "ThenByDescending")
+    End If
+    Set ThenByDescending = CreateQuery( _
+        QUERY_THEN_BY_DESCENDING, selectorDelegate, Nothing, 0, _
+        mElementType, mElementObjectType, comparerValue)
 End Function
 
 Public Function Append(ByVal element As Variant) As ROneCOne
@@ -2269,6 +2328,11 @@ Attribute InternalOperator.VB_MemberFlags = "40"
     InternalOperator = mOperator
 End Property
 
+Friend Property Get InternalSource() As ROneCOne
+Attribute InternalSource.VB_MemberFlags = "40"
+    Set InternalSource = mSource
+End Property
+
 Friend Property Get InternalExpressionOption() As Long
 Attribute InternalExpressionOption.VB_MemberFlags = "40"
     InternalExpressionOption = mExpressionOption
@@ -2702,6 +2766,11 @@ Friend Function MaterializeWrapped() As Collection
         Exit Function
     End If
 
+    If IsOrderingOperator(mOperator) Then
+        Set MaterializeWrapped = ApplyOrderChain
+        Exit Function
+    End If
+
     Set sourceValues = mSource.MaterializeWrapped
     Select Case mOperator
         Case QUERY_WHERE
@@ -2718,10 +2787,6 @@ Friend Function MaterializeWrapped() As Collection
             Set values = ApplyDistinct(sourceValues)
         Case QUERY_DISTINCT_BY
             Set values = ApplyDistinctBy(sourceValues)
-        Case QUERY_ORDER_BY
-            Set values = ApplyOrder(sourceValues, False)
-        Case QUERY_ORDER_BY_DESCENDING
-            Set values = ApplyOrder(sourceValues, True)
         Case QUERY_APPEND
             Set values = CopyWrappedCollection(sourceValues)
             values.Add mQueryValue
@@ -3339,6 +3404,35 @@ Private Function CreateQuery( _
     Set CreateQuery = query
 End Function
 
+Private Function CreatePrimaryOrderQuery( _
+    ByVal queryOperator As Long, _
+    ByVal queryDelegate As ROneCOne, _
+    ByVal elementType As VbVarType, _
+    ByVal elementObjectType As String, _
+    Optional ByVal queryComparer As ROneCOne _
+) As ROneCOne
+    Dim baseSource As ROneCOne
+    Dim query As ROneCOne
+
+    RequireSequence Me, "Order"
+    Set baseSource = OrderingBaseSource
+    Set query = New ROneCOne
+    query.ConfigureQuery baseSource, queryOperator, queryDelegate, Nothing, 0, _
+        elementType, elementObjectType, queryComparer
+    Set CreatePrimaryOrderQuery = query
+End Function
+
+Private Function OrderingBaseSource() As ROneCOne
+    Dim sourceValue As ROneCOne
+
+    Set sourceValue = Me
+    Do While sourceValue.InternalRole = ROLE_QUERY And _
+        IsOrderingOperator(sourceValue.InternalOperator)
+        Set sourceValue = sourceValue.InternalSource
+    Loop
+    Set OrderingBaseSource = sourceValue
+End Function
+
 Private Sub ResolveTypeDescriptor( _
     ByVal typeToken As Variant, _
     ByRef elementType As VbVarType, _
@@ -3513,6 +3607,21 @@ Private Sub RequireSequence(ByVal candidate As ROneCOne, ByVal context As String
     If candidate.InternalRole <> ROLE_LIST And candidate.InternalRole <> ROLE_QUERY Then
         RaiseContractError ERROR_INVALID_OPERATION, context, _
             "This operation requires a typed sequence."
+    End If
+End Sub
+
+Private Sub RequireOrderedQuery( _
+    ByVal candidate As ROneCOne, _
+    ByVal context As String _
+)
+    If candidate Is Nothing Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, context, _
+            "The ordered query cannot be Nothing."
+    End If
+    If candidate.InternalRole <> ROLE_QUERY Or _
+        Not IsOrderingOperator(candidate.InternalOperator) Then
+        RaiseContractError ERROR_INVALID_OPERATION, context, _
+            context & " is available only after an Order, OrderBy, or ThenBy operation."
     End If
 End Sub
 
@@ -4058,38 +4167,171 @@ Private Function ApplyDistinctBy( _
     Set ApplyDistinctBy = output
 End Function
 
-Private Function ApplyOrder( _
-    ByVal sourceValues As Collection, _
-    ByVal descending As Boolean _
-) As Collection
-    Dim comparison As Long
-    Dim index As Long
-    Dim key As ROneCOne
-    Dim keys As Collection
+Private Function ApplyOrderChain() As Collection
+    Dim comparers() As ROneCOne
+    Dim current As ROneCOne
+    Dim descending() As Boolean
+    Dim indexes() As Long
+    Dim itemCount As Long
+    Dim itemIndex As Long
+    Dim items() As ROneCOne
+    Dim keys() As ROneCOne
+    Dim level As ROneCOne
+    Dim levelCount As Long
+    Dim levelIndex As Long
+    Dim levels As Collection
     Dim output As Collection
-    Dim wrapped As ROneCOne
+    Dim sourceValues As Collection
+    Dim workspace() As Long
 
-    Set keys = New Collection
-    Set output = New Collection
-    For Each wrapped In sourceValues
-        Set key = InvokeUnary(mQueryDelegate, wrapped)
-        index = 1
-        Do While index <= keys.Count
-            comparison = CompareWithComparer( _
-                key, keys.Item(index), mQueryComparer, "OrderBy")
-            If descending Then comparison = -comparison
-            If comparison < 0 Then Exit Do
-            index = index + 1
-        Loop
-        If index > keys.Count Then
-            keys.Add key
-            output.Add wrapped
+    Set levels = New Collection
+    Set current = Me
+    Do While current.InternalRole = ROLE_QUERY And _
+        IsOrderingOperator(current.InternalOperator)
+        If levels.Count = 0 Then
+            levels.Add current
         Else
-            keys.Add key, Before:=index
-            output.Add wrapped, Before:=index
+            levels.Add current, Before:=1
         End If
-    Next wrapped
-    Set ApplyOrder = output
+        Set current = current.InternalSource
+    Loop
+
+    Set sourceValues = current.MaterializeWrapped
+    Set output = New Collection
+    itemCount = sourceValues.Count
+    If itemCount = 0 Then
+        Set ApplyOrderChain = output
+        Exit Function
+    End If
+
+    levelCount = levels.Count
+    ReDim items(1 To itemCount)
+    ReDim keys(1 To levelCount, 1 To itemCount)
+    ReDim comparers(1 To levelCount)
+    ReDim descending(1 To levelCount)
+    ReDim indexes(1 To itemCount)
+    ReDim workspace(1 To itemCount)
+
+    For itemIndex = 1 To itemCount
+        Set items(itemIndex) = sourceValues.Item(itemIndex)
+        indexes(itemIndex) = itemIndex
+    Next itemIndex
+    For levelIndex = 1 To levelCount
+        Set level = levels.Item(levelIndex)
+        Set comparers(levelIndex) = level.InternalQueryComparer
+        descending(levelIndex) = _
+            IsDescendingOrderingOperator(level.InternalOperator)
+        For itemIndex = 1 To itemCount
+            Set keys(levelIndex, itemIndex) = InvokeUnary( _
+                level.InternalQueryDelegate, items(itemIndex))
+        Next itemIndex
+    Next levelIndex
+
+    StableMergeOrdering indexes, workspace, keys, comparers, _
+        descending, levelCount, itemCount
+    For itemIndex = 1 To itemCount
+        output.Add items(indexes(itemIndex))
+    Next itemIndex
+    Set ApplyOrderChain = output
+End Function
+
+Private Sub StableMergeOrdering( _
+    ByRef indexes() As Long, _
+    ByRef workspace() As Long, _
+    ByRef keys() As ROneCOne, _
+    ByRef comparers() As ROneCOne, _
+    ByRef descending() As Boolean, _
+    ByVal levelCount As Long, _
+    ByVal itemCount As Long _
+)
+    Dim comparison As Long
+    Dim leftEnd As Long
+    Dim leftPosition As Long
+    Dim leftStart As Long
+    Dim outputPosition As Long
+    Dim rightEnd As Long
+    Dim rightPosition As Long
+    Dim width As Long
+
+    width = 1
+    Do While width < itemCount
+        leftStart = 1
+        Do While leftStart <= itemCount
+            leftEnd = leftStart + width - 1
+            If leftEnd > itemCount Then leftEnd = itemCount
+            rightEnd = leftStart + (width * 2) - 1
+            If rightEnd > itemCount Then rightEnd = itemCount
+            leftPosition = leftStart
+            rightPosition = leftEnd + 1
+            outputPosition = leftStart
+
+            Do While leftPosition <= leftEnd And rightPosition <= rightEnd
+                comparison = CompareOrderingIndexes( _
+                    indexes(leftPosition), indexes(rightPosition), _
+                    keys, comparers, descending, levelCount)
+                If comparison <= 0 Then
+                    workspace(outputPosition) = indexes(leftPosition)
+                    leftPosition = leftPosition + 1
+                Else
+                    workspace(outputPosition) = indexes(rightPosition)
+                    rightPosition = rightPosition + 1
+                End If
+                outputPosition = outputPosition + 1
+            Loop
+            Do While leftPosition <= leftEnd
+                workspace(outputPosition) = indexes(leftPosition)
+                leftPosition = leftPosition + 1
+                outputPosition = outputPosition + 1
+            Loop
+            Do While rightPosition <= rightEnd
+                workspace(outputPosition) = indexes(rightPosition)
+                rightPosition = rightPosition + 1
+                outputPosition = outputPosition + 1
+            Loop
+            For outputPosition = leftStart To rightEnd
+                indexes(outputPosition) = workspace(outputPosition)
+            Next outputPosition
+            leftStart = leftStart + (width * 2)
+        Loop
+        width = width * 2
+    Loop
+End Sub
+
+Private Function CompareOrderingIndexes( _
+    ByVal leftIndex As Long, _
+    ByVal rightIndex As Long, _
+    ByRef keys() As ROneCOne, _
+    ByRef comparers() As ROneCOne, _
+    ByRef descending() As Boolean, _
+    ByVal levelCount As Long _
+) As Long
+    Dim comparison As Long
+    Dim levelIndex As Long
+
+    For levelIndex = 1 To levelCount
+        comparison = CompareWithComparer( _
+            keys(levelIndex, leftIndex), _
+            keys(levelIndex, rightIndex), _
+            comparers(levelIndex), "Order")
+        If comparison < 0 Then
+            comparison = -1
+        ElseIf comparison > 0 Then
+            comparison = 1
+        End If
+        If descending(levelIndex) Then
+            comparison = -comparison
+        End If
+        If comparison <> 0 Then
+            CompareOrderingIndexes = comparison
+            Exit Function
+        End If
+    Next levelIndex
+
+    If leftIndex < rightIndex Then
+        CompareOrderingIndexes = -1
+    ElseIf leftIndex > rightIndex Then
+        CompareOrderingIndexes = 1
+    End If
 End Function
 
 Private Function ApplyReverse(ByVal sourceValues As Collection) As Collection
@@ -4146,11 +4388,13 @@ Private Function CompareWrapped( _
     ByVal memberName As String _
 ) As Long
     Dim leftScalar As Variant
+    Dim leftType As VbVarType
     Dim rightScalar As Variant
+    Dim rightType As VbVarType
 
     If leftValue.InternalHasObjectValue Or rightValue.InternalHasObjectValue Then
         RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
-            "Object values require a scalar key selector for ordering."
+            "Object values require an explicit ordering comparer."
     End If
     leftScalar = leftValue.InternalScalarValue
     rightScalar = rightValue.InternalScalarValue
@@ -4164,14 +4408,84 @@ Private Function CompareWrapped( _
         End If
         Exit Function
     End If
-    If leftScalar = rightScalar Then
-        CompareWrapped = 0
-    ElseIf leftScalar < rightScalar Then
-        CompareWrapped = -1
-    Else
-        CompareWrapped = 1
+
+    leftType = VarType(leftScalar)
+    rightType = VarType(rightScalar)
+    If IsOrderingNumericType(leftType) And _
+        IsOrderingNumericType(rightType) Then
+        CompareWrapped = CompareScalarValues( _
+            leftScalar, rightScalar, memberName)
+        Exit Function
     End If
+    If leftType <> rightType Then
+        RaiseIncompatibleOrderingTypes leftType, rightType, memberName
+    End If
+
+    Select Case leftType
+        Case vbEmpty
+            CompareWrapped = 0
+        Case vbBoolean
+            If CBool(leftScalar) = CBool(rightScalar) Then
+                CompareWrapped = 0
+            ElseIf Not CBool(leftScalar) Then
+                CompareWrapped = -1
+            Else
+                CompareWrapped = 1
+            End If
+        Case vbString
+            CompareWrapped = CLng(Sgn(StrComp( _
+                CStr(leftScalar), CStr(rightScalar), vbBinaryCompare)))
+        Case vbDate
+            CompareWrapped = CompareScalarValues( _
+                leftScalar, rightScalar, memberName)
+        Case Else
+            RaiseIncompatibleOrderingTypes leftType, rightType, memberName
+    End Select
 End Function
+
+Private Function CompareScalarValues( _
+    ByVal leftScalar As Variant, _
+    ByVal rightScalar As Variant, _
+    ByVal memberName As String _
+) As Long
+    On Error GoTo ComparisonFailed
+    If leftScalar = rightScalar Then
+        CompareScalarValues = 0
+    ElseIf leftScalar < rightScalar Then
+        CompareScalarValues = -1
+    Else
+        CompareScalarValues = 1
+    End If
+    On Error GoTo 0
+    Exit Function
+
+ComparisonFailed:
+    On Error GoTo 0
+    RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
+        "The selected keys cannot be compared safely."
+End Function
+
+Private Function IsOrderingNumericType( _
+    ByVal valueType As VbVarType _
+) As Boolean
+    Select Case valueType
+        Case vbByte, vbInteger, vbLong, vbLongLong
+            IsOrderingNumericType = True
+        Case vbSingle, vbDouble, vbCurrency, vbDecimal
+            IsOrderingNumericType = True
+    End Select
+End Function
+
+Private Sub RaiseIncompatibleOrderingTypes( _
+    ByVal leftType As VbVarType, _
+    ByVal rightType As VbVarType, _
+    ByVal memberName As String _
+)
+    RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
+        "Incompatible Variant key types: " & _
+        TypeNameForVarType(leftType) & " and " & _
+        TypeNameForVarType(rightType) & "."
+End Sub
 
 Private Function CreateBinaryExpression( _
     ByVal expressionOperator As Long, _
@@ -5673,6 +5987,26 @@ Private Function IsMemberOperator(ByVal operatorCode As Long) As Boolean
         Case OP_SAFE_MEMBER_VALUE, OP_SAFE_MEMBER_OBJECT
             IsMemberOperator = True
     End Select
+End Function
+
+Private Function IsOrderingOperator(ByVal operatorCode As Long) As Boolean
+    Select Case operatorCode
+        Case QUERY_ORDER, QUERY_ORDER_DESCENDING
+            IsOrderingOperator = True
+        Case QUERY_ORDER_BY, QUERY_ORDER_BY_DESCENDING
+            IsOrderingOperator = True
+        Case QUERY_THEN_BY, QUERY_THEN_BY_DESCENDING
+            IsOrderingOperator = True
+    End Select
+End Function
+
+Private Function IsDescendingOrderingOperator( _
+    ByVal operatorCode As Long _
+) As Boolean
+    IsDescendingOrderingOperator = _
+        operatorCode = QUERY_ORDER_DESCENDING Or _
+        operatorCode = QUERY_ORDER_BY_DESCENDING Or _
+        operatorCode = QUERY_THEN_BY_DESCENDING
 End Function
 
 Private Function IsObjectMemberOperator(ByVal operatorCode As Long) As Boolean

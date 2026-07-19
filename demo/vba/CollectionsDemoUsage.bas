@@ -71,7 +71,7 @@ Private Sub WritePrimitiveCollectionExamples()
     Set projected = ROneCOne.Range(CLng(1), CLng(6)) _
         .Where(x.Modulo(CLng(2)).EqualTo(CLng(0))) _
         .Map(x.Multiply(CLng(10)), vbLong) _
-        .SortedDescending _
+        .OrderDescending _
         .Take(CLng(2)) _
         .ToList
 
@@ -110,11 +110,13 @@ End Sub
 ' -----------------------------------------------------------------------------
 
 Private Sub WriteUserClassLinqExamples()
+    Dim Age As Variant
     Dim allExperienced As Boolean
     Dim anyLondon As Boolean
     Dim ada As DemoCustomer
     Dim allowedCities As ROneCOne
     Dim comparer As ROneCOne
+    Dim City As Variant
     Dim customers As ROneCOne
     Dim distinctCities As ROneCOne
     Dim experienced As ROneCOne
@@ -151,12 +153,13 @@ Private Sub WriteUserClassLinqExamples()
     ' Member-name selectors eliminate the explicit element parameter.
     Set names = experienced _
         .Map("CustomerName", vbString) _
-        .Sorted _
+        .Order _
         .ToList
 
-    ' Ordering objects preserves T, so First returns a DemoCustomer.
+    ' Each ThenBy level stays typed, deferred, stable, and independently directed.
     Set orderedCustomers = customers _
-        .OrderByDescending("Age") _
+        .OrderBy("City") _
+        .ThenByDescending("Age") _
         .ToList
     Set firstCustomer = orderedCustomers.First
 
@@ -194,7 +197,6 @@ Private Sub WriteUserClassLinqExamples()
     Set katherine.Reports = ROneCOne.ListLike(ada)
     Set margaret.Reports = ROneCOne.ListFrom(grace)
     Set reportPredicate = ada.Reports.Condition("Age").AtLeast(CLng(40))
-    '@pyvba-ignore-next-line: undeclared-variable -- City is a bang identifier.
     Set membershipMatches = customers.Where(allowedCities.Contains(customers!City))
 
     With ThisWorkbook.Worksheets(USER_CLASS_SHEET)
@@ -214,10 +216,9 @@ Private Sub WriteUserClassLinqExamples()
             customers.Where("CustomerName").Contains("ther").Count
         .Range("E14").Value2 = distinctCities.Count
         With customers
-            '@pyvba-ignore-next-line: undeclared-variable -- Age is a bang identifier.
             Set names = .Where(!Age.AtLeast(CLng(40))) _
                 .Map("CustomerName", vbString) _
-                .Sorted _
+                .Order _
                 .ToList
         End With
         .Range("E15").Value2 = names.JoinText("|")
@@ -242,7 +243,7 @@ Private Sub WriteUserClassLinqExamples()
         .Range("E21").Value2 = strings.Distinct( _
             equalityComparer).Count & "|" & _
             strings.Contains("ada", equalityComparer) & "|" & _
-            strings.Sorted(comparer).First
+            strings.Order(comparer).First
         .Range("E22").Value2 = customers.Where( _
             customers.Condition("Age").AtLeast(CLng(40)).Both( _
                 customers.Match("City", "Arlington"))).Count & "|" & _
@@ -260,6 +261,7 @@ Private Sub RunCollectionBenchmark()
     Dim customers As ROneCOne
     Dim filtered As ROneCOne
     Dim numbers As ROneCOne
+    Dim ordered As ROneCOne
     Dim started As Double
     Dim x As ROneCOne
 
@@ -284,6 +286,17 @@ Private Sub RunCollectionBenchmark()
         .Range("B7").Value2 = BENCHMARK_ELEMENT_COUNT
         .Range("C7").Value2 = ElapsedSeconds(started)
         .Range("D7").Value2 = filtered.Count
+    End With
+
+    started = Timer
+    Set ordered = numbers _
+        .OrderBy(x.Modulo(CLng(100))) _
+        .ThenByDescending(x) _
+        .ToList
+    With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
+        .Range("B8").Value2 = BENCHMARK_ELEMENT_COUNT
+        .Range("C8").Value2 = ElapsedSeconds(started)
+        .Range("D8").Value2 = ordered.Count
     End With
 End Sub
 

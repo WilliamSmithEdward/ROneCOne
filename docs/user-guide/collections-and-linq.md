@@ -18,7 +18,7 @@ Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 Set names = customers _
     .Where("Age").AtLeast(CLng(40)) _
     .Map("CustomerName", vbString) _
-    .Sorted _
+    .Order _
     .ToList
 ```
 
@@ -167,6 +167,21 @@ Set names = customers _
 
 Debug.Print names.JoinText(", ")
 ```
+
+Build a stable multi-key order by starting with `OrderBy` and extending it with `ThenBy`:
+
+```vba
+Dim ranked As ROneCOne
+
+Set ranked = customers _
+    .OrderBy("City") _
+    .ThenByDescending("Age") _
+    .ThenBy("CustomerName") _
+    .ToList
+```
+
+Use `Order` or `OrderDescending` when each element is already the value to compare. Every ordering
+method can receive its own comparer.
 
 Queries can also use `Take`, `Skip`, `Append`, `Prepend`, and `Reverse`.
 

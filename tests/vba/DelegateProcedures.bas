@@ -11,6 +11,7 @@ Private Declare PtrSafe Sub CopyPointer Lib "kernel32" Alias "RtlMoveMemory" ( _
 
 Private mTrace As String
 Private mTotal As Long
+Private mSelectorCalls As Long
 
 Private Const OTHER_ERROR As Long = vbObjectError + 5202
 
@@ -56,6 +57,26 @@ End Function
 
 Public Function IsExperiencedCustomer(ByVal value As Variant) As Variant
     IsExperiencedCustomer = (CLng(value.Age) >= 40)
+End Function
+
+Public Sub ResetSelectorCalls()
+    mSelectorCalls = 0
+End Sub
+
+Public Function CurrentSelectorCalls() As Long
+    CurrentSelectorCalls = mSelectorCalls
+End Function
+
+Public Function CountedLongIdentity(ByVal value As Variant) As Variant
+    mSelectorCalls = mSelectorCalls + 1
+    CountedLongIdentity = CLng(value)
+End Function
+
+Public Function CompareCustomerAge( _
+    ByVal leftValue As Variant, _
+    ByVal rightValue As Variant _
+) As Variant
+    CompareCustomerAge = CLng(Sgn(CLng(leftValue.Age) - CLng(rightValue.Age)))
 End Function
 
 Public Function TextEqualsIgnoreCase( _

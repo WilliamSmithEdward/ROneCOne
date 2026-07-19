@@ -1,0 +1,102 @@
+{
+  "schema_version": 4,
+  "ronecone_version": "0.9.0",
+  "captured_on": "2026-07-19",
+  "environment": {
+    "platform": "Windows x64",
+    "excel": "Microsoft 365 16.0.20131.20154 x64",
+    "process_model": "one fresh Excel process per sample"
+  },
+  "live_contracts": {
+    "delegate_event_exception_assertions": 58,
+    "collection_assertions": 146,
+    "collections_workbook_examples": 25,
+    "office_or_vbe_popups": 0
+  },
+  "scenarios": [
+    {
+      "name": "square(x) universal delegate kernel",
+      "operations_per_sample": 10000,
+      "seconds": [
+        0.07421875,
+        0.07421875,
+        0.07421875
+      ],
+      "minimum_seconds": 0.07421875,
+      "median_seconds": 0.07421875,
+      "mean_seconds": 0.07421875,
+      "maximum_seconds": 0.07421875,
+      "release_gate_seconds": 0.5
+    },
+    {
+      "name": "Range.Where.ToList live contract",
+      "operations_per_sample": 10000,
+      "seconds": [
+        0.140625,
+        0.12890625,
+        0.125
+      ],
+      "minimum_seconds": 0.125,
+      "median_seconds": 0.12890625,
+      "mean_seconds": 0.1315104167,
+      "maximum_seconds": 0.140625,
+      "release_gate_seconds": 0.75
+    },
+    {
+      "name": "OrderBy.ThenByDescending.ToList live contract",
+      "operations_per_sample": 10000,
+      "seconds": [
+        0.65625,
+        0.5703125,
+        0.5703125
+      ],
+      "minimum_seconds": 0.5703125,
+      "median_seconds": 0.5703125,
+      "mean_seconds": 0.5989583333,
+      "maximum_seconds": 0.65625,
+      "release_gate_seconds": 1.0
+    },
+    {
+      "name": "Range.Where.ToList living workbook",
+      "operations_per_sample": 10000,
+      "seconds": [
+        0.13671875,
+        0.15625,
+        0.28125
+      ],
+      "minimum_seconds": 0.13671875,
+      "median_seconds": 0.15625,
+      "mean_seconds": 0.19140625,
+      "maximum_seconds": 0.28125,
+      "release_gate_seconds": 0.75
+    },
+    {
+      "name": "Repeated object member Where cached plan",
+      "operations_per_sample": 10000,
+      "seconds": [
+        0.26171875,
+        0.2734375,
+        0.57421875
+      ],
+      "minimum_seconds": 0.26171875,
+      "median_seconds": 0.2734375,
+      "mean_seconds": 0.3697916667,
+      "maximum_seconds": 0.57421875,
+      "release_gate_seconds": 0.75
+    },
+    {
+      "name": "OrderBy.ThenByDescending.ToList living workbook",
+      "operations_per_sample": 10000,
+      "seconds": [
+        0.59765625,
+        0.66015625,
+        1.671875
+      ],
+      "minimum_seconds": 0.59765625,
+      "median_seconds": 0.66015625,
+      "mean_seconds": 0.9765625,
+      "maximum_seconds": 1.671875,
+      "release_gate_seconds": 2.5
+    }
+  ]
+}

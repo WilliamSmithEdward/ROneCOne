@@ -3,6 +3,8 @@ param(
     [string]$MacroName = "RunROneCOneDemo",
     [ValidateRange(5, 120)]
     [int]$TimeoutSeconds = 30,
+    [ValidateRange(0.01, 60)]
+    [double]$MaxOrderingBenchmarkSeconds = 2.5,
     [switch]$Worker,
     [string]$ProcessInfoPath = "demo\.working\demo-processes.json"
 )
@@ -132,8 +134,15 @@ public static class ROneCOneDemoProcess
             "Start Here").Range("G8").Value2
         $memberDispatchSeconds = [double]$workbook.Worksheets.Item(
             "Benchmarks").Range("C7").Value2
+        $orderingSeconds = [double]$workbook.Worksheets.Item(
+            "Benchmarks").Range("C8").Value2
         if ($featureName -eq "List<T> + LINQ" -and $memberDispatchSeconds -gt 0.75) {
             throw "Member-dispatch benchmark exceeded the 0.75-second release gate."
+        }
+        if ($featureName -eq "List<T> + LINQ" -and `
+            ($orderingSeconds -le 0 -or `
+                $orderingSeconds -gt $MaxOrderingBenchmarkSeconds)) {
+            throw "Composite ordering benchmark exceeded the $MaxOrderingBenchmarkSeconds-second gate."
         }
         [pscustomobject]@{
             workbook = $resolvedWorkbook
@@ -142,6 +151,8 @@ public static class ROneCOneDemoProcess
             examples_passing = $statuses.Count
             benchmark_seconds = [double]$workbook.Worksheets.Item("Benchmarks").Range("C6").Value2
             member_dispatch_seconds = $memberDispatchSeconds
+            ordering_seconds = $orderingSeconds
+            ordering_gate_seconds = $MaxOrderingBenchmarkSeconds
         } | ConvertTo-Json -Compress
     }
     finally {
@@ -178,6 +189,7 @@ $arguments = @(
     "-WorkbookPath", "`"$resolvedWorkbook`"",
     "-MacroName", "`"$MacroName`"",
     "-ProcessInfoPath", "`"$resolvedProcessInfo`"",
+    "-MaxOrderingBenchmarkSeconds", $MaxOrderingBenchmarkSeconds,
     "-Worker"
 )
 $process = Start-Process `
