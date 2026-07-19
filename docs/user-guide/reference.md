@@ -12,6 +12,16 @@ contracts and edge cases.
 | Empty list inferred from an object | `ListLike(example)` |
 | Numeric sequence | `Range(start, count)` |
 | Repeated value | `Repeat(value, count)` |
+| Dictionary | `DictionaryOf(keyType, valueType)` |
+| Set | `HashSetOf(typeToken)` or `SortedSetOf(typeToken)` |
+| Queue or stack | `QueueOf(typeToken)` or `StackOf(typeToken)` |
+| Linked list | `LinkedListOf(typeToken)` |
+| Sorted map | `SortedListOf` or `SortedDictionaryOf` |
+| Priority queue | `PriorityQueueOf(elementType, priorityType)` |
+| Observable/read-only/keyed | `ObservableCollectionOf`, `ReadOnlyCollectionOf`, `KeyedCollectionOf` |
+| Concurrent-style | `ConcurrentDictionaryOf`, `ConcurrentQueueOf`, `ConcurrentStackOf`, `ConcurrentBagOf` |
+| Blocking collection | `BlockingCollectionOf(typeToken, capacity)` |
+| Immutable | `ImmutableListOf`, `ImmutableDictionaryOf`, `ImmutableHashSetOf`, and related factories |
 | Typed expression variable | `Var(typeToken)` or `VarLike(example)` |
 | Captured expression value | `Value(value)` |
 
@@ -32,6 +42,9 @@ Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 | Remove duplicates | `Distinct`, `DistinctBy` |
 | Add around a sequence | `Append`, `Prepend` |
 | Reverse | `Reverse` |
+| Combine | `Concat`, `Union`, `Intersect`, `Except` and `...By` forms |
+| Flatten or pair | `SelectMany`, `Zip`, `Join`, `GroupJoin` |
+| Partition | `TakeWhile`, `SkipWhile`, `TakeLast`, `SkipLast`, `Chunk` |
 | Materialize | `ToList`, `ToArray` |
 
 ## Build a condition
@@ -59,6 +72,8 @@ Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 | Numeric result | `Sum`, `Average`, `Min`, `Max`, `MinBy`, `MaxBy` |
 | Join text | `JoinText(separator)` |
 | Compare sequences | `SequenceEqual` |
+| Group or index | `GroupBy`, `ToLookup`, `ToDictionary`, `ToHashSet`, `Index` |
+| Modern aggregates | `CountBy`, `Aggregate`, `AggregateBy` |
 | Run an action per item | `ForEach(action)` |
 
 ## Functions, actions, events, and exceptions
@@ -73,6 +88,18 @@ Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 | Composition | `PipeTo` |
 | Typed event | `EventOf`, `Subscribe`, `Unsubscribe`, `Emit` |
 | Structured failure flow | `Try`, `Catch`, `Finally` |
+
+## Tasks and data
+
+| Need | Member |
+|---|---|
+| Completed or delayed task | `Task.FromResult`, `Task.CompletedTask`, `Task.Delay` |
+| Coordinate tasks | `Await`, `Wait`, `WhenAll`, `WhenAny`, `ContinueWith` |
+| Cancellation | `CancellationTokenSource`, `Cancel`, `CancelAfter`, `Register` |
+| Progress or external completion | `ProgressOf`, `TaskCompletionSourceOf` |
+| In-memory data | `DataTable`, `DataColumn`, `DataSet`, `DataRelation`, `DataView` |
+| Provider access | `DbConnection`, `DbCommand`, `DbParameter`, `DbDataAdapter` |
+| Async provider access | `OpenAsync`, `ExecuteReaderAsync`, `FillAsync`, `UpdateAsync` |
 
 ## Type tokens
 
@@ -108,6 +135,7 @@ VBA reserves several names that C# uses for LINQ. ROneCOne uses the closest lega
 | `In` | `IsIn` |
 | `Single` | `SingleItem` |
 | Explicit delegate `Invoke` | `Run` or natural call syntax |
+| `DbConnection.Open` / `Close` | `Connect` / `Disconnect` |
 
 ## Compatibility and deployment
 
@@ -124,7 +152,9 @@ VBA reserves several names that C# uses for LINQ. ROneCOne uses the closest lega
 - [Delegates and native invocation](../delegates.md)
 - [Typed events](../events.md)
 - [Structured exceptions](../exceptions.md)
-- [Architecture and roadmap](../architecture.md)
+- [Tasks, cancellation, and progress](../tasks.md)
+- [DataTable, DataSet, and providers](../data.md)
+- [Architecture and release capabilities](../architecture.md)
 - [Development and verification](../development.md)
 
 [Back to the guide index](README.md)

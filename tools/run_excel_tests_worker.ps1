@@ -23,6 +23,10 @@ $resolvedWorkbook = (Resolve-Path -LiteralPath $WorkbookPath).Path
 $resolvedProcessInfo = [System.IO.Path]::GetFullPath($ProcessInfoPath)
 $excel = $null
 $workbook = $null
+$providerFixtureWorkbook = $null
+$providerFixturePath = Join-Path `
+    (Split-Path -Parent $resolvedWorkbook) `
+    "ROneCOne_ProviderFixture.xlsx"
 $watcher = $null
 $excelProcessId = 0
 $watcherStop = Join-Path $PSScriptRoot "..\tests\output\vbe-watcher.stop"
@@ -85,6 +89,23 @@ public static class ROneCOneExcelProcess
     $stage = "open workbook"
     $workbook = $excel.Workbooks.Open($resolvedWorkbook, 0, $false)
 
+    $stage = "create provider fixture"
+    Remove-Item -LiteralPath $providerFixturePath -Force -ErrorAction SilentlyContinue
+    $providerFixtureWorkbook = $excel.Workbooks.Add()
+    $providerFixture = $providerFixtureWorkbook.Worksheets.Item(1)
+    $providerFixture.Name = "Provider Fixture"
+    $providerFixture.Range("A1").Value2 = "Name"
+    $providerFixture.Range("B1").Value2 = "Score"
+    $providerFixture.Range("A2").Value2 = "Ada"
+    $providerFixture.Range("B2").Value2 = 90
+    $providerFixture.Range("A3").Value2 = "Grace"
+    $providerFixture.Range("B3").Value2 = 95
+    $providerFixtureWorkbook.SaveAs($providerFixturePath, 51)
+    $providerFixtureWorkbook.Close($false)
+    [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject(
+        $providerFixtureWorkbook)
+    $providerFixtureWorkbook = $null
+
     $stage = "prepare result sheets"
     $testSheet = $null
     try {
@@ -122,6 +143,24 @@ public static class ROneCOneExcelProcess
         $collectionBenchmarkSheet.Name = "Collection Benchmarks"
     }
 
+    $advancedCollectionSheet = $null
+    try {
+        $advancedCollectionSheet = $workbook.Worksheets.Item("Advanced Collection Results")
+    }
+    catch {
+        $advancedCollectionSheet = $workbook.Worksheets.Add()
+        $advancedCollectionSheet.Name = "Advanced Collection Results"
+    }
+
+    $taskDataSheet = $null
+    try {
+        $taskDataSheet = $workbook.Worksheets.Item("Task and Data Results")
+    }
+    catch {
+        $taskDataSheet = $workbook.Worksheets.Add()
+        $taskDataSheet.Name = "Task and Data Results"
+    }
+
     $testSheet.Range("A1:B4").ClearContents()
     $testSheet.Range("A1").Value2 = "ROneCOne delegate test suite"
     $testSheet.Range("A2").Value2 = "Passed"
@@ -138,6 +177,19 @@ public static class ROneCOneExcelProcess
     $collectionSheet.Range("A3").Value2 = "Failed"
     $collectionSheet.Range("A4").Value2 = "Status"
     $collectionSheet.Range("A5").Value2 = "Error"
+    $advancedCollectionSheet.Range("A1:B5").ClearContents()
+    $advancedCollectionSheet.Range("A1").Value2 = `
+        "ROneCOne advanced collection test suite"
+    $advancedCollectionSheet.Range("A2").Value2 = "Passed"
+    $advancedCollectionSheet.Range("A3").Value2 = "Failed"
+    $advancedCollectionSheet.Range("A4").Value2 = "Status"
+    $advancedCollectionSheet.Range("A5").Value2 = "Error"
+    $taskDataSheet.Range("A1:B5").ClearContents()
+    $taskDataSheet.Range("A1").Value2 = "ROneCOne task and data test suite"
+    $taskDataSheet.Range("A2").Value2 = "Passed"
+    $taskDataSheet.Range("A3").Value2 = "Failed"
+    $taskDataSheet.Range("A4").Value2 = "Status"
+    $taskDataSheet.Range("A5").Value2 = "Error"
     $collectionBenchmarkSheet.Range("A1:B8").ClearContents()
     $collectionBenchmarkSheet.Range("A1").Value2 = "ROneCOne collection benchmark"
     $collectionBenchmarkSheet.Range("A2").Value2 = "Source elements"
@@ -152,6 +204,10 @@ public static class ROneCOneExcelProcess
     $excel.Run($macroPrefix + "RunROneCOneTests") | Out-Null
     $stage = "run generic collection tests"
     $excel.Run($macroPrefix + "RunROneCOneCollectionTests") | Out-Null
+    $stage = "run advanced collection tests"
+    $excel.Run($macroPrefix + "RunROneCOneAdvancedCollectionTests") | Out-Null
+    $stage = "run task and data tests"
+    $excel.Run($macroPrefix + "RunROneCOneTaskAndDataTests") | Out-Null
     $stage = "run delegate benchmark"
     $excel.Run($macroPrefix + "RunROneCOneBenchmark") | Out-Null
     $stage = "run generic collection benchmark"
@@ -173,6 +229,12 @@ public static class ROneCOneExcelProcess
     $collectionStatus = [string]$collectionSheet.Range("B4").Value2
     $collectionPassed = [int]$collectionSheet.Range("B2").Value2
     $collectionFailed = [int]$collectionSheet.Range("B3").Value2
+    $advancedCollectionStatus = [string]$advancedCollectionSheet.Range("B4").Value2
+    $advancedCollectionPassed = [int]$advancedCollectionSheet.Range("B2").Value2
+    $advancedCollectionFailed = [int]$advancedCollectionSheet.Range("B3").Value2
+    $taskDataStatus = [string]$taskDataSheet.Range("B4").Value2
+    $taskDataPassed = [int]$taskDataSheet.Range("B2").Value2
+    $taskDataFailed = [int]$taskDataSheet.Range("B3").Value2
     $seconds = [double]$benchmarkSheet.Range("B3").Value2
     $collectionSeconds = [double]$collectionBenchmarkSheet.Range("B3").Value2
     $orderingSeconds = [double]$collectionBenchmarkSheet.Range("B6").Value2
@@ -208,6 +270,39 @@ public static class ROneCOneExcelProcess
         }
         throw "Collection tests failed: status=$collectionStatus passed=$collectionPassed failed=$collectionFailed detail=$errorDetail"
     }
+    if ($advancedCollectionStatus -ne "PASS" -or $advancedCollectionFailed -ne 0) {
+        $errorDetail = [string]$advancedCollectionSheet.Range("B5").Value2
+        if ([string]::IsNullOrWhiteSpace($errorDetail)) {
+            $failedAssertions = @()
+            for ($row = 6; $row -le 400; $row++) {
+                if ([string]$advancedCollectionSheet.Cells.Item($row, 2).Value2 -eq "FAIL") {
+                    $failedAssertions += "{0}: {1}" -f `
+                        [string]$advancedCollectionSheet.Cells.Item($row, 1).Value2,
+                        [string]$advancedCollectionSheet.Cells.Item($row, 3).Value2
+                }
+            }
+            $errorDetail = $failedAssertions -join "; "
+        }
+        throw "Advanced collection tests failed: status=$advancedCollectionStatus " + `
+            "passed=$advancedCollectionPassed failed=$advancedCollectionFailed " + `
+            "detail=$errorDetail"
+    }
+    if ($taskDataStatus -ne "PASS" -or $taskDataFailed -ne 0) {
+        $errorDetail = [string]$taskDataSheet.Range("B5").Value2
+        if ([string]::IsNullOrWhiteSpace($errorDetail)) {
+            $failedAssertions = @()
+            for ($row = 6; $row -le 400; $row++) {
+                if ([string]$taskDataSheet.Cells.Item($row, 2).Value2 -eq "FAIL") {
+                    $failedAssertions += "{0}: {1}" -f `
+                        [string]$taskDataSheet.Cells.Item($row, 1).Value2,
+                        [string]$taskDataSheet.Cells.Item($row, 3).Value2
+                }
+            }
+            $errorDetail = $failedAssertions -join "; "
+        }
+        throw "Task and data tests failed: status=$taskDataStatus " + `
+            "passed=$taskDataPassed failed=$taskDataFailed detail=$errorDetail"
+    }
     if ($seconds -le 0 -or $seconds -gt $MaxBenchmarkSeconds) {
         throw "Delegate benchmark missed gate: seconds=$seconds maximum=$MaxBenchmarkSeconds"
     }
@@ -232,6 +327,12 @@ public static class ROneCOneExcelProcess
         collection_status = $collectionStatus
         collection_passed = $collectionPassed
         collection_failed = $collectionFailed
+        advanced_collection_status = $advancedCollectionStatus
+        advanced_collection_passed = $advancedCollectionPassed
+        advanced_collection_failed = $advancedCollectionFailed
+        task_data_status = $taskDataStatus
+        task_data_passed = $taskDataPassed
+        task_data_failed = $taskDataFailed
         benchmark_invocations = [int]$benchmarkSheet.Range("B2").Value2
         benchmark_seconds = $seconds
         benchmark_gate_seconds = $MaxBenchmarkSeconds
@@ -254,6 +355,19 @@ finally {
             Stop-Process -Id $watcher.Id -Force -ErrorAction SilentlyContinue
         }
         $watcher.Dispose()
+    }
+    if ($null -ne $providerFixtureWorkbook) {
+        try {
+            $providerFixtureWorkbook.Close($false)
+        }
+        catch {
+            [Console]::Error.WriteLine(
+                "Provider fixture cleanup warning: $($_.Exception.Message)")
+        }
+        finally {
+            [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject(
+                $providerFixtureWorkbook)
+        }
     }
     if ($null -ne $workbook) {
         try {
@@ -279,4 +393,5 @@ finally {
     }
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
+    Remove-Item -LiteralPath $providerFixturePath -Force -ErrorAction SilentlyContinue
 }

@@ -40,6 +40,10 @@ Public Sub RunROneCOneCollectionTests()
     TestOrderingSystem
     mCurrentTest = "TestSequenceOperators"
     TestSequenceOperators
+    mCurrentTest = "TestCompleteLinqSurface"
+    TestCompleteLinqSurface
+    mCurrentTest = "TestModernLinqSurface"
+    TestModernLinqSurface
     mCurrentTest = "TestTerminals"
     TestTerminals
     mCurrentTest = "TestForEach"
@@ -487,6 +491,160 @@ Public Sub RunROneCOneCollectionBenchmark()
     End With
 End Sub
 
+Private Sub TestCompleteLinqSurface()
+    Dim addValues As ROneCOne
+    Dim chunks As ROneCOne
+    Dim dictionary As ROneCOne
+    Dim firstChunk As ROneCOne
+    Dim firstList As ROneCOne
+    Dim flattened As ROneCOne
+    Dim group As ROneCOne
+    Dim groups As ROneCOne
+    Dim joined As ROneCOne
+    Dim lookup As ROneCOne
+    Dim nested As ROneCOne
+    Dim numbers As ROneCOne
+    Dim other As ROneCOne
+    Dim secondList As ROneCOne
+    Dim strings As ROneCOne
+    Dim x As ROneCOne
+    Dim y As ROneCOne
+
+    Set numbers = ROneCOne.ListOf( _
+        vbLong, CLng(1), CLng(2), CLng(3), CLng(4), CLng(5))
+    Set other = ROneCOne.ListOf(vbLong, CLng(3), CLng(4), CLng(6))
+    Set x = ROneCOne.Var(vbLong)
+    Set y = ROneCOne.Var(vbLong)
+    Set addValues = x.Add(y).AsFunc
+
+    mCurrentTest = "CompleteLinq TakeWhile"
+    AssertEqual "TakeWhile", CLng(3), _
+        numbers.TakeWhile(numbers.Element.LessThan(CLng(4))).Count
+    mCurrentTest = "CompleteLinq SkipWhile"
+    AssertEqual "SkipWhile", CLng(2), _
+        numbers.SkipWhile(numbers.Element.LessThan(CLng(4))).Count
+    mCurrentTest = "CompleteLinq TakeLast"
+    AssertEqual "TakeLast", CLng(4), numbers.TakeLast(2).Item(0)
+    mCurrentTest = "CompleteLinq SkipLast"
+    AssertEqual "SkipLast", CLng(3), numbers.SkipLast(2).Count
+    mCurrentTest = "CompleteLinq Concat"
+    AssertEqual "Concat", CLng(8), numbers.Concat(other).Count
+    mCurrentTest = "CompleteLinq Union"
+    AssertEqual "Union", CLng(6), numbers.Union(other).Count
+    mCurrentTest = "CompleteLinq Intersect"
+    AssertEqual "Intersect", CLng(2), numbers.Intersect(other).Count
+    mCurrentTest = "CompleteLinq Except"
+    AssertEqual "Except", CLng(3), numbers.Except(other).Count
+    mCurrentTest = "CompleteLinq DefaultIfEmpty"
+    AssertEqual "DefaultIfEmpty", CLng(0), _
+        ROneCOne.ListOf(vbLong).DefaultIfEmpty.Item(0)
+    mCurrentTest = "CompleteLinq ElementAt"
+    AssertEqual "ElementAt", CLng(3), numbers.ElementAt(2)
+    mCurrentTest = "CompleteLinq ElementAtOrDefault"
+    AssertEqual "ElementAtOrDefault", CLng(0), numbers.ElementAtOrDefault(99)
+    mCurrentTest = "CompleteLinq Aggregate"
+    AssertEqual "Aggregate", CLng(15), numbers.Aggregate(CLng(0), addValues)
+
+    mCurrentTest = "CompleteLinq chunks"
+    Set chunks = numbers.Chunk(2).ToList
+    Set firstChunk = chunks.Item(0)
+    AssertEqual "Chunk count", CLng(3), chunks.Count
+    AssertEqual "Chunk element count", CLng(2), firstChunk.Count
+
+    mCurrentTest = "CompleteLinq SelectMany"
+    Set firstList = ROneCOne.ListOf(vbLong, CLng(1), CLng(2))
+    Set secondList = ROneCOne.ListOf(vbLong, CLng(3), CLng(4))
+    Set nested = ROneCOne.ListOf(firstList, firstList, secondList)
+    Set flattened = nested.SelectMany(nested.Element, vbLong).ToList
+    AssertEqual "SelectMany", CLng(4), flattened.Count
+
+    mCurrentTest = "CompleteLinq keyed materializers"
+    Set dictionary = numbers.ToDictionary(numbers.Element)
+    AssertEqual "ToDictionary", CLng(4), dictionary(CLng(4))
+    AssertEqual "ToHashSet", CLng(5), numbers.ToHashSet.Count
+
+    mCurrentTest = "CompleteLinq lookup"
+    Set strings = ROneCOne.ListOf( _
+        vbString, "ada", "alan", "grace", "guido")
+    Set lookup = strings.ToLookup( _
+        ROneCOne.Func("DelegateProcedures.FirstCharacter"))
+    Set group = lookup.Item("a")
+    AssertEqual "ToLookup", CLng(2), group.Count
+
+    mCurrentTest = "CompleteLinq GroupBy"
+    Set groups = strings.GroupBy( _
+        ROneCOne.Func("DelegateProcedures.FirstCharacter"))
+    Set group = groups.Item(0)
+    AssertEqual "GroupBy key", "a", group.Key
+    AssertEqual "GroupBy group count", CLng(2), group.Count
+
+    mCurrentTest = "CompleteLinq Join and Zip"
+    Set joined = numbers.Join(other, numbers.Element, other.Element, addValues)
+    AssertEqual "Join count", CLng(2), joined.Count
+    AssertEqual "Join result", CLng(6), joined.Item(0)
+    AssertEqual "Zip", CLng(4), _
+        numbers.Zip(other, addValues).Item(0)
+End Sub
+
+Private Sub TestModernLinqSurface()
+    Dim addValues As ROneCOne
+    Dim counts As ROneCOne
+    Dim indexed As ROneCOne
+    Dim mixed As ROneCOne
+    Dim numbers As ROneCOne
+    Dim other As ROneCOne
+    Dim parity As ROneCOne
+    Dim reflectedCount As Long
+    Dim reflectedCountOut As ROneCOne
+    Dim sums As ROneCOne
+    Dim x As ROneCOne
+    Dim y As ROneCOne
+
+    Set numbers = ROneCOne.ListOf( _
+        vbLong, 1&, 2&, 3&, 4&, 5&)
+    Set other = ROneCOne.ListOf(vbLong, 3&, 4&, 6&)
+    Set x = ROneCOne.Var(vbLong)
+    Set y = ROneCOne.Var(vbLong)
+    Set parity = x.Modulo(2&).AsFunc
+    Set addValues = x.Add(y).AsFunc
+
+    AssertEqual "Empty", 0&, ROneCOne.EmptyOf(vbLong).Count
+    AssertTrue "AsEnumerable identity", numbers.AsEnumerable Is numbers
+    AssertEqual "LongCount", CLngLng(5), numbers.LongCount
+    Set reflectedCountOut = ROneCOne.RefLong(reflectedCount)
+    AssertTrue "TryGetNonEnumeratedCount list", _
+        numbers.TryGetNonEnumeratedCount(reflectedCountOut)
+    AssertEqual "TryGetNonEnumeratedCount value", 5&, reflectedCount
+    AssertFalse "TryGetNonEnumeratedCount query", _
+        numbers.Where(numbers.Element.AtLeast(1&)) _
+            .TryGetNonEnumeratedCount(reflectedCountOut)
+
+    Set mixed = ROneCOne.ListOf(vbVariant, 1&, "two", 3&)
+    AssertEqual "OfType", 2&, mixed.OfType(vbLong).Count
+    AssertEqual "Cast", 2&, _
+        ROneCOne.ListOf(vbVariant, 1&, 2&).Cast(vbLong).Item(1)
+
+    AssertEqual "UnionBy", 4&, _
+        numbers.UnionBy(other, x.Modulo(4&).AsFunc).Count
+    AssertEqual "IntersectBy", 1&, _
+        numbers.IntersectBy(ROneCOne.ListOf(vbLong, 0&), parity).Count
+    AssertEqual "ExceptBy", 1&, _
+        numbers.ExceptBy(ROneCOne.ListOf(vbLong, 0&), parity).Count
+
+    Set counts = numbers.CountBy(parity)
+    AssertEqual "CountBy odd", 3&, counts(1&)
+    AssertEqual "CountBy even", 2&, counts(0&)
+    Set sums = numbers.AggregateBy(parity, 0&, addValues)
+    AssertEqual "AggregateBy odd", 9&, sums(1&)
+    AssertEqual "AggregateBy even", 6&, sums(0&)
+
+    Set indexed = numbers.Index
+    AssertEqual "Index key", 1&, indexed.Item(1).Key
+    AssertEqual "Index value", 2&, indexed.Item(1).Value
+    AssertEqual "ToDictionary element selector", 30&, _
+        numbers.ToDictionary(x, x.Multiply(10&).AsFunc)(3&)
+End Sub
+
 Private Sub TestPrimitiveList()
     Dim numbers As ROneCOne
 
@@ -878,6 +1036,10 @@ Private Sub AssertTrue(ByVal testName As String, ByVal condition As Boolean)
     Else
         RecordResult testName, False, "Condition was False"
     End If
+End Sub
+
+Private Sub AssertFalse(ByVal testName As String, ByVal condition As Boolean)
+    AssertTrue testName, Not condition
 End Sub
 
 Private Sub RecordResult(ByVal testName As String, ByVal passed As Boolean, ByVal detail As String)

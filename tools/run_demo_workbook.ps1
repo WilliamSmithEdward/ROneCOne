@@ -126,7 +126,10 @@ public static class ROneCOneDemoProcess
         }
         $notPassing = @($statuses | Where-Object { $_ -ne "PASS" })
         if ($demoStatus -ne "PASS" -or $notPassing.Count -ne 0) {
-            throw "Demo validation failed: status=$demoStatus examples=$($statuses -join ',')"
+            $errorDetail = [string]$workbook.Worksheets.Item(
+                "Start Here").Range("B14").Value2
+            throw "Demo validation failed: status=$demoStatus " + `
+                "examples=$($statuses -join ',') detail=$errorDetail"
         }
 
         $workbook.Save()

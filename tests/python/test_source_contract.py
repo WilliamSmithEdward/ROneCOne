@@ -214,6 +214,187 @@ class SourceContractTests(unittest.TestCase):
                 removed_member,
             )
 
+    def test_complete_generic_collection_family_contract_is_present(self) -> None:
+        factories = (
+            "DictionaryOf",
+            "HashSetOf",
+            "QueueOf",
+            "StackOf",
+            "LinkedListOf",
+            "SortedListOf",
+            "SortedDictionaryOf",
+            "SortedSetOf",
+            "OrderedDictionaryOf",
+            "PriorityQueueOf",
+            "ObservableCollectionOf",
+            "ReadOnlyCollectionOf",
+            "KeyedCollectionOf",
+            "ConcurrentDictionaryOf",
+            "ConcurrentQueueOf",
+            "ConcurrentStackOf",
+            "ConcurrentBagOf",
+            "BlockingCollectionOf",
+            "ImmutableArrayOf",
+            "ImmutableListOf",
+            "ImmutableDictionaryOf",
+            "ImmutableHashSetOf",
+            "ImmutableQueueOf",
+            "ImmutableStackOf",
+            "ImmutableSortedDictionaryOf",
+            "ImmutableSortedSetOf",
+        )
+        members = (
+            "ContainsKey",
+            "TryAdd",
+            "TryGetValue",
+            "Keys",
+            "Values",
+            "Enqueue",
+            "Dequeue",
+            "TryDequeue",
+            "Push",
+            "Pop",
+            "TryPop",
+            "Peek",
+            "TryPeek",
+            "AddFirst",
+            "AddLast",
+            "RemoveFirst",
+            "RemoveLast",
+            "FirstNode",
+            "LastNode",
+            "MinValue",
+            "MaxValue",
+            "GetViewBetween",
+            "CollectionChanged",
+            "IsReadOnly",
+            "ToBuilder",
+            "ToImmutable",
+        )
+        for member in factories + members:
+            pattern = (
+                rf"Public\s+(?:Function|Sub|Property\s+(?:Get|Let|Set))\s+"
+                rf"\[?{member}\]?(?![A-Za-z0-9_])"
+            )
+            self.assertRegex(self.source, re.compile(pattern, re.IGNORECASE), member)
+
+        self.assertIn("ROLE_DICTIONARY", self.source)
+        self.assertIn("ROLE_HASH_SET", self.source)
+        self.assertIn("ROLE_IMMUTABLE", self.source)
+        self.assertIn("ROLE_CONCURRENT", self.source)
+
+    def test_tasks_data_and_provider_contract_is_present(self) -> None:
+        required_members = (
+            "Task",
+            "TaskRun",
+            "TaskFromResult",
+            "Delay",
+            "WhenAll",
+            "WhenAny",
+            "Await",
+            "Wait",
+            "ContinueWith",
+            "Status",
+            "IsCompleted",
+            "IsCanceled",
+            "IsFaulted",
+            "Result",
+            "CancellationTokenSource",
+            "Token",
+            "Cancel",
+            "IsCancellationRequested",
+            "DataTable",
+            "DataColumn",
+            "DataSet",
+            "DataRelation",
+            "DataView",
+            "NewRow",
+            "AddColumn",
+            "AddRow",
+            "AddTable",
+            "AddRelation",
+            "Columns",
+            "Rows",
+            "Tables",
+            "Relations",
+            "PrimaryKey",
+            "Find",
+            "AcceptChanges",
+            "RejectChanges",
+            "RowState",
+            "GetChildRows",
+            "GetParentRow",
+            "DbConnection",
+            "DbCommand",
+            "DbParameter",
+            "DbDataAdapter",
+            "Connect",
+            "Disconnect",
+            "ExecuteReader",
+            "ExecuteNonQuery",
+            "ExecuteScalar",
+            "Fill",
+            "Update",
+            "BeginTransaction",
+            "OpenAsync",
+            "ExecuteReaderAsync",
+            "ExecuteNonQueryAsync",
+            "ExecuteScalarAsync",
+            "FillAsync",
+            "UpdateAsync",
+            "GetOrdinal",
+            "GetValues",
+            "WithParameter",
+            "WithTimeout",
+            "FromColumn",
+        )
+        for member in required_members:
+            pattern = (
+                rf"Public\s+(?:Function|Sub|Property\s+(?:Get|Let|Set))\s+"
+                rf"\[?{member}\]?(?![A-Za-z0-9_])"
+            )
+            self.assertRegex(self.source, re.compile(pattern, re.IGNORECASE), member)
+
+        for role_name in (
+            "ROLE_TASK",
+            "ROLE_DATA_TABLE",
+            "ROLE_DATA_ROW",
+            "ROLE_DATA_SET",
+            "ROLE_DB_CONNECTION",
+        ):
+            self.assertIn(role_name, self.source)
+
+    def test_complete_linq_materialization_contract_is_present(self) -> None:
+        members = (
+            "TakeWhile",
+            "SkipWhile",
+            "TakeLast",
+            "SkipLast",
+            "ConcatSequence",
+            "Union",
+            "Intersect",
+            "Except",
+            "DefaultIfEmpty",
+            "Chunk",
+            "SelectMany",
+            "ElementAt",
+            "ElementAtOrDefault",
+            "Aggregate",
+            "ToDictionary",
+            "ToHashSet",
+            "ToLookup",
+            "GroupBy",
+            "Join",
+            "GroupJoin",
+            "Zip",
+        )
+        for member in members:
+            pattern = (
+                rf"Public\s+(?:Function|Sub|Property\s+(?:Get|Let|Set))\s+"
+                rf"\[?{member}\]?(?![A-Za-z0-9_])"
+            )
+            self.assertRegex(self.source, re.compile(pattern, re.IGNORECASE), member)
+
     def test_contextual_linq_contract_accepts_member_names(self) -> None:
         contextual_signatures = (
             r"Public Function Where\(ByVal predicateOrMember As Variant\)",
@@ -299,13 +480,20 @@ class SourceContractTests(unittest.TestCase):
             "vbproject",
             "vbcomponents",
             "vbe.",
-            "createobject(",
             "getobject(",
             "shell(",
             "excel.application",
         )
         for term in forbidden:
             self.assertNotIn(term, lowered)
+
+        created_prog_ids = re.findall(
+            r'CreateObject\("([^"]+)"\)', self.source, flags=re.IGNORECASE
+        )
+        self.assertEqual(
+            {"adodb.connection", "adodb.command"},
+            {value.lower() for value in created_prog_ids},
+        )
 
     def test_delegate_run_is_the_default_member(self) -> None:
         self.assertIn("Public Function Run(ParamArray arguments() As Variant)", self.source)

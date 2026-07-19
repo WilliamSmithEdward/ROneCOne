@@ -36,6 +36,10 @@ def build(output: Path) -> None:
     customer_source = prepare_class_source(ROOT / "tests" / "vba" / "GenericCustomer.cls")
     test_source = read_vba(ROOT / "tests" / "vba" / "TestDelegates.bas")
     collection_test_source = read_vba(ROOT / "tests" / "vba" / "TestCollections.bas")
+    advanced_collection_source = read_vba(
+        ROOT / "tests" / "vba" / "TestAdvancedCollections.bas"
+    )
+    task_data_source = read_vba(ROOT / "tests" / "vba" / "TestTasksAndData.bas")
     procedure_source = read_vba(ROOT / "tests" / "vba" / "DelegateProcedures.bas")
 
     with ExcelFile.create_new(output) as workbook:
@@ -56,6 +60,16 @@ def build(output: Path) -> None:
             collection_test_source,
             kind=VBAModuleKind.standard,
         )
+        project.add_module(
+            "TestAdvancedCollections",
+            advanced_collection_source,
+            kind=VBAModuleKind.standard,
+        )
+        project.add_module(
+            "TestTasksAndData",
+            task_data_source,
+            kind=VBAModuleKind.standard,
+        )
         workbook.save()
 
     with ExcelFile(output) as verification:
@@ -66,6 +80,8 @@ def build(output: Path) -> None:
             "TestDelegates",
             "DelegateProcedures",
             "TestCollections",
+            "TestAdvancedCollections",
+            "TestTasksAndData",
         }
         actual = set(verification.module_names())
         missing = expected - actual

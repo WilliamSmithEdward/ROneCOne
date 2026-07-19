@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.0.0 - 2026-07-19
+
+### Added
+
+- The full generic collection family: dictionary, hash set, queue, stack, linked list, sorted and
+  ordered maps/sets, priority queue, observable/read-only/keyed collections, concurrent-style and
+  blocking collections, and immutable collections with builders.
+- A substantially broader LINQ surface covering conversion, grouping, joining, flattening,
+  partitioning, set-by-key, indexing, counting, and aggregation operators.
+- Cooperative Task workflows with await-style coordination, delay, continuations, WhenAll,
+  WhenAny, cancellation, callbacks, progress, and typed completion sources.
+- DataTable, DataColumn, DataRow, DataView, DataSet, DataRelation, constraints, change tracking,
+  copying, merging, selection, and relation navigation.
+- Late-bound OLE DB and ODBC connections, commands, typed parameters, readers, transactions,
+  adapters, source-column binding, update commands, deterministic disposal, and Task-returning
+  provider operations.
+- Dedicated Tasks and Data/Providers living demo workbooks and popup-aware VBE source-selection
+  diagnostics.
+
+### Changed
+
+- Optimized composite ordering with cached scalar keys; the 10,000-element live Excel scenario
+  remains below its 1.0-second release gate without weakening the threshold.
+- Allowed universal delegates to target explicit methods on ROneCOne runtime values.
+- Made relation admission validate existing parent and child rows before mutating a DataSet.
+- Unified task waiting under one cooperative scheduler so `WhenAny` observes every candidate and
+  completion sources, `WhenAll`, delays, and continuations share terminal-state semantics.
+- Expanded the live suites to 58 delegate, 187 collection, 71 advanced-collection, and 68
+  task/data/provider assertions.
+
+### Host boundaries
+
+- VBA reserves `Open` and `Close` as procedure names, so direct provider calls use `Connect` and
+  `Disconnect`; `OpenAsync` keeps the .NET-aligned async name.
+- Tasks coordinate cooperatively on Excel's owning thread. They never launch another Excel
+  application and do not claim unsafe CPU-parallel VBA execution.
+- Provider mutation support follows the selected driver; the Excel ISAM supports reads, updates,
+  and inserts but rejects linked-sheet row deletion.
+
 ## 0.9.0 - 2026-07-19
 
 ### Added

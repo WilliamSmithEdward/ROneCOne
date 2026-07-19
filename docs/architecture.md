@@ -131,8 +131,10 @@ contexts are keyed to one workbook, and process-global mutable state never coupl
 | Available | Stable composite `Order`/`OrderBy`/`ThenBy` queries with per-level comparers |
 | Available | Typed events over universal Actions |
 | Available | Structured `Try/Catch/Finally` over callable blocks |
-| Scheduled | Tasks, async/await, cancellation, progress, and captured exceptions |
-| Scheduled | Additional generic collections, disposables, and native-safe parallelism |
+| Available | Tasks, await-style coordination, cancellation, progress, and completion sources |
+| Available | Mutable, concurrent-style, immutable, and specialized generic collections |
+| Available | DataTable, DataSet, DataView, relations, readers, adapters, and providers |
+| Constrained by host | CPU-parallel VBA execution; COM and workbook state remain on Excel's thread |
 
 Each capability must pass its full behavioral, live-host, and performance gates before it enters
 the supported surface.

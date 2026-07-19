@@ -13,6 +13,8 @@ DELEGATES_WORKBOOK = ROOT / "demo" / "ROneCOne_Delegates_Demo.xlsm"
 COLLECTIONS_WORKBOOK = ROOT / "demo" / "ROneCOne_Collections_Demo.xlsm"
 EVENTS_WORKBOOK = ROOT / "demo" / "ROneCOne_Events_Demo.xlsm"
 EXCEPTIONS_WORKBOOK = ROOT / "demo" / "ROneCOne_Exceptions_Demo.xlsm"
+TASKS_WORKBOOK = ROOT / "demo" / "ROneCOne_Tasks_Demo.xlsm"
+DATA_WORKBOOK = ROOT / "demo" / "ROneCOne_Data_Demo.xlsm"
 
 
 def package_delegates(workbook_path: Path = DELEGATES_WORKBOOK) -> None:
@@ -117,13 +119,23 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--kind",
-        choices=("delegates", "collections", "events", "exceptions", "all"),
+        choices=(
+            "delegates",
+            "collections",
+            "events",
+            "exceptions",
+            "tasks",
+            "data",
+            "all",
+        ),
         default="all",
     )
     parser.add_argument("--delegates-workbook", type=Path, default=DELEGATES_WORKBOOK)
     parser.add_argument("--collections-workbook", type=Path, default=COLLECTIONS_WORKBOOK)
     parser.add_argument("--events-workbook", type=Path, default=EVENTS_WORKBOOK)
     parser.add_argument("--exceptions-workbook", type=Path, default=EXCEPTIONS_WORKBOOK)
+    parser.add_argument("--tasks-workbook", type=Path, default=TASKS_WORKBOOK)
+    parser.add_argument("--data-workbook", type=Path, default=DATA_WORKBOOK)
     return parser.parse_args()
 
 
@@ -149,3 +161,17 @@ if __name__ == "__main__":
             ROOT / "demo" / "vba" / "ExceptionsDemoUsage.bas",
         )
         print(arguments.exceptions_workbook)
+    if arguments.kind in ("tasks", "all"):
+        package_capability(
+            arguments.tasks_workbook,
+            "TasksDemoUsage",
+            ROOT / "demo" / "vba" / "TasksDemoUsage.bas",
+        )
+        print(arguments.tasks_workbook)
+    if arguments.kind in ("data", "all"):
+        package_capability(
+            arguments.data_workbook,
+            "DataDemoUsage",
+            ROOT / "demo" / "vba" / "DataDemoUsage.bas",
+        )
+        print(arguments.data_workbook)

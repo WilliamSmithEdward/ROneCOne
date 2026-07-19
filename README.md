@@ -5,9 +5,9 @@
 Excel carries serious work. ROneCOne gives its built-in language a modern programming layer
 without asking you to replace the workbooks, workflows, or skills you already trust.
 
-One class module brings modern collections, expressive data queries, reusable behavior, typed
-events, and structured error handling into ordinary VBA. There is no add-in to deploy, no service
-to connect, and no second runtime to install.
+One class module brings generic collections, LINQ, tasks, typed data, reusable behavior, events,
+and structured failure handling into ordinary VBA. There is no add-in to deploy, no service to
+connect, and no second runtime to install.
 
 **[See it work in the latest demo release](https://github.com/WilliamSmithEdward/ROneCOne/releases/latest)**
 
@@ -17,6 +17,8 @@ to connect, and no second runtime to install.
 |---|---|
 | Work with data cleanly | Typed collections and LINQ-style filtering, shaping, sorting, and aggregation |
 | Reuse behavior | Delegates and expression-based functions that can be passed, combined, and invoked |
+| Coordinate work | Tasks, await-style flow, cancellation, progress, and continuations |
+| Model business data | DataTable, DataSet, DataView, relations, change tracking, and providers |
 | Build responsive workbook logic | Typed events with predictable subscription and delivery |
 | Handle failure deliberately | Structured Try, Catch, and Finally flows |
 | Deploy without a platform project | One importable class module with no outside dependency |
@@ -25,18 +27,16 @@ ROneCOne runs locally inside one Windows x64 Microsoft 365 Excel process. It wor
 macro-enabled workbooks and add-ins, requires no runtime VBIDE access, generates no source code,
 and sends no telemetry.
 
-## Available now, designed to grow
+## A modern runtime for serious workbooks
 
-Today's runtime includes generic collections, LINQ-style queries, expressive predicates,
-delegates, expression lambdas, typed events, and structured exceptions. IntelliSense descriptions
-make the surface discoverable inside the editor.
+ROneCOne includes mutable, concurrent-style, and immutable generic collection families; a broad
+LINQ surface; delegates and expression lambdas; tasks and await-style coordination; cancellation
+and progress; typed events; structured exceptions; and an in-memory data layer with OLE DB and
+ODBC access. IntelliSense descriptions keep the surface discoverable in the editor.
 
-The direction is a fuller modern language experience inside VBA: broader generic collections,
-task-based workflows, async and await-style coordination, cancellation, progress, disposables,
-and safe concurrency within one Excel process.
-
-Each capability must preserve the same promise: one file, local execution, predictable behavior,
-and as little ceremony as VBA can support.
+The design follows familiar C# and .NET names and behavior wherever VBA permits it. The concise
+form leads every demo; the guide also shows the underlying contract when you need to debug or
+extend it.
 
 ## Choose your starting point
 

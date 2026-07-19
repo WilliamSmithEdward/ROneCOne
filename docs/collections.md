@@ -1,13 +1,24 @@
-# Runtime-generic List<T> and LINQ
+# Runtime-generic collections and LINQ
 
 New to ROneCOne? Start with the
 [Collections and LINQ user guide](user-guide/collections-and-linq.md).
 
-ROneCOne provides a strictly typed, zero-based `List<T>` model and deferred query pipelines in
+ROneCOne provides strictly typed generic collection families and deferred query pipelines in
 the same single `ROneCOne.cls` runtime file. The design follows the behavior of
 [`List<T>`](https://learn.microsoft.com/en-us/dotnet/api/system.collections.generic.list-1) and
 [`Enumerable`](https://learn.microsoft.com/en-us/dotnet/api/system.linq.enumerable) where VBA's
 syntax and type system permit it.
+
+## Generic collection families
+
+The one-file runtime includes List, Dictionary, HashSet, Queue, Stack, LinkedList, SortedList,
+SortedDictionary, SortedSet, OrderedDictionary, PriorityQueue, ObservableCollection,
+ReadOnlyCollection, KeyedCollection, concurrent-style dictionary/queue/stack/bag,
+BlockingCollection, and immutable list/dictionary/hash-set/queue/stack/sorted variants.
+
+Factories accept VBA type tokens or a real user-class instance. Specialized operations follow
+their .NET counterparts, including set algebra, linked nodes, priority pairs, builders, snapshots,
+bounded completion, and atomic-style `Try...` methods within Excel's single execution thread.
 
 ## Primitive lists
 
@@ -89,13 +100,16 @@ Debug.Print filtered.Count   ' 2
 Debug.Print filtered.Last    ' 30
 ```
 
-The sequence operators are `Where`, `SelectItems`, `Take`, `Skip`, `Distinct`, `DistinctBy`,
+The sequence operators include `Where`, `SelectItems`, `Take`, `Skip`, `Distinct`, `DistinctBy`,
 `Order`, `OrderDescending`, `OrderBy`, `OrderByDescending`, `ThenBy`, `ThenByDescending`, `Append`,
-`Prepend`, and `Reverse`. `Range` and `Repeat` create typed source sequences. Immediate terminals
+`Prepend`, `Reverse`, `Concat`, `Union`, `Intersect`, `Except`, their `...By` forms, `SelectMany`,
+`Cast`, `OfType`, `Chunk`, `TakeWhile`, `SkipWhile`, `TakeLast`, and `SkipLast`. `Range`, `Repeat`,
+and `EmptyOf` create typed source sequences. Immediate terminals
 are `Exists`, `AnyItem`, `All`, `None`, `First`,
 `FirstOrDefault`, `Last`, `LastOrDefault`, `SingleItem`, `SingleOrDefault`, `Sum`, `Average`,
 `Min`, `Max`, `MinBy`, `MaxBy`, `Count`, `ForEach`, `JoinText`, `SequenceEqual`, `ToList`, and
-`ToArray`.
+`ToArray`, `ToDictionary`, `ToHashSet`, `ToLookup`, `GroupBy`, `Join`, `GroupJoin`, `Zip`,
+`CountBy`, `Aggregate`, `AggregateBy`, `Index`, and `TryGetNonEnumeratedCount`.
 
 ```vba
 Set result = ROneCOne.Range(CLng(1), CLng(6)) _
@@ -358,7 +372,6 @@ declarations. ROneCOne therefore uses `Map`, `Exists`, `IsIn`, and `SingleItem`;
 `AnyItem` remain the explicit core members. Legal .NET names are used directly throughout the
 ordering surface.
 
-The feature roadmap covers the standard LINQ and generic-collection surface. Operators that
-need new result abstractions, including dictionaries, lookups, groupings, joins, sets, queues, and
-stacks, enter the supported surface as independently tested release slices so `List<T>` contracts
-remain stable.
+The supported surface includes dictionaries, lookups, groupings, joins, sets, queues, stacks,
+specialized collections, immutable collections, and concurrent-style collections. Each family
+uses the same runtime type contracts and one-file implementation as `List<T>`.

@@ -10,6 +10,8 @@ COLLECTIONS_DEMO = DEMO_VBA / "CollectionsDemoUsage.bas"
 DELEGATES_DEMO = DEMO_VBA / "DemoUsage.bas"
 EVENTS_DEMO = DEMO_VBA / "EventsDemoUsage.bas"
 EXCEPTIONS_DEMO = DEMO_VBA / "ExceptionsDemoUsage.bas"
+TASKS_DEMO = DEMO_VBA / "TasksDemoUsage.bas"
+DATA_DEMO = DEMO_VBA / "DataDemoUsage.bas"
 CUSTOMER = DEMO_VBA / "DemoCustomer.cls"
 COLLECTIONS_BUILDER = ROOT / "tools" / "build_collections_demo_workbook.cjs"
 CAPABILITY_BUILDER = ROOT / "tools" / "build_capability_demo_workbooks.cjs"
@@ -121,11 +123,33 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn(".Finally(cleanup)", source)
         self.assertIn("attempt.Execute", source)
 
+    def test_task_demo_leads_with_task_coordination(self) -> None:
+        source = TASKS_DEMO.read_text(encoding="utf-8")
+
+        self.assertIn("ROneCOne.Task.WhenAll(tasks)", source)
+        self.assertIn("firstTask.ContinueWith(continuation).Await", source)
+        self.assertIn("ROneCOne.CancellationTokenSource", source)
+        self.assertIn("ROneCOne.TaskCompletionSourceOf(vbLong)", source)
+
+    def test_data_demo_leads_with_typed_data_and_provider_sugar(self) -> None:
+        source = DATA_DEMO.read_text(encoding="utf-8")
+
+        self.assertIn('table.Column("Id", vbLong).AutoNumber', source)
+        self.assertIn("ROneCOne.DataView(table)", source)
+        self.assertIn("ROneCOne.DataRelation", source)
+        self.assertIn("ROneCOne.DbDataAdapter(command)", source)
+        self.assertIn("ExecuteScalarAsync", source)
+
     def test_capability_builder_and_packager_ship_separate_workbooks(self) -> None:
         builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")
         packager = PACKAGER.read_text(encoding="utf-8")
 
-        for name in ("ROneCOne_Events_Demo", "ROneCOne_Exceptions_Demo"):
+        for name in (
+            "ROneCOne_Events_Demo",
+            "ROneCOne_Exceptions_Demo",
+            "ROneCOne_Tasks_Demo",
+            "ROneCOne_Data_Demo",
+        ):
             self.assertIn(name, builder)
             self.assertIn(name, packager)
 
@@ -162,6 +186,8 @@ class DemoContractTests(unittest.TestCase):
             DELEGATES_DEMO,
             EVENTS_DEMO,
             EXCEPTIONS_DEMO,
+            TASKS_DEMO,
+            DATA_DEMO,
             CUSTOMER,
         ):
             with self.subTest(path=path.name):
@@ -209,6 +235,8 @@ class DemoContractTests(unittest.TestCase):
             "collections-and-linq.md",
             "delegates-and-expressions.md",
             "events-and-exceptions.md",
+            "tasks-and-async.md",
+            "data-and-providers.md",
             "reference.md",
         )
 

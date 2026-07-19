@@ -12,6 +12,8 @@ class module, and copy the smallest example that solves your problem.
 | [Collections and LINQ](collections-and-linq.md) | Query and summarize data | 10 minutes |
 | [Delegates and expressions](delegates-and-expressions.md) | Build reusable behavior | 10 minutes |
 | [Events and exceptions](events-and-exceptions.md) | Coordinate changes and failures | 10 minutes |
+| [Tasks and async](tasks-and-async.md) | Coordinate work, cancellation, and progress | 10 minutes |
+| [Data and providers](data-and-providers.md) | Model, query, and load tabular data | 15 minutes |
 | [Practical reference](reference.md) | Find names, defaults, and limits | As needed |
 
 ## Fastest route to the first result

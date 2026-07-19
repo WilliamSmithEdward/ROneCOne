@@ -15,6 +15,10 @@ Private mSelectorCalls As Long
 
 Private Const OTHER_ERROR As Long = vbObjectError + 5202
 
+Public Function FirstCharacter(ByVal value As String) As String
+    FirstCharacter = Left$(value, 1)
+End Function
+
 Public Function AddValues(ByVal leftValue As Variant, ByVal rightValue As Variant) As Variant
     AddValues = leftValue + rightValue
 End Function
@@ -106,6 +110,14 @@ End Sub
 Public Sub RecordFinally()
     mTrace = mTrace & "finally|"
 End Sub
+
+Public Sub RecordCancellation()
+    mTrace = mTrace & "canceled|"
+End Sub
+
+Public Function TaskResultPlusOne(ByVal taskValue As Variant) As Variant
+    TaskResultPlusOne = CLng(taskValue.Result) + 1
+End Function
 
 Public Function OtherErrorNumber() As Long
     OtherErrorNumber = OTHER_ERROR

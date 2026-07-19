@@ -53,11 +53,11 @@ The v0.8.0 baseline adds a repeated object-member query to measure the cached me
 repeats both established release gates across five fresh Excel processes. Measurements are stored
 in `benchmarks/v0.8.0-baseline.json`.
 
-The v0.9.0 baseline adds a 10,000-element `OrderBy.ThenByDescending.ToList` scenario after the
+The v1.0.0 baseline retains the 10,000-element `OrderBy.ThenByDescending.ToList` scenario after the
 stable O(n log n) ordering rewrite. Three fresh Excel processes establish a `1.0`-second release
 ceiling for the isolated suite. The living Collections workbook has a separate `2.5`-second ceiling
 to cover its observed host-level variance. Both are recorded in
-`benchmarks/v0.9.0-baseline.json`.
+`benchmarks/v1.0.0-baseline.json`.
 
 pyVBAanalysis 1.2.0 treats a VBA bang identifier such as `!Age` as an ordinary variable token.
 Live bang examples therefore declare the token name in their local scope even though VBA uses it

@@ -115,6 +115,13 @@ public static class ROneCOneWindowProbe
         return result;
     }
 
+    public static uint ProcessIdForWindow(long windowHandle)
+    {
+        uint processId;
+        GetWindowThreadProcessId(new IntPtr(windowHandle), out processId);
+        return processId;
+    }
+
     public static string DismissSafely(long dialogHandle)
     {
         IntPtr dialog = new IntPtr(dialogHandle);
@@ -233,6 +240,52 @@ function Get-AutomationSurface {
     return $records
 }
 
+function Get-OwnedVbeSelection {
+    param([int]$ExpectedProcessId)
+
+    $application = $null
+    $vbe = $null
+    $codePane = $null
+    $codeModule = $null
+    try {
+        $application = [Runtime.InteropServices.Marshal]::GetActiveObject(
+            "Excel.Application")
+        $actualProcessId = [ROneCOneWindowProbe]::ProcessIdForWindow(
+            [long]$application.Hwnd)
+        if ($actualProcessId -ne $ExpectedProcessId) {
+            return ""
+        }
+        $vbe = $application.VBE
+        $codePane = $vbe.ActiveCodePane
+        if ($null -eq $codePane) {
+            return ""
+        }
+        [int]$startLine = 0
+        [int]$startColumn = 0
+        [int]$endLine = 0
+        [int]$endColumn = 0
+        $codePane.GetSelection(
+            [ref]$startLine,
+            [ref]$startColumn,
+            [ref]$endLine,
+            [ref]$endColumn)
+        $codeModule = $codePane.CodeModule
+        $lineText = [string]$codeModule.Lines($startLine, 1)
+        return "line=$startLine; columns=$startColumn-$endColumn; code=$lineText"
+    }
+    catch {
+        return "selection-error=$($_.Exception.Message)"
+    }
+    finally {
+        foreach ($comObject in @($codeModule, $codePane, $vbe, $application)) {
+            if ($null -ne $comObject -and [Runtime.InteropServices.Marshal]::IsComObject(
+                $comObject)) {
+                [void][Runtime.InteropServices.Marshal]::ReleaseComObject($comObject)
+            }
+        }
+    }
+}
+
 $resolvedLog = [System.IO.Path]::GetFullPath($LogPath)
 $resolvedStop = [System.IO.Path]::GetFullPath($StopPath)
 $logDirectory = Split-Path -Parent $resolvedLog
@@ -304,13 +357,14 @@ while ([DateTime]::UtcNow -lt $deadline) {
         }
 
         if ($TerminateOnBreakMode -and $popupObserved -and $window.Title -match "\[break\]") {
+            $vbeSelection = Get-OwnedVbeSelection -ExpectedProcessId $ExcelProcessId
             $breakRecord = [ordered]@{
                 observed_at = [DateTime]::UtcNow.ToString("o")
                 process_id = $ExcelProcessId
                 handle = $window.Handle
                 class_name = $window.ClassName
                 title = $window.Title
-                child_text = @()
+                child_text = @($vbeSelection)
                 children = @()
                 automation = @()
                 dismissal_action = "terminate-task-excel-after-break"

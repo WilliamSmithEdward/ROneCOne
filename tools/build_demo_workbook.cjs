@@ -275,7 +275,7 @@ architecture.getRange("A13:D18").values = [
   [3, "Inferred Func + clear LINQ syntax", "AVAILABLE (v0.4.0)", "Delegates + collections"],
   [4, "Try / Catch / Finally", "AVAILABLE (v0.6.0)", "Delegates"],
   [5, "Typed events", "AVAILABLE (v0.6.0)", "Actions + multicast"],
-  [6, "Tasks / async / await / cancellation", "SCHEDULED", "Exceptions + delegates"],
+  [6, "Tasks / async / await / cancellation", "AVAILABLE (v1.0.0)", "Exceptions + delegates"],
 ];
 architecture.getRange("A13:D18").format = {
   borders: { preset: "all", style: "thin", color: colors.line },
