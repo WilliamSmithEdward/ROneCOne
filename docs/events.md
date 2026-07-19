@@ -1,5 +1,8 @@
 # Typed events
 
+New to ROneCOne? Start with the
+[Events and exceptions user guide](user-guide/events-and-exceptions.md).
+
 ROneCOne events provide C#-style typed subscription and deterministic multicast delivery without
 another class module. An event is a mutable publisher role inside the same `ROneCOne.cls` runtime.
 

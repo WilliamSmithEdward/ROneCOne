@@ -1,5 +1,8 @@
 # Universal delegates
 
+New to ROneCOne? Start with the
+[Delegates and expressions user guide](user-guide/delegates-and-expressions.md).
+
 ROneCOne represents expression lambdas, object methods, callable objects, workbook procedures,
 multicast chains, compositions, and signature-bound native entry points with one immutable type.
 The public model follows C# `Func`, `Action`, `Delegate`, and `DynamicInvoke` semantics where the

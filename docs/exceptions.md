@@ -1,5 +1,8 @@
 # Structured exceptions
 
+New to ROneCOne? Start with the
+[Events and exceptions user guide](user-guide/events-and-exceptions.md).
+
 ROneCOne provides structured `Try`, `Catch`, and `Finally` flow over universal Actions. The
 operation is an immutable builder inside `ROneCOne.cls`; executing it does not generate source,
 access the VBIDE, or change Excel security settings.

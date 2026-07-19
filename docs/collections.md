@@ -1,5 +1,8 @@
 # Runtime-generic List<T> and LINQ
 
+New to ROneCOne? Start with the
+[Collections and LINQ user guide](user-guide/collections-and-linq.md).
+
 ROneCOne provides a strictly typed, zero-based `List<T>` model and deferred query pipelines in
 the same single `ROneCOne.cls` runtime file. The design follows the behavior of
 [`List<T>`](https://learn.microsoft.com/en-us/dotnet/api/system.collections.generic.list-1) and

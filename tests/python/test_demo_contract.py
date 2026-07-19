@@ -16,6 +16,7 @@ CAPABILITY_BUILDER = ROOT / "tools" / "build_capability_demo_workbooks.cjs"
 PACKAGER = ROOT / "tools" / "package_demo_workbook.py"
 RENDERER = ROOT / "tools" / "render_demo_workbook.ps1"
 README = ROOT / "README.md"
+USER_GUIDE = ROOT / "docs" / "user-guide" / "README.md"
 
 
 class DemoContractTests(unittest.TestCase):
@@ -175,7 +176,7 @@ class DemoContractTests(unittest.TestCase):
     def test_public_materials_do_not_describe_the_runtime_as_experimental(self) -> None:
         public_materials = [
             README,
-            *sorted((ROOT / "docs").glob("*.md")),
+            *sorted((ROOT / "docs").rglob("*.md")),
             ROOT / "tools" / "build_demo_workbook.cjs",
             ROOT / "tools" / "build_collections_demo_workbook.cjs",
             CAPABILITY_BUILDER,
@@ -187,6 +188,35 @@ class DemoContractTests(unittest.TestCase):
                 self.assertNotIn("future runtime", source)
                 self.assertNotIn("future scheduler", source)
                 self.assertNotIn("long-term goal", source)
+
+    def test_readme_is_a_code_free_product_surface(self) -> None:
+        source = README.read_text(encoding="utf-8")
+
+        self.assertNotIn("```", source)
+        self.assertNotIn("## Development", source)
+        self.assertNotIn("## Quality gates", source)
+        self.assertIn("Give VBA the love it deserves", source)
+        self.assertIn("docs/user-guide/", source)
+        self.assertIn("releases/latest", source)
+        self.assertLessEqual(len(source.split()), 400)
+
+    def test_user_guide_is_indexed_and_code_led(self) -> None:
+        guide_root = ROOT / "docs" / "user-guide"
+        expected_pages = (
+            "getting-started.md",
+            "collections-and-linq.md",
+            "delegates-and-expressions.md",
+            "events-and-exceptions.md",
+            "reference.md",
+        )
+
+        index = USER_GUIDE.read_text(encoding="utf-8")
+        self.assertIn("# ROneCOne user guide", index)
+        for page_name in expected_pages:
+            page = guide_root / page_name
+            self.assertTrue(page.is_file(), page_name)
+            self.assertIn(f"]({page_name})", index)
+            self.assertIn("```vba", page.read_text(encoding="utf-8"), page_name)
 
 
 if __name__ == "__main__":
