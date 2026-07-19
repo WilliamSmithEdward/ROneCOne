@@ -58,6 +58,9 @@ Private Const ROLE_PROCEDURE As Long = 9
 Private Const ROLE_MULTICAST As Long = 10
 Private Const ROLE_NATIVE As Long = 11
 Private Const ROLE_REFERENCE As Long = 12
+Private Const ROLE_EVENT As Long = 13
+Private Const ROLE_TRY As Long = 14
+Private Const ROLE_ERROR As Long = 15
 
 Private Const CALLCONV_STDCALL As Long = 4
 Private Const HRESULT_SUCCESS As Long = 0
@@ -129,6 +132,16 @@ Private mInvocationList As Collection
 Private mNativeAddress As LongPtr
 Private mReferenceAddress As LongPtr
 
+Private mTryBody As ROneCOne
+Private mCatchActions As Collection
+Private mCatchNumbers As Collection
+Private mFinallyAction As ROneCOne
+Private mErrorNumber As Long
+Private mErrorSource As String
+Private mErrorDescription As String
+Private mErrorHelpFile As String
+Private mErrorHelpContext As Long
+
 Private mItems As Collection
 Private mEnumerationValues As Collection
 Private mElementType As VbVarType
@@ -197,10 +210,15 @@ Attribute Value.VB_Description = "Captures a scalar or object as an expression v
     Set Value = node
 End Function
 
-Public Function ListOf(ByVal typeToken As Variant) As ROneCOne
-Attribute ListOf.VB_Description = "Creates an empty, strictly typed List<T>."
+Public Function ListOf( _
+    ByVal typeToken As Variant, _
+    ParamArray initialItems() As Variant _
+) As ROneCOne
+Attribute ListOf.VB_Description = "Creates a strict List<T> with optional initial items."
+    Dim initialItem As Variant
     Dim listValue As ROneCOne
     Dim prototype As Object
+    Dim wrappedItems As Collection
 
     Set listValue = New ROneCOne
     If IsObject(typeToken) Then
@@ -214,6 +232,11 @@ Attribute ListOf.VB_Description = "Creates an empty, strictly typed List<T>."
         ValidateTypeToken typeToken, "ListOf"
         listValue.ConfigureList CLng(typeToken), vbNullString
     End If
+    Set wrappedItems = New Collection
+    For Each initialItem In initialItems
+        wrappedItems.Add listValue.InternalWrapElement(initialItem, "ListOf")
+    Next initialItem
+    CommitInitialItems listValue, wrappedItems
     Set ListOf = listValue
 End Function
 
@@ -234,6 +257,25 @@ Attribute ListLike.VB_Description = "Creates a List<T> typed like an example val
         listValue.ConfigureList VarType(example), vbNullString
     End If
     Set ListLike = listValue
+End Function
+
+Public Function ListFrom( _
+    ByVal firstItem As Variant, _
+    ParamArray remainingItems() As Variant _
+) As ROneCOne
+Attribute ListFrom.VB_Description = "Infers T and creates a populated List<T>."
+    Dim remainingItem As Variant
+    Dim listValue As ROneCOne
+    Dim wrappedItems As Collection
+
+    Set listValue = ListLike(firstItem)
+    Set wrappedItems = New Collection
+    wrappedItems.Add listValue.InternalWrapElement(firstItem, "ListFrom")
+    For Each remainingItem In remainingItems
+        wrappedItems.Add listValue.InternalWrapElement(remainingItem, "ListFrom")
+    Next remainingItem
+    CommitInitialItems listValue, wrappedItems
+    Set ListFrom = listValue
 End Function
 
 Public Function Range(ByVal start As Long, ByVal count As Long) As ROneCOne
@@ -338,6 +380,50 @@ Public Function Action( _
 Attribute Action.VB_Description = "Creates an Action from an expression, object, or procedure."
     Set Action = CreateCallableDelegate(callable, memberName, True)
 End Function
+
+Public Function EventOf(ParamArray typeTokens() As Variant) As ROneCOne
+Attribute EventOf.VB_Description = "Creates a strongly typed mutable event."
+    Dim descriptor As ROneCOne
+    Dim descriptors As Collection
+    Dim eventValue As ROneCOne
+    Dim typeToken As Variant
+
+    Set descriptors = New Collection
+    For Each typeToken In typeTokens
+        Set descriptor = CreateParameterDescriptor(typeToken, "EventOf")
+        If descriptor.InternalIsByRef Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "EventOf", _
+                "Events support ByVal parameters only."
+        End If
+        descriptors.Add descriptor
+    Next typeToken
+    Set eventValue = New ROneCOne
+    eventValue.ConfigureEvent descriptors
+    Set EventOf = eventValue
+End Function
+
+Public Function Try(ByVal work As ROneCOne) As ROneCOne
+Attribute Try.VB_Description = "Begins a structured Try/Catch/Finally operation."
+    Dim operation As ROneCOne
+
+    If mRole <> ROLE_EMPTY Then
+        RaiseContractError ERROR_INVALID_OPERATION, "Try", _
+            "Try must be called from the ROneCOne factory."
+    End If
+    ValidateAction work, "Try", True
+    Set operation = New ROneCOne
+    operation.ConfigureTry work
+    Set Try = operation
+End Function
+
+Public Property Get Exception() As ROneCOne
+Attribute Exception.VB_Description = "Gets the strongly typed exception prototype."
+    Dim errorValue As ROneCOne
+
+    Set errorValue = New ROneCOne
+    errorValue.ConfigureError 0, vbNullString, vbNullString, vbNullString, 0
+    Set Exception = errorValue
+End Property
 
 Public Function Native(ByVal procedureAddress As LongPtr) As ROneCOne
 Attribute Native.VB_Description = "Creates a signature-bound native function delegate."
@@ -517,6 +603,127 @@ Attribute Run.VB_UserMemId = 0
     Next rawArgument
 
     AssignInvocationResult Run, argumentValues
+End Function
+
+Public Sub Execute(ParamArray arguments() As Variant)
+Attribute Execute.VB_Description = "Executes an Action or structured operation."
+    Dim argumentValues As Collection
+    Dim ignored As ROneCOne
+    Dim rawArgument As Variant
+
+    Set argumentValues = New Collection
+    For Each rawArgument In arguments
+        argumentValues.Add WrapInvocationArgument(rawArgument)
+    Next rawArgument
+
+    If IsDelegateRole(mRole) Then
+        If Not mIsActionDelegate Then
+            RaiseContractError ERROR_INVALID_OPERATION, "Execute", _
+                "Execute requires an Action delegate."
+        End If
+        Set ignored = InvokeValue(argumentValues)
+        Exit Sub
+    End If
+    If mRole = ROLE_TRY Then
+        If argumentValues.Count <> 0 Then
+            RaiseContractError ERROR_ARITY_MISMATCH, "Execute", _
+                "A Try operation does not accept arguments."
+        End If
+        ExecuteTryOperation
+        Exit Sub
+    End If
+    RaiseContractError ERROR_INVALID_OPERATION, "Execute", _
+        "Execute requires an Action or Try operation."
+End Sub
+
+Public Function Subscribe(ByVal handler As ROneCOne) As ROneCOne
+Attribute Subscribe.VB_Description = "Adds an Action handler to this event."
+    RequireEvent Me, "Subscribe"
+    ValidateEventHandler handler, "Subscribe"
+    mInvocationList.Add handler
+    Set Subscribe = Me
+End Function
+
+Public Function Unsubscribe(ByVal handler As ROneCOne) As Boolean
+Attribute Unsubscribe.VB_Description = "Removes the last matching event handler."
+    Dim index As Long
+
+    RequireEvent Me, "Unsubscribe"
+    ValidateEventHandler handler, "Unsubscribe"
+    For index = mInvocationList.Count To 1 Step -1
+        If DelegateIdentityEquals(mInvocationList.Item(index), handler) Then
+            mInvocationList.Remove index
+            Unsubscribe = True
+            Exit Function
+        End If
+    Next index
+End Function
+
+Public Sub Emit(ParamArray arguments() As Variant)
+Attribute Emit.VB_Description = "Raises this event for a snapshot of its handlers."
+    Dim argumentValues As Collection
+    Dim handler As ROneCOne
+    Dim handlers As Collection
+    Dim ignored As ROneCOne
+    Dim rawArgument As Variant
+
+    RequireEvent Me, "Emit"
+    Set argumentValues = New Collection
+    For Each rawArgument In arguments
+        argumentValues.Add WrapInvocationArgument(rawArgument)
+    Next rawArgument
+    ValidateDelegateArguments argumentValues
+    Set handlers = CopyWrappedCollection(mInvocationList)
+    For Each handler In handlers
+        Set ignored = handler.InvokeValue(argumentValues)
+    Next handler
+End Sub
+
+Public Property Get HandlerCount() As Long
+Attribute HandlerCount.VB_Description = "Gets the number of subscribed event handlers."
+    RequireEvent Me, "HandlerCount"
+    HandlerCount = mInvocationList.Count
+End Property
+
+Public Function Catch( _
+    ByVal handlerOrErrorNumber As Variant, _
+    Optional ByVal handler As Variant _
+) As ROneCOne
+Attribute Catch.VB_Description = "Adds a catch-all or error-number Catch handler."
+    Dim catchAction As ROneCOne
+    Dim errorNumber As Long
+    Dim operation As ROneCOne
+
+    RequireTry Me, "Catch"
+    If IsMissing(handler) Then
+        Set catchAction = RequireROneCOne(handlerOrErrorNumber, "Catch")
+    Else
+        If Not IsNumeric(handlerOrErrorNumber) Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "Catch", _
+                "A filtered Catch requires an error number."
+        End If
+        errorNumber = CLng(handlerOrErrorNumber)
+        Set catchAction = RequireROneCOne(handler, "Catch")
+    End If
+    ValidateCatchAction catchAction
+    Set operation = CloneTryOperation(Me)
+    operation.ConfigureCatch errorNumber, catchAction
+    Set Catch = operation
+End Function
+
+Public Function Finally(ByVal cleanup As ROneCOne) As ROneCOne
+Attribute Finally.VB_Description = "Adds the Action that always runs after Try and Catch."
+    Dim operation As ROneCOne
+
+    RequireTry Me, "Finally"
+    ValidateAction cleanup, "Finally", True
+    If Not mFinallyAction Is Nothing Then
+        RaiseContractError ERROR_INVALID_OPERATION, "Finally", _
+            "A Try operation can have only one Finally block."
+    End If
+    Set operation = CloneTryOperation(Me)
+    operation.ConfigureFinally cleanup
+    Set Finally = operation
 End Function
 
 Private Sub AssignInvocationResult( _
@@ -742,14 +949,13 @@ Attribute GenericTypeName.VB_Description = "Gets the C#-style generic sequence t
     End If
 End Property
 
-Public Sub AddRange(ByVal values As ROneCOne)
-Attribute AddRange.VB_Description = "Appends a typed sequence atomically to this list."
+Public Sub AddRange(ByVal values As Variant)
+Attribute AddRange.VB_Description = "Atomically appends a sequence, array, or Collection."
     Dim incoming As Collection
     Dim wrapped As ROneCOne
 
     RequireList Me, "AddRange"
-    RequireSequence values, "AddRange values"
-    Set incoming = values.MaterializeWrapped
+    Set incoming = BuildIncomingItems(values, "AddRange")
     For Each wrapped In incoming
         ValidateElementWrapped wrapped, "AddRange"
     Next wrapped
@@ -996,9 +1202,13 @@ Attribute AnyItem.VB_Description = "Tests whether any element exists or matches 
     Next wrapped
 End Function
 
-Public Function Exists(ByVal predicate As ROneCOne) As Boolean
-Attribute Exists.VB_Description = "Concise sugar for AnyItem with a predicate."
-    Exists = AnyItem(predicate)
+Public Function Exists(Optional ByVal predicate As Variant) As Boolean
+Attribute Exists.VB_Description = "Tests whether any element exists or matches."
+    If IsMissing(predicate) Then
+        Exists = AnyItem
+    Else
+        Exists = AnyItem(predicate)
+    End If
 End Function
 
 Public Function All(ByVal predicate As ROneCOne) As Boolean
@@ -1248,6 +1458,53 @@ Attribute GetInvocationList.VB_Description = "Returns a typed copy of the invoca
     Set GetInvocationList = result
 End Function
 
+Public Sub ForEach(ByVal action As ROneCOne)
+Attribute ForEach.VB_Description = "Executes an Action once for every sequence element."
+    Dim actionDelegate As ROneCOne
+    Dim ignored As ROneCOne
+    Dim values As Collection
+    Dim wrapped As ROneCOne
+
+    Set actionDelegate = NormalizeUnaryAction(action, "ForEach")
+    Set values = MaterializeWrapped
+    For Each wrapped In values
+        Set ignored = InvokeUnary(actionDelegate, wrapped)
+    Next wrapped
+End Sub
+
+Public Function JoinText( _
+    ByVal separator As String, _
+    Optional ByVal selector As Variant _
+) As String
+Attribute JoinText.VB_Description = "Joins scalar sequence values into one String."
+    Dim index As Long
+    Dim parts() As String
+    Dim selected As ROneCOne
+    Dim selectorDelegate As ROneCOne
+    Dim values As Collection
+    Dim wrapped As ROneCOne
+
+    RequireSequence Me, "JoinText"
+    If Not IsMissing(selector) Then
+        Set selectorDelegate = NormalizeUnary( _
+            RequireROneCOne(selector, "JoinText selector"), "JoinText")
+    End If
+    Set values = MaterializeWrapped
+    If values.Count = 0 Then Exit Function
+
+    ReDim parts(0 To values.Count - 1)
+    For Each wrapped In values
+        If selectorDelegate Is Nothing Then
+            Set selected = wrapped
+        Else
+            Set selected = InvokeUnary(selectorDelegate, wrapped)
+        End If
+        parts(index) = CStr(RequireScalar(selected, "JoinText"))
+        index = index + 1
+    Next wrapped
+    JoinText = VBA.Join(parts, separator)
+End Function
+
 Public Property Get TypeMismatchError() As Long
 Attribute TypeMismatchError.VB_Description = "Gets the ROneCOne type-mismatch error number."
     TypeMismatchError = ERROR_TYPE_MISMATCH
@@ -1276,6 +1533,36 @@ End Property
 Public Property Get InvalidOperationError() As Long
 Attribute InvalidOperationError.VB_Description = "Gets the invalid delegate operation error."
     InvalidOperationError = ERROR_INVALID_OPERATION
+End Property
+
+Public Property Get ErrorNumber() As Long
+Attribute ErrorNumber.VB_Description = "Gets the captured VBA error number."
+    RequireError Me, "ErrorNumber"
+    ErrorNumber = mErrorNumber
+End Property
+
+Public Property Get ErrorSource() As String
+Attribute ErrorSource.VB_Description = "Gets the captured VBA error source."
+    RequireError Me, "ErrorSource"
+    ErrorSource = mErrorSource
+End Property
+
+Public Property Get Message() As String
+Attribute Message.VB_Description = "Gets the captured VBA error description."
+    RequireError Me, "Message"
+    Message = mErrorDescription
+End Property
+
+Public Property Get HelpFile() As String
+Attribute HelpFile.VB_Description = "Gets the captured VBA error help file."
+    RequireError Me, "HelpFile"
+    HelpFile = mErrorHelpFile
+End Property
+
+Public Property Get HelpContext() As Long
+Attribute HelpContext.VB_Description = "Gets the captured VBA error help context."
+    RequireError Me, "HelpContext"
+    HelpContext = mErrorHelpContext
 End Property
 
 Friend Property Get InternalRole() As Long
@@ -1393,6 +1680,26 @@ Attribute InternalReferenceAddress.VB_MemberFlags = "40"
     InternalReferenceAddress = mReferenceAddress
 End Property
 
+Friend Property Get InternalTryBody() As ROneCOne
+Attribute InternalTryBody.VB_MemberFlags = "40"
+    Set InternalTryBody = mTryBody
+End Property
+
+Friend Property Get InternalCatchActions() As Collection
+Attribute InternalCatchActions.VB_MemberFlags = "40"
+    Set InternalCatchActions = mCatchActions
+End Property
+
+Friend Property Get InternalCatchNumbers() As Collection
+Attribute InternalCatchNumbers.VB_MemberFlags = "40"
+    Set InternalCatchNumbers = mCatchNumbers
+End Property
+
+Friend Property Get InternalFinallyAction() As ROneCOne
+Attribute InternalFinallyAction.VB_MemberFlags = "40"
+    Set InternalFinallyAction = mFinallyAction
+End Property
+
 Friend Sub ConfigureParameter( _
     ByVal expectedType As VbVarType, _
     ByVal expectedObjectType As String, _
@@ -1481,6 +1788,48 @@ Friend Sub ConfigureReference(ByVal variableAddress As LongPtr, ByVal valueType 
     mRole = ROLE_REFERENCE
     mReferenceAddress = variableAddress
     mExpectedType = valueType
+End Sub
+
+Friend Sub ConfigureEvent(ByVal descriptors As Collection)
+    mRole = ROLE_EVENT
+    Set mParameters = descriptors
+    mMethodArity = descriptors.Count
+    mHasParameterSignature = True
+    mHasReturnSignature = True
+    mIsActionDelegate = True
+    mReturnType = vbEmpty
+    Set mInvocationList = New Collection
+End Sub
+
+Friend Sub ConfigureTry(ByVal work As ROneCOne)
+    mRole = ROLE_TRY
+    Set mTryBody = work
+    Set mCatchActions = New Collection
+    Set mCatchNumbers = New Collection
+End Sub
+
+Friend Sub ConfigureCatch(ByVal errorNumber As Long, ByVal handler As ROneCOne)
+    mCatchNumbers.Add errorNumber
+    mCatchActions.Add handler
+End Sub
+
+Friend Sub ConfigureFinally(ByVal cleanup As ROneCOne)
+    Set mFinallyAction = cleanup
+End Sub
+
+Friend Sub ConfigureError( _
+    ByVal errorNumber As Long, _
+    ByVal errorSource As String, _
+    ByVal errorDescription As String, _
+    ByVal errorHelpFile As String, _
+    ByVal errorHelpContext As Long _
+)
+    mRole = ROLE_ERROR
+    mErrorNumber = errorNumber
+    mErrorSource = errorSource
+    mErrorDescription = errorDescription
+    mErrorHelpFile = errorHelpFile
+    mErrorHelpContext = errorHelpContext
 End Sub
 
 Friend Sub ConfigureParameterSignature(ByVal descriptors As Collection)
@@ -1720,6 +2069,96 @@ Private Function CloneDelegate(ByVal source As ROneCOne) As ROneCOne
     End If
     Set CloneDelegate = clone
 End Function
+
+Private Function CloneTryOperation(ByVal source As ROneCOne) As ROneCOne
+    Dim clone As ROneCOne
+    Dim index As Long
+
+    RequireTry source, "CloneTryOperation"
+    Set clone = New ROneCOne
+    clone.ConfigureTry source.InternalTryBody
+    For index = 1 To source.InternalCatchActions.Count
+        clone.ConfigureCatch source.InternalCatchNumbers.Item(index), _
+            source.InternalCatchActions.Item(index)
+    Next index
+    If Not source.InternalFinallyAction Is Nothing Then
+        clone.ConfigureFinally source.InternalFinallyAction
+    End If
+    Set CloneTryOperation = clone
+End Function
+
+Private Sub ValidateAction( _
+    ByVal actionValue As ROneCOne, _
+    ByVal memberName As String, _
+    ByVal requiresNoArguments As Boolean _
+)
+    RequireDelegate actionValue, memberName
+    If Not actionValue.IsAction Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            "This operation requires an Action delegate."
+    End If
+    If requiresNoArguments Then
+        If actionValue.Arity <> 0 And actionValue.Arity <> -1 Then
+            RaiseContractError ERROR_ARITY_MISMATCH, memberName, _
+                "The Action must accept no arguments."
+        End If
+    End If
+End Sub
+
+Friend Function InternalWrapElement( _
+    ByVal candidate As Variant, _
+    ByVal memberName As String _
+) As ROneCOne
+    Set InternalWrapElement = WrapElement(candidate, memberName)
+End Function
+
+Private Sub ValidateCatchAction(ByVal actionValue As ROneCOne)
+    Dim descriptor As ROneCOne
+
+    ValidateAction actionValue, "Catch", False
+    If Not actionValue.InternalHasParameterSignature Then
+        RaiseContractError ERROR_INVALID_OPERATION, "Catch", _
+            "A Catch Action requires a complete Takes signature."
+    End If
+    If actionValue.Arity <> 0 And actionValue.Arity <> 1 Then
+        RaiseContractError ERROR_ARITY_MISMATCH, "Catch", _
+            "A Catch Action must accept zero arguments or one exception."
+    End If
+    If actionValue.Arity = 1 And actionValue.InternalHasParameterSignature Then
+        Set descriptor = actionValue.InternalParameters.Item(1)
+        If descriptor.InternalExpectedType <> vbObject Or _
+            StrComp(descriptor.InternalExpectedObjectType, "ROneCOne", _
+                vbTextCompare) <> 0 Then
+            RaiseContractError ERROR_TYPE_MISMATCH, "Catch", _
+                "The Catch argument must use ROneCOne.Exception as its type."
+        End If
+    End If
+End Sub
+
+Private Sub ValidateEventHandler( _
+    ByVal handler As ROneCOne, _
+    ByVal memberName As String _
+)
+    Dim index As Long
+
+    ValidateAction handler, memberName, False
+    If Not handler.InternalHasParameterSignature Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            "An event handler requires a complete Takes signature."
+    End If
+    If handler.Arity <> mMethodArity Then
+        RaiseContractError ERROR_ARITY_MISMATCH, memberName, _
+            "The event handler arity does not match the event."
+    End If
+    For index = 1 To mParameters.Count
+        If Not ParameterDescriptorsMatch( _
+            mParameters.Item(index), handler.InternalParameters.Item(index) _
+        ) Then
+            RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
+                "The event handler signature does not match the event."
+        End If
+    Next index
+End Sub
 
 Private Sub CopySignatureFrom(ByVal source As ROneCOne)
     Set mParameters = source.InternalParameters
@@ -2162,6 +2601,57 @@ Private Function WrapElement( _
     Set WrapElement = wrapped
 End Function
 
+Private Sub CommitInitialItems( _
+    ByVal listValue As ROneCOne, _
+    ByVal wrappedItems As Collection _
+)
+    Dim wrapped As ROneCOne
+
+    For Each wrapped In wrappedItems
+        listValue.InternalAddWrapped wrapped
+    Next wrapped
+End Sub
+
+Private Function BuildIncomingItems( _
+    ByVal values As Variant, _
+    ByVal memberName As String _
+) As Collection
+    Dim candidate As Object
+    Dim incoming As Collection
+    Dim rawValue As Variant
+    Dim sequence As ROneCOne
+
+    Set incoming = New Collection
+    If IsObject(values) Then
+        Set candidate = values
+        If candidate Is Nothing Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+                "The incoming values cannot be Nothing."
+        End If
+        If TypeOf candidate Is ROneCOne Then
+            Set sequence = candidate
+            RequireSequence sequence, memberName
+            Set BuildIncomingItems = sequence.MaterializeWrapped
+            Exit Function
+        End If
+        If TypeName(candidate) = "Collection" Then
+            For Each rawValue In candidate
+                incoming.Add WrapElement(rawValue, memberName)
+            Next rawValue
+            Set BuildIncomingItems = incoming
+            Exit Function
+        End If
+    ElseIf IsArray(values) Then
+        For Each rawValue In values
+            incoming.Add WrapElement(rawValue, memberName)
+        Next rawValue
+        Set BuildIncomingItems = incoming
+        Exit Function
+    End If
+    RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+        "Expected a ROneCOne sequence, VBA array, or Collection."
+End Function
+
 Private Sub ValidateElementWrapped( _
     ByVal wrapped As ROneCOne, _
     ByVal memberName As String _
@@ -2294,14 +2784,20 @@ Private Function NormalizeUnary( _
             "The expression or delegate cannot be Nothing."
     End If
 
-    Select Case candidate.InternalRole
-        Case ROLE_LAMBDA, ROLE_METHOD, ROLE_COMPOSITION
-            If candidate.Arity <> 1 And candidate.Arity <> -1 Then
-                RaiseContractError ERROR_ARITY_MISMATCH, memberName, _
-                    "The delegate must accept exactly one value."
-            End If
-            Set NormalizeUnary = candidate
+    If IsDelegateRole(candidate.InternalRole) Then
+        If candidate.IsAction Then
+            RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+                "A query selector or predicate requires a Func."
+        End If
+        If candidate.Arity <> 1 And candidate.Arity <> -1 Then
+            RaiseContractError ERROR_ARITY_MISMATCH, memberName, _
+                "The delegate must accept exactly one value."
+        End If
+        Set NormalizeUnary = candidate
+        Exit Function
+    End If
 
+    Select Case candidate.InternalRole
         Case ROLE_VALUE, ROLE_PARAMETER, ROLE_EXPRESSION
             Set parameters = New Collection
             CollectExpressionParameters candidate, parameters
@@ -2682,6 +3178,76 @@ Private Function CoerceExpression(ByVal candidate As Variant) As ROneCOne
     End If
     Set CoerceExpression = node
 End Function
+
+Private Sub ExecuteTryOperation()
+    Dim arguments As Collection
+    Dim catchAction As ROneCOne
+    Dim catchError As ROneCOne
+    Dim errorValue As ROneCOne
+    Dim finallyError As ROneCOne
+
+    RequireTry Me, "Execute"
+    Set arguments = New Collection
+    If Not InvokeActionCaptured(mTryBody, arguments, errorValue) Then
+        Set catchAction = FindCatchAction(errorValue.ErrorNumber)
+        If Not catchAction Is Nothing Then
+            Set arguments = New Collection
+            If catchAction.Arity <> 0 Then
+                arguments.Add WrapInvocationArgument(errorValue)
+            End If
+            If InvokeActionCaptured(catchAction, arguments, catchError) Then
+                Set errorValue = Nothing
+            Else
+                Set errorValue = catchError
+            End If
+        End If
+    End If
+
+    If Not mFinallyAction Is Nothing Then
+        Set arguments = New Collection
+        If Not InvokeActionCaptured(mFinallyAction, arguments, finallyError) Then
+            Set errorValue = finallyError
+        End If
+    End If
+    If Not errorValue Is Nothing Then RaiseCapturedError errorValue
+End Sub
+
+Private Function InvokeActionCaptured( _
+    ByVal actionValue As ROneCOne, _
+    ByVal arguments As Collection, _
+    ByRef errorValue As ROneCOne _
+) As Boolean
+    Dim ignored As ROneCOne
+
+    On Error GoTo InvocationFailed
+    Set ignored = actionValue.InvokeValue(arguments)
+    InvokeActionCaptured = True
+    Exit Function
+
+InvocationFailed:
+    Set errorValue = New ROneCOne
+    errorValue.ConfigureError Err.Number, Err.Source, Err.Description, _
+        Err.HelpFile, Err.HelpContext
+    Err.Clear
+    On Error GoTo 0
+End Function
+
+Private Function FindCatchAction(ByVal errorNumber As Long) As ROneCOne
+    Dim index As Long
+
+    For index = 1 To mCatchActions.Count
+        If CLng(mCatchNumbers.Item(index)) = 0 Or _
+            CLng(mCatchNumbers.Item(index)) = errorNumber Then
+            Set FindCatchAction = mCatchActions.Item(index)
+            Exit Function
+        End If
+    Next index
+End Function
+
+Private Sub RaiseCapturedError(ByVal errorValue As ROneCOne)
+    Err.Raise errorValue.ErrorNumber, errorValue.ErrorSource, _
+        errorValue.Message, errorValue.HelpFile, errorValue.HelpContext
+End Sub
 
 Friend Function InvokeValue(ByVal arguments As Collection) As ROneCOne
     Dim delegateValue As ROneCOne
@@ -3381,6 +3947,19 @@ Private Function RunWorkbookProcedure( _
     End Select
 End Function
 
+Private Function NormalizeUnaryAction( _
+    ByVal candidate As ROneCOne, _
+    ByVal memberName As String _
+) As ROneCOne
+    RequireSequence Me, memberName
+    ValidateAction candidate, memberName, False
+    If candidate.Arity <> 1 And candidate.Arity <> -1 Then
+        RaiseContractError ERROR_ARITY_MISMATCH, memberName, _
+            "The Action must accept exactly one value."
+    End If
+    Set NormalizeUnaryAction = candidate
+End Function
+
 Private Function RunWorkbookProcedureObject( _
     ByVal procedureName As String, _
     ByRef values() As Variant, _
@@ -3713,6 +4292,45 @@ Private Sub RequireDelegate(ByVal candidate As ROneCOne, ByVal context As String
         "This operation requires a delegate."
 End Sub
 
+Private Sub RequireEvent(ByVal candidate As ROneCOne, ByVal context As String)
+    If candidate Is Nothing Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, context, _
+            "The event cannot be Nothing."
+    End If
+    Select Case candidate.InternalRole
+        Case ROLE_EVENT
+            Exit Sub
+    End Select
+    RaiseContractError ERROR_INVALID_OPERATION, context, _
+        "This operation requires an event."
+End Sub
+
+Private Sub RequireTry(ByVal candidate As ROneCOne, ByVal context As String)
+    If candidate Is Nothing Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, context, _
+            "The Try operation cannot be Nothing."
+    End If
+    Select Case candidate.InternalRole
+        Case ROLE_TRY
+            Exit Sub
+    End Select
+    RaiseContractError ERROR_INVALID_OPERATION, context, _
+        "This operation requires a Try operation."
+End Sub
+
+Private Sub RequireError(ByVal candidate As ROneCOne, ByVal context As String)
+    If candidate Is Nothing Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, context, _
+            "The exception cannot be Nothing."
+    End If
+    Select Case candidate.InternalRole
+        Case ROLE_ERROR
+            Exit Sub
+    End Select
+    RaiseContractError ERROR_INVALID_OPERATION, context, _
+        "This property requires a captured exception."
+End Sub
+
 Private Function CollectionContainsIdentity( _
     ByVal values As Collection, _
     ByVal candidate As ROneCOne _
@@ -3782,6 +4400,10 @@ Private Sub Class_Terminate()
     Set mParameters = Nothing
     Set mTarget = Nothing
     Set mInvocationList = Nothing
+    Set mTryBody = Nothing
+    Set mCatchActions = Nothing
+    Set mCatchNumbers = Nothing
+    Set mFinallyAction = Nothing
     Set mItems = Nothing
     Set mEnumerationValues = Nothing
     Set mSource = Nothing

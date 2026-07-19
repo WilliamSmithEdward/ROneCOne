@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.6.0 - 2026-07-19
+
+### Added
+
+- `Execute` as a statement-form Action invocation surface, including inline native reference
+  wrappers without dummy result variables.
+- Typed mutable events through `EventOf`, fluent `Subscribe`, last-match `Unsubscribe`, snapshot
+  `Emit`, and `HandlerCount`.
+- Structured immutable `Try`, catch-all and error-number `Catch`, `Finally`, captured exception
+  metadata, deterministic rethrow, and cleanup precedence.
+- Explicit populated `ListOf(T, items...)`, inferred `ListFrom(first, rest...)`, and live-tested
+  empty `ListLike(example)` construction.
+- Atomic `AddRange` inputs from typed ROneCOne sequences, VBA arrays, and `Collection` values.
+- `ForEach(Action)`, predicate-optional `Exists`, and `JoinText` terminals.
+- Separate Events and Exceptions living workbooks with source, packaging, execution, rendering,
+  and same-process benchmark contracts.
+
+### Changed
+
+- Admitted every universal unary `Func` role into LINQ normalization, including workbook
+  procedures, native functions, compositions, and multicast delegates.
+- Reworked delegate and collection demos to use one-expression signatures, inline `ByRef`, Action
+  `Execute`, collection initializers, inferred user-class lists, `ForEach`, and `JoinText`.
+- Expanded live totals to 58 delegate/event/exception assertions and 66 collection assertions.
+- Recorded and eliminated VBA's host-only invalid-`ParamArray` forwarding failure; the popup-aware
+  harness closed the compiler modal and terminated only its task-owned Excel process.
+- Made every bounded Excel launcher tolerate duplicate `Path`/`PATH` host environments and removed
+  machine-specific Node paths from workbook rendering.
+
 ## 0.5.0 - 2026-07-18
 
 ### Added

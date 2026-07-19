@@ -8,8 +8,11 @@ ROOT = Path(__file__).resolve().parents[2]
 DEMO_VBA = ROOT / "demo" / "vba"
 COLLECTIONS_DEMO = DEMO_VBA / "CollectionsDemoUsage.bas"
 DELEGATES_DEMO = DEMO_VBA / "DemoUsage.bas"
+EVENTS_DEMO = DEMO_VBA / "EventsDemoUsage.bas"
+EXCEPTIONS_DEMO = DEMO_VBA / "ExceptionsDemoUsage.bas"
 CUSTOMER = DEMO_VBA / "DemoCustomer.cls"
 COLLECTIONS_BUILDER = ROOT / "tools" / "build_collections_demo_workbook.cjs"
+CAPABILITY_BUILDER = ROOT / "tools" / "build_capability_demo_workbooks.cjs"
 PACKAGER = ROOT / "tools" / "package_demo_workbook.py"
 RENDERER = ROOT / "tools" / "render_demo_workbook.ps1"
 README = ROOT / "README.md"
@@ -54,6 +57,13 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("True ByRef", builder)
         self.assertNotIn("FromMethod", builder)
 
+    def test_delegate_demo_uses_execute_and_inline_byref_sugar(self) -> None:
+        source = DELEGATES_DEMO.read_text(encoding="utf-8")
+
+        self.assertIn('combined.Execute "value"', source)
+        self.assertIn("increment.Execute ROneCOne.RefLong(value)", source)
+        self.assertNotIn("Dim ignored As Variant", source)
+
     def test_user_class_model_exposes_demo_fields(self) -> None:
         source = CUSTOMER.read_text(encoding="utf-8")
 
@@ -75,6 +85,33 @@ class DemoContractTests(unittest.TestCase):
             self.assertIn(syntax, source)
         self.assertNotIn("DemoCustomerQuery", source)
         self.assertNotIn("FromMethod", source)
+        self.assertIn("ROneCOne.ListFrom", source)
+        self.assertIn(".ForEach ROneCOne.Action", source)
+        self.assertIn(".JoinText", source)
+
+    def test_event_demo_leads_with_typed_fluent_events(self) -> None:
+        source = EVENTS_DEMO.read_text(encoding="utf-8")
+
+        self.assertIn("ROneCOne.EventOf(vbString)", source)
+        self.assertIn(".Subscribe(firstHandler)", source)
+        self.assertIn('changed.Emit "ready"', source)
+        self.assertIn("changed.Unsubscribe(secondHandler)", source)
+
+    def test_exception_demo_leads_with_structured_flow(self) -> None:
+        source = EXCEPTIONS_DEMO.read_text(encoding="utf-8")
+
+        self.assertIn("ROneCOne.Try(failingWork)", source)
+        self.assertIn(".Catch(errorHandler)", source)
+        self.assertIn(".Finally(cleanup)", source)
+        self.assertIn("attempt.Execute", source)
+
+    def test_capability_builder_and_packager_ship_separate_workbooks(self) -> None:
+        builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")
+        packager = PACKAGER.read_text(encoding="utf-8")
+
+        for name in ("ROneCOne_Events_Demo", "ROneCOne_Exceptions_Demo"):
+            self.assertIn(name, builder)
+            self.assertIn(name, packager)
 
     def test_collections_workbook_includes_user_class_linq_sheet(self) -> None:
         source = COLLECTIONS_BUILDER.read_text(encoding="utf-8")
@@ -102,7 +139,13 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("lock-matched Excel process", source)
 
     def test_demo_modules_are_ascii_explicit_and_readable(self) -> None:
-        for path in (COLLECTIONS_DEMO, DELEGATES_DEMO, CUSTOMER):
+        for path in (
+            COLLECTIONS_DEMO,
+            DELEGATES_DEMO,
+            EVENTS_DEMO,
+            EXCEPTIONS_DEMO,
+            CUSTOMER,
+        ):
             with self.subTest(path=path.name):
                 source = path.read_text(encoding="utf-8")
                 source.encode("ascii")
@@ -120,6 +163,7 @@ class DemoContractTests(unittest.TestCase):
             *sorted((ROOT / "docs").glob("*.md")),
             ROOT / "tools" / "build_demo_workbook.cjs",
             ROOT / "tools" / "build_collections_demo_workbook.cjs",
+            CAPABILITY_BUILDER,
         ]
         for path in public_materials:
             with self.subTest(path=path.name):

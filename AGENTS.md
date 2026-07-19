@@ -73,10 +73,8 @@ verification. No Python or Node dependency ships with the runtime.
 Repository validation commands:
 
 - source contracts: `.venv\Scripts\python.exe -m unittest discover -s tests\python -v`
-- whole-project static analysis: `.venv\Scripts\pyvbaanalysis.exe src\ROneCOne.cls
-  tests\vba\DelegateFixture.cls tests\vba\GenericCustomer.cls
-  tests\vba\DelegateProcedures.bas tests\vba\TestDelegates.bas
-  tests\vba\TestCollections.bas --no-inline-suppression --format text`
+- whole-project static analysis: `.venv\Scripts\pyvbaanalysis.exe src tests\vba demo\vba
+  --no-inline-suppression --format text`, followed by the same check over every final `.xlsm`
 - test workbook build: `.venv\Scripts\python.exe tools\build_test_workbook.py`
 - popup-aware live host suite: `powershell -ExecutionPolicy Bypass -File
   tools\run_excel_tests.ps1`
@@ -87,7 +85,8 @@ Repository validation commands:
 The runtime architectural boundary is the one-file class. `tests/vba` and `demo/vba` are workbook
 application code, not deployed dependencies. Complete changes require zero static diagnostics,
 passing source contracts, passing disposable-Excel suites and performance gates, byte-for-byte VBA
-round trips, popup-free final demo execution, and visual review of every demo worksheet. Preserve
+round trips, a versioned three-sample benchmark baseline, popup-free final demo execution, and
+visual review of every demo worksheet. Preserve
 ASCII VBA sources, 100-character source lines, MIT licensing, local-only diagnostics, and exact
 task-owned Excel process cleanup.
 

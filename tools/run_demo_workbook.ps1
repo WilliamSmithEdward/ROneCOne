@@ -8,6 +8,13 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+$taskPath = [Environment]::GetEnvironmentVariable("Path")
+if (-not [string]::IsNullOrWhiteSpace($taskPath)) {
+    [Environment]::SetEnvironmentVariable("PATH", $null, [EnvironmentVariableTarget]::Process)
+    [Environment]::SetEnvironmentVariable("Path", $taskPath, [EnvironmentVariableTarget]::Process)
+}
+
 $resolvedWorkbook = (Resolve-Path -LiteralPath $WorkbookPath).Path
 $resolvedProcessInfo = [System.IO.Path]::GetFullPath($ProcessInfoPath)
 $workingDirectory = Split-Path -Parent $resolvedProcessInfo

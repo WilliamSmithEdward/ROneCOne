@@ -11,6 +11,8 @@ from build_test_workbook import prepare_class_source, read_vba
 ROOT = Path(__file__).resolve().parents[1]
 DELEGATES_WORKBOOK = ROOT / "demo" / "ROneCOne_Delegates_Demo.xlsm"
 COLLECTIONS_WORKBOOK = ROOT / "demo" / "ROneCOne_Collections_Demo.xlsm"
+EVENTS_WORKBOOK = ROOT / "demo" / "ROneCOne_Events_Demo.xlsm"
+EXCEPTIONS_WORKBOOK = ROOT / "demo" / "ROneCOne_Exceptions_Demo.xlsm"
 
 
 def package_delegates(workbook_path: Path = DELEGATES_WORKBOOK) -> None:
@@ -82,15 +84,46 @@ def package_collections(workbook_path: Path = COLLECTIONS_WORKBOOK) -> None:
             raise RuntimeError("Collections demo usage source did not round-trip")
 
 
+def package_capability(
+    workbook_path: Path,
+    module_name: str,
+    source_path: Path,
+) -> None:
+    runtime_source = prepare_class_source(ROOT / "src" / "ROneCOne.cls")
+    demo_source = read_vba(source_path)
+
+    with ExcelFile(workbook_path) as workbook:
+        project = workbook.vba_project()
+        existing = set(workbook.module_names())
+        for name in ("Module1", "ROneCOne", module_name):
+            if name in existing:
+                project.delete_module(name)
+        project.add_module("ROneCOne", runtime_source, kind=VBAModuleKind.other)
+        project.add_module(module_name, demo_source, kind=VBAModuleKind.standard)
+        workbook.save()
+
+    with ExcelFile(workbook_path) as verification:
+        expected = {"ROneCOne", module_name}
+        missing = expected - set(verification.module_names())
+        if missing:
+            raise RuntimeError(f"Demo workbook is missing modules: {sorted(missing)}")
+        if verification.get_module("ROneCOne") != runtime_source:
+            raise RuntimeError("Capability demo runtime did not round-trip")
+        if verification.get_module(module_name) != demo_source:
+            raise RuntimeError(f"{module_name} did not round-trip")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--kind",
-        choices=("delegates", "collections", "all"),
+        choices=("delegates", "collections", "events", "exceptions", "all"),
         default="all",
     )
     parser.add_argument("--delegates-workbook", type=Path, default=DELEGATES_WORKBOOK)
     parser.add_argument("--collections-workbook", type=Path, default=COLLECTIONS_WORKBOOK)
+    parser.add_argument("--events-workbook", type=Path, default=EVENTS_WORKBOOK)
+    parser.add_argument("--exceptions-workbook", type=Path, default=EXCEPTIONS_WORKBOOK)
     return parser.parse_args()
 
 
@@ -102,3 +135,17 @@ if __name__ == "__main__":
     if arguments.kind in ("collections", "all"):
         package_collections(arguments.collections_workbook)
         print(arguments.collections_workbook)
+    if arguments.kind in ("events", "all"):
+        package_capability(
+            arguments.events_workbook,
+            "EventsDemoUsage",
+            ROOT / "demo" / "vba" / "EventsDemoUsage.bas",
+        )
+        print(arguments.events_workbook)
+    if arguments.kind in ("exceptions", "all"):
+        package_capability(
+            arguments.exceptions_workbook,
+            "ExceptionsDemoUsage",
+            ROOT / "demo" / "vba" / "ExceptionsDemoUsage.bas",
+        )
+        print(arguments.exceptions_workbook)

@@ -42,6 +42,12 @@ Public Sub RunROneCOneTests()
     TestNativeDelegate
     mCurrentTest = "TestComposition"
     TestComposition
+    mCurrentTest = "TestActionExecute"
+    TestActionExecute
+    mCurrentTest = "TestEvents"
+    TestEvents
+    mCurrentTest = "TestStructuredExceptions"
+    TestStructuredExceptions
     mCurrentTest = "TestUnboundParameterFailure"
     TestUnboundParameterFailure
     mCurrentTest = vbNullString
@@ -381,6 +387,163 @@ Private Sub TestComposition()
     Set pipeline = square.PipeTo(doubleValue)
 
     AssertEqual "composition", CLng(18), pipeline(CLng(3))
+End Sub
+
+Private Sub TestActionExecute()
+    Dim fixture As DelegateFixture
+    Dim recordValue As ROneCOne
+#If Win64 Then
+    Dim increment As ROneCOne
+    Dim value As Long
+#End If
+
+    Set fixture = New DelegateFixture
+    Set recordValue = ROneCOne.Action(fixture, "RecordValue").Takes(vbString)
+    recordValue.Execute "executed"
+
+    AssertEqual "Action Execute", "executed", fixture.LastValue
+
+#If Win64 Then
+    value = 41
+    Set increment = ROneCOne.NativeAction( _
+        DelegateProcedures.NativeIncrementLongAddress) _
+        .Takes(ROneCOne.RefOf(vbLong))
+    increment.Execute ROneCOne.RefLong(value)
+    AssertEqual "inline ByRef Execute", CLng(42), value
+#End If
+End Sub
+
+Private Sub TestEvents()
+    Dim actualError As Long
+    Dim emptyEvent As ROneCOne
+    Dim changed As ROneCOne
+    Dim firstHandler As ROneCOne
+    Dim invalidHandler As ROneCOne
+    Dim removed As Boolean
+    Dim secondHandler As ROneCOne
+
+    Set firstHandler = ROneCOne.Action("DelegateProcedures.RecordFirst") _
+        .Takes(vbString)
+    Set secondHandler = ROneCOne.Action("DelegateProcedures.RecordSecond") _
+        .Takes(vbString)
+    Set changed = ROneCOne.EventOf(vbString) _
+        .Subscribe(firstHandler) _
+        .Subscribe(secondHandler)
+
+    DelegateProcedures.ResetTrace
+    changed.Emit "ready"
+    removed = changed.Unsubscribe(secondHandler)
+
+    AssertEqual "event order", "first:ready|second:ready|", _
+        DelegateProcedures.CurrentTrace
+    AssertEqual "event subscriber count", CLng(1), changed.HandlerCount
+    AssertTrue "event unsubscribe", removed
+
+    DelegateProcedures.ResetTrace
+    changed.Emit "again"
+    AssertEqual "event after unsubscribe", "first:again|", _
+        DelegateProcedures.CurrentTrace
+
+    Set invalidHandler = ROneCOne.Action("DelegateProcedures.RecordFirst") _
+        .Takes(vbLong)
+    On Error Resume Next
+    changed.Subscribe invalidHandler
+    actualError = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertEqual "event signature mismatch", _
+        ROneCOne.TypeMismatchError, actualError
+    AssertEqual "failed subscription is atomic", CLng(1), changed.HandlerCount
+
+    Set emptyEvent = ROneCOne.EventOf(vbString)
+    emptyEvent.Emit "nobody"
+    AssertEqual "empty event", CLng(0), emptyEvent.HandlerCount
+End Sub
+
+Private Sub TestStructuredExceptions()
+    Dim attempt As ROneCOne
+    Dim cleanup As ROneCOne
+    Dim errorHandler As ROneCOne
+    Dim errorNumber As Long
+    Dim failingCatch As ROneCOne
+    Dim failingFinally As ROneCOne
+    Dim success As ROneCOne
+    Dim work As ROneCOne
+    Dim wrongCatch As ROneCOne
+
+    Set work = ROneCOne.Action( _
+        ROneCOne.Value(1).Divide(CLng(0))).Takes()
+    Set errorHandler = ROneCOne.Action("DelegateProcedures.HandleExpected") _
+        .Takes(ROneCOne.Exception)
+    Set cleanup = ROneCOne.Action("DelegateProcedures.RecordFinally").Takes()
+    Set attempt = ROneCOne.Try(work) _
+        .Catch(errorHandler) _
+        .Finally(cleanup)
+
+    DelegateProcedures.ResetTrace
+    attempt.Execute
+    AssertTrue "Try Catch message", _
+        InStr(1, DelegateProcedures.CurrentTrace, "caught:", _
+            vbBinaryCompare) = 1
+    AssertTrue "Try Finally trace", _
+        Right$(DelegateProcedures.CurrentTrace, 8) = "finally|"
+
+    Set attempt = ROneCOne.Try(work) _
+        .Catch(DelegateProcedures.OtherErrorNumber, errorHandler) _
+        .Finally(cleanup)
+    DelegateProcedures.ResetTrace
+    On Error Resume Next
+    attempt.Execute
+    errorNumber = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertEqual "filtered Catch rethrows", CLng(11), errorNumber
+    AssertEqual "Finally on rethrow", "finally|", DelegateProcedures.CurrentTrace
+
+    Set success = ROneCOne.Action("DelegateProcedures.RecordWork").Takes()
+    Set attempt = ROneCOne.Try(success).Finally(cleanup)
+    DelegateProcedures.ResetTrace
+    attempt.Execute
+    AssertEqual "Finally on success", "work|finally|", _
+        DelegateProcedures.CurrentTrace
+
+    Set failingCatch = ROneCOne.Action( _
+        ROneCOne.Value(1).Divide(CLng(0))).Takes()
+    Set attempt = ROneCOne.Try(work) _
+        .Catch(failingCatch) _
+        .Finally(cleanup)
+    DelegateProcedures.ResetTrace
+    On Error Resume Next
+    attempt.Execute
+    errorNumber = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertEqual "Catch failure propagates", CLng(11), errorNumber
+    AssertEqual "Finally after Catch failure", "finally|", _
+        DelegateProcedures.CurrentTrace
+
+    Set failingFinally = ROneCOne.Action( _
+        ROneCOne.Value(1).Divide(CLng(0))).Takes()
+    Set attempt = ROneCOne.Try(success).Finally(failingFinally)
+    DelegateProcedures.ResetTrace
+    On Error Resume Next
+    attempt.Execute
+    errorNumber = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertEqual "Finally failure propagates", CLng(11), errorNumber
+    AssertEqual "work ran before failed Finally", "work|", _
+        DelegateProcedures.CurrentTrace
+
+    Set wrongCatch = ROneCOne.Action("DelegateProcedures.HandleExpected") _
+        .Takes(vbObject)
+    On Error Resume Next
+    Set attempt = ROneCOne.Try(work).Catch(wrongCatch)
+    errorNumber = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertEqual "Catch requires Exception signature", _
+        ROneCOne.TypeMismatchError, errorNumber
 End Sub
 
 Private Sub TestUnboundParameterFailure()

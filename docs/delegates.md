@@ -47,8 +47,9 @@ object member name binds `Run`, giving application classes a concise callable-ob
 `Takes` and `Returns` add immutable runtime signature metadata:
 
 ```vba
-Set transform = ROneCOne.Func(target, "Transform")
-Set transform = transform.Takes(vbLong).Returns(vbString)
+Set transform = ROneCOne.Func(target, "Transform") _
+    .Takes(vbLong) _
+    .Returns(vbString)
 ```
 
 Use a non-`Nothing` class prototype instead of a `VbVarType` token for an exact user-defined class:
@@ -90,13 +91,14 @@ behavior. `Remove` removes the last matching invocation subsequence and leaves t
 `ROneCOne.Func(existingAction)` and `existingAction.Returns(...)` raise `InvalidOperationError`.
 
 ```vba
-Dim ignored As Variant
-
 Set changed = ROneCOne.Combine(firstHandler, secondHandler)
-ignored = changed("ready")
+changed.Execute "ready"
 Set withoutSecond = changed.Remove(secondHandler)
 Set handlers = changed.GetInvocationList
 ```
+
+`Execute` is the statement-form invocation surface for Actions. It validates the same signature as
+`Run` and discards the Empty Action result, so application code never needs an `ignored` variable.
 
 `PipeTo` is function composition: it passes the first delegate's result to a one-argument
 continuation.
@@ -113,14 +115,12 @@ a typed reference factory captures the caller's original variable:
 
 ```vba
 Dim increment As ROneCOne
-Dim reference As ROneCOne
 Dim value As Long
 
 value = 41
 Set increment = ROneCOne.NativeAction(IncrementLongAddress) _
     .Takes(ROneCOne.RefOf(vbLong))
-Set reference = ROneCOne.RefLong(value)
-ignored = increment(reference)
+increment.Execute ROneCOne.RefLong(value)
 Debug.Print value  ' 42
 ```
 

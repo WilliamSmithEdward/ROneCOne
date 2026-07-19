@@ -14,9 +14,7 @@ silently coerce them.
 ```vba
 Dim numbers As ROneCOne
 
-Set numbers = ROneCOne.ListOf(vbLong)
-numbers.Add CLng(5)
-numbers.Add CLng(10)
+Set numbers = ROneCOne.ListOf(vbLong, CLng(5), CLng(10))
 
 Debug.Print numbers.GenericTypeName  ' List<Long>
 Debug.Print numbers(0)               ' 5: default zero-based indexer
@@ -27,22 +25,18 @@ An invalid mutation raises `ROneCOne.TypeMismatchError` before changing the list
 
 ## User-defined class lists
 
-Pass one non-`Nothing` prototype to capture the exact concrete class name. The prototype is not
-retained. Members may contain instances of that class or `Nothing`; unrelated object types are
-rejected.
+`ListFrom(first, rest...)` infers the exact concrete class from the first item. `ListLike(example)`
+creates an empty list of that inferred type. When an empty list has no real example yet, pass one
+non-`Nothing` prototype to `ListOf`; the prototype is not retained. Members may contain instances
+of that class or `Nothing`; unrelated object types are rejected.
 
 ```vba
-Dim prototype As Customer
 Dim ada As Customer
 Dim customers As ROneCOne
 
-Set prototype = New Customer
-Set customers = ROneCOne.ListOf(prototype)
-Set prototype = Nothing
-
 Set ada = New Customer
 ada.CustomerName = "Ada"
-customers.Add ada
+Set customers = ROneCOne.ListFrom(ada)
 
 Debug.Print customers.GenericTypeName       ' List<Customer>
 Debug.Print customers.Item(0).CustomerName  ' Ada
@@ -55,14 +49,18 @@ VBIDE trust, or a second runtime class.
 
 | C# idea | ROneCOne member | Behavior |
 |---|---|---|
-| `new List<T>()` | `ListOf(typeToken)` / `ListLike(example)` | Creates an empty strict list |
+| `new List<T> { ... }` | `ListOf(typeToken, items...)` | Creates an explicitly typed list |
+| inferred collection expression | `ListFrom(first, rest...)` | Infers `T` and populates the list |
+| `new List<T>()` | `ListLike(example)` | Infers `T` and creates an empty list |
 | `list[index]` | `list(index)` / `list.Item(index)` | Zero-based get; `Item` also supports set |
-| `Add` / `AddRange` | `Add` / `AddRange` | Validates before mutation |
+| `Add` / `AddRange` | `Add` / `AddRange` | Accepts typed sequences, arrays, or Collections atomically |
 | `Insert` | `Insert` | Inserts at a zero-based position |
 | `Remove` / `RemoveAt` | `Remove` / `RemoveAt` | Removes by value or index |
 | `Contains` / `IndexOf` | `Contains` / `IndexOf` | Scalar equality or object identity |
 | `Count` / `Clear` | `Count` / `Clear` | Immediate count and mutation |
 | `foreach` | `For Each` | Supports independent nested enumeration |
+| `List<T>.ForEach` | `ForEach(Action)` | Runs one typed Action per element |
+| `String.Join` | `JoinText(separator)` | Joins scalar elements without a helper loop |
 | `ToArray` | `ToArray` | Returns a zero-based Variant array |
 
 ## Deferred LINQ
@@ -76,9 +74,7 @@ Dim filtered As ROneCOne
 Dim numbers As ROneCOne
 Dim x As ROneCOne
 
-Set numbers = ROneCOne.ListOf(vbLong)
-numbers.Add CLng(5)
-numbers.Add CLng(20)
+Set numbers = ROneCOne.ListOf(vbLong, CLng(5), CLng(20))
 
 Set x = numbers.Element
 Set filtered = numbers.Where(x.GreaterThan(CLng(10)))
@@ -92,8 +88,8 @@ Debug.Print filtered.Last    ' 30
 
 The sequence operators are `Where`, `SelectItems`, `Take`, `Skip`, `Distinct`, `OrderBy`,
 `OrderByDescending`, `Append`, `Prepend`, and `Reverse`. `Range` and `Repeat` create typed source
-sequences. Immediate terminals are `AnyItem`, `All`, `First`, `Last`, `Sum`, `Average`, `Min`,
-`Max`, `Count`, `ToList`, and `ToArray`.
+sequences. Immediate terminals are `Exists`, `AnyItem`, `All`, `First`, `Last`, `Sum`, `Average`,
+`Min`, `Max`, `Count`, `ForEach`, `JoinText`, `ToList`, and `ToArray`.
 
 ```vba
 Set result = ROneCOne.Range(CLng(1), CLng(6)) _
@@ -118,12 +114,16 @@ contract. The canonical members remain public for explicit construction, teachin
 | `values.Where(x.AtLeast(10))` | `values.Where(ROneCOne.Lambda(x.GreaterThanOrEqual(10), x))` | Inferred unary predicate |
 | `values.Map(x.Multiply(2), vbLong)` | `values.SelectItems(ROneCOne.Lambda(x.Multiply(2), x), vbLong)` | Typed projection |
 | `values.Exists(predicate)` | `values.AnyItem(predicate)` | Predicate-based existence test |
+| `values.Exists` | `values.AnyItem` | Tests whether the sequence has an element |
+| `values.ForEach(action)` | explicit `For Each` plus `action.Execute` | Typed side effects |
+| `values.JoinText("|")` | explicit string-building loop | Scalar text joining |
 | `values.Sorted` | `values.OrderBy(values.Element)` | Identity-key ascending order |
 | `values.SortedDescending` | `values.OrderByDescending(values.Element)` | Identity-key descending order |
 
 `Where`, `Map`, ordering, quantifiers, element terminals, and selector-based numeric terminals all
-accept either a unary delegate or an expression containing exactly one parameter. The runtime
-infers that parameter once when the query is built, not once per element.
+accept either any universal unary `Func` or an expression containing exactly one parameter. That
+includes object, callable-object, workbook-procedure, native, composition, and multicast delegates.
+The runtime infers expression parameters once when the query is built, not once per element.
 
 ## LINQ over user-defined classes
 
@@ -137,10 +137,7 @@ Dim customers As ROneCOne
 Dim experienced As ROneCOne
 Dim names As ROneCOne
 Dim oldest As DemoCustomer
-Dim prototype As DemoCustomer
-
-Set prototype = New DemoCustomer
-Set customers = ROneCOne.ListOf(prototype)
+Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 Set customer = customers.Element
 
 Set experienced = customers.Where(customer("Age").AtLeast(CLng(40)))
@@ -161,7 +158,7 @@ Dim age As ROneCOne
 Dim customer As ROneCOne
 Dim predicate As ROneCOne
 
-Set customer = ROneCOne.ParameterLike(prototype)
+Set customer = ROneCOne.ParameterLike(ada)
 Set age = customer.Member("Age")
 Set predicate = ROneCOne.Lambda( _
     age.GreaterThanOrEqual(CLng(40)), customer)

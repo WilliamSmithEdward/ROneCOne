@@ -162,8 +162,8 @@ examples.getRange("A6:D16").values = [
   ["Object Func", "new Func<int,int,double>(Max)", "ROneCOne.Func(WorksheetFunction, \"Max\")\n    .Takes(vbLong, vbLong).Returns(vbDouble)", 7],
   ["Procedure Func", "new Func<int,int,int>(Add)", "ROneCOne.Func(\"DemoUsage.DemoAddValues\")\n    .Takes(vbLong, vbLong).Returns(vbLong)", 13],
   ["DynamicInvoke", "add.DynamicInvoke(args)", "workbookAdd.DynamicInvoke(Array(20, 22))", 42],
-  ["Multicast Action", "Delegate.Combine(first, second)", "Set combined = ROneCOne.Combine(firstAction, secondAction)\ncombined(\"value\")", "first:value|second:value|"],
-  ["True ByRef", "increment(ref value)", "Set reference = ROneCOne.RefLong(value)\nincrement(reference)", 42],
+  ["Multicast Action", "Delegate.Combine(first, second)", "Set combined = ROneCOne.Combine(firstAction, secondAction)\ncombined.Execute \"value\"", "first:value|second:value|"],
+  ["True ByRef", "increment(ref value)", "increment.Execute ROneCOne.RefLong(value)", 42],
   ["Composition", "square.Then(double)", "square.PipeTo(doubleValue)(3)", 18],
   ["Signature metadata", "delegate.GetType()", "workbookAdd.Signature", "Func<Long, Long, Long>"],
 ];
@@ -273,9 +273,9 @@ architecture.getRange("A13:D18").values = [
   [1, "Universal delegates + expression lambdas", "AVAILABLE (v0.5.0)", "Tagged object kernel"],
   [2, "Runtime-generic List<T> + LINQ", "AVAILABLE (v0.2.0)", "Delegates"],
   [3, "Inferred Func + clear LINQ syntax", "AVAILABLE (v0.4.0)", "Delegates + collections"],
-  [4, "Try / Catch / Finally", "SCHEDULED", "Delegates"],
-  [5, "Tasks / async / await / cancellation", "SCHEDULED", "Exceptions + delegates"],
-  [6, "Events / disposables / native-safe parallelism", "SCHEDULED", "Tasks + collections"],
+  [4, "Try / Catch / Finally", "AVAILABLE (v0.6.0)", "Delegates"],
+  [5, "Typed events", "AVAILABLE (v0.6.0)", "Actions + multicast"],
+  [6, "Tasks / async / await / cancellation", "SCHEDULED", "Exceptions + delegates"],
 ];
 architecture.getRange("A13:D18").format = {
   borders: { preset: "all", style: "thin", color: colors.line },

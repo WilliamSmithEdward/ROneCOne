@@ -46,8 +46,9 @@ workbook procedures. Immutable `Takes` and `Returns` descriptors enforce runtime
 delegate representation.
 
 ```vba
-Set transform = ROneCOne.Func(target, "Transform")
-Set transform = transform.Takes(vbLong).Returns(vbString)
+Set transform = ROneCOne.Func(target, "Transform") _
+    .Takes(vbLong) _
+    .Returns(vbString)
 ```
 
 Native delegates add a narrower Windows x64 boundary. `Native` and `NativeAction` require complete
@@ -71,12 +72,29 @@ unchanged and refresh after mutation.
 
 See [`collections.md`](collections.md) for the public surface and examples.
 
+## Event slice
+
+An event is a mutable typed publisher with an owned handler list. `EventOf` builds its parameter
+contract through the same descriptors as `Action.Takes`; `Subscribe` verifies the complete Action
+signature before mutation. `Emit` validates arguments once and invokes a snapshot in deterministic
+order. This preserves .NET-like duplicate subscription and last-match removal semantics without
+turning event state into process-global state. See [`events.md`](events.md).
+
+## Structured exception slice
+
+`Try` operations are immutable builders over zero-argument Actions. Catch clauses retain an error
+number filter and an Action; `Finally` retains one cleanup Action. Execution captures the local VBA
+`Err` state into a tagged error value, selects the first matching catch, always runs cleanup, and
+rethrows the final pending error. Catch and cleanup invocation are isolated in separate VBA frames
+so secondary errors can be captured without an already-active error handler. See
+[`exceptions.md`](exceptions.md).
+
 ## State and isolation
 
-Expression nodes, delegates, and query nodes are immutable after construction. Explicit list
-instances own their mutable values; the predeclared instance remains a stateless factory. Scheduler
-and diagnostics components follow the same ownership rule: explicit runtime contexts are keyed to
-one workbook, and process-global mutable state never couples workbooks.
+Expression nodes, delegates, query nodes, and Try builders are immutable after construction.
+Explicit lists and events own their mutable values; the predeclared instance remains a stateless
+factory. Scheduler and diagnostics components follow the same ownership rule: explicit runtime
+contexts are keyed to one workbook, and process-global mutable state never couples workbooks.
 
 ## Release sequence
 
@@ -85,9 +103,10 @@ one workbook, and process-global mutable state never couples workbooks.
 | Available | Universal delegates, multicast, native calls, and expression lambdas |
 | Available | Runtime-generic `List<T>` and foundational query operators |
 | Available | Inferred `Func` and LINQ syntax sugar |
-| Scheduled | Structured `Try/Catch/Finally` over callable blocks |
+| Available | Typed events over universal Actions |
+| Available | Structured `Try/Catch/Finally` over callable blocks |
 | Scheduled | Tasks, async/await, cancellation, progress, and captured exceptions |
-| Scheduled | Additional generic collections, events, disposables, and native-safe parallelism |
+| Scheduled | Additional generic collections, disposables, and native-safe parallelism |
 
 Each capability must pass its full behavioral, live-host, and performance gates before it enters
 the supported surface.

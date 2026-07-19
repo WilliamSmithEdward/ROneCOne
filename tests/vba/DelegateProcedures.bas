@@ -10,6 +10,9 @@ Private Declare PtrSafe Sub CopyPointer Lib "kernel32" Alias "RtlMoveMemory" ( _
 #End If
 
 Private mTrace As String
+Private mTotal As Long
+
+Private Const OTHER_ERROR As Long = vbObjectError + 5202
 
 Public Function AddValues(ByVal leftValue As Variant, ByVal rightValue As Variant) As Variant
     AddValues = leftValue + rightValue
@@ -33,6 +36,38 @@ End Sub
 
 Public Function CurrentTrace() As String
     CurrentTrace = mTrace
+End Function
+
+Public Sub AccumulateLong(ByVal value As Variant)
+    mTotal = mTotal + CLng(value)
+End Sub
+
+Public Sub ResetTotal()
+    mTotal = 0
+End Sub
+
+Public Function CurrentTotal() As Long
+    CurrentTotal = mTotal
+End Function
+
+Public Function IsEvenLong(ByVal value As Variant) As Variant
+    IsEvenLong = (CLng(value) Mod 2 = 0)
+End Function
+
+Public Sub RecordWork()
+    mTrace = mTrace & "work|"
+End Sub
+
+Public Sub HandleExpected(ByVal errorInfo As Variant)
+    mTrace = mTrace & "caught:" & errorInfo.Message & "|"
+End Sub
+
+Public Sub RecordFinally()
+    mTrace = mTrace & "finally|"
+End Sub
+
+Public Function OtherErrorNumber() As Long
+    OtherErrorNumber = OTHER_ERROR
 End Function
 
 #If Win64 Then

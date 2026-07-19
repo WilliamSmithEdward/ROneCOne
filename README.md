@@ -1,9 +1,9 @@
 # ROneCOne
 
 ROneCOne is a one-file runtime that brings typed expressions, universal delegates, runtime-generic
-collections, and LINQ-style queries to ordinary Excel VBA. Version 0.5.0 unifies expression
-lambdas, object methods, callable objects, workbook procedures, multicast chains, and
-signature-bound native entry points behind one immutable `Func` / `Action` model.
+collections, LINQ-style queries, typed events, and structured exceptions to ordinary Excel VBA.
+Version 0.6.0 adds fluent `EventOf` publishers, `Try/Catch/Finally`, Action `Execute`, collection
+initializers, `ForEach`, and text joining over the universal delegate kernel.
 
 The deployed runtime is one [`ROneCOne.cls`](src/ROneCOne.cls) file. It requires no install,
 add-in, runtime code generation, network access, external package, or trusted VBIDE access.
@@ -16,8 +16,12 @@ Each core capability has its own verified workbook:
   object, procedure, dynamic, multicast, metadata, composition, and true-`ByRef` examples.
 - [`ROneCOne_Collections_Demo.xlsm`](demo/ROneCOne_Collections_Demo.xlsm) runs fourteen `List<T>`
   and LINQ examples, including a dedicated **User Class LINQ** tutorial.
+- [`ROneCOne_Events_Demo.xlsm`](demo/ROneCOne_Events_Demo.xlsm) demonstrates typed subscription,
+  deterministic emission, removal, and handler metadata.
+- [`ROneCOne_Exceptions_Demo.xlsm`](demo/ROneCOne_Exceptions_Demo.xlsm) demonstrates catch-all and
+  filtered catches, rethrow behavior, and guaranteed finalization.
 
-Both include a 10,000-operation benchmark and execute in one Excel process. Import
+Each includes a same-process benchmark and executes in one Excel process. Import
 [`ROneCOne.cls`](src/ROneCOne.cls) through the VBE's **File > Import File** command to use the
 runtime in another workbook.
 
@@ -37,8 +41,9 @@ Object methods, callable objects, and workbook procedures share the same typed c
 ```vba
 Dim maximum As ROneCOne
 
-Set maximum = ROneCOne.Func(Application.WorksheetFunction, "Max")
-Set maximum = maximum.Takes(vbLong, vbLong).Returns(vbDouble)
+Set maximum = ROneCOne.Func(Application.WorksheetFunction, "Max") _
+    .Takes(vbLong, vbLong) _
+    .Returns(vbDouble)
 
 Debug.Print maximum(CLng(4), CLng(7))
 Debug.Print maximum.DynamicInvoke(Array(CLng(4), CLng(7)))
@@ -49,10 +54,8 @@ Debug.Print maximum.Signature  ' Func<Long, Long, Double>
 
 ```vba
 Dim changed As ROneCOne
-Dim ignored As Variant
-
 Set changed = ROneCOne.Combine(firstHandler, secondHandler)
-ignored = changed("ready")
+changed.Execute "ready"
 Set changed = changed.Remove(secondHandler)
 ```
 
@@ -62,10 +65,7 @@ Typed collections and user-defined classes use the same delegate kernel:
 Dim customer As ROneCOne
 Dim customers As ROneCOne
 Dim names As ROneCOne
-Dim prototype As Customer
-
-Set prototype = New Customer
-Set customers = ROneCOne.ListOf(prototype)
+Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 Set customer = customers.Element
 Set names = customers _
     .Where(customer("Age").AtLeast(CLng(40))) _
@@ -74,8 +74,30 @@ Set names = customers _
     .ToList
 ```
 
-## Version 0.5.0
+Typed events and structured exceptions use the same Actions:
 
+```vba
+Set changed = ROneCOne.EventOf(vbString) _
+    .Subscribe(firstHandler) _
+    .Subscribe(secondHandler)
+changed.Emit "ready"
+
+Set attempt = ROneCOne.Try(work) _
+    .Catch(errorHandler) _
+    .Finally(cleanup)
+attempt.Execute
+```
+
+## Version 0.6.0
+
+- `Execute` for Action calls without dummy return variables
+- typed `EventOf`, `Subscribe`, `Unsubscribe`, `Emit`, and `HandlerCount`
+- structured `Try`, catch-all or error-number `Catch`, `Finally`, captured exception metadata,
+  rethrow semantics, and cleanup precedence
+- populated `ListOf(T, items...)`, inferred `ListFrom(first, rest...)`, and tested `ListLike`
+- atomic `AddRange` from typed sequences, VBA arrays, and `Collection` values
+- `ForEach(Action)`, predicate-optional `Exists`, and `JoinText`
+- every universal delegate role admitted across LINQ selectors and predicates
 - universal `Func` and `Action` factories for expressions, objects, and workbook procedures
 - default callable-object binding through an object's `Run` method
 - immutable `.Takes(...)` and `.Returns(...)` signatures for primitives and user classes
@@ -96,7 +118,9 @@ closer `square(9)` form. VBA also reserves `Select` and `Any`; ROneCOne uses con
 
 See [`docs/delegates.md`](docs/delegates.md) for the concise and canonical delegate forms, ABI and
 `ByRef` safety boundaries, and complete invocation model. See
-[`docs/collections.md`](docs/collections.md) for `List<T>` and LINQ semantics.
+[`docs/collections.md`](docs/collections.md) for `List<T>` and LINQ semantics,
+[`docs/events.md`](docs/events.md) for typed events, and
+[`docs/exceptions.md`](docs/exceptions.md) for structured error flow.
 
 ## Runtime contract
 
@@ -123,9 +147,7 @@ Use Python 3.10 or later. Development dependencies are isolated from the shipped
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .venv\Scripts\python.exe -m unittest discover -s tests\python -v
-.venv\Scripts\pyvbaanalysis.exe src\ROneCOne.cls tests\vba\DelegateFixture.cls `
-    tests\vba\GenericCustomer.cls tests\vba\DelegateProcedures.bas `
-    tests\vba\TestDelegates.bas tests\vba\TestCollections.bas `
+.venv\Scripts\pyvbaanalysis.exe src tests\vba demo\vba `
     --no-inline-suppression --format text
 .venv\Scripts\python.exe tools\build_test_workbook.py
 powershell -ExecutionPolicy Bypass -File tools\run_excel_tests.ps1
@@ -137,14 +159,14 @@ deadline. It never enumerates or closes user-open Excel instances. See
 [`docs/development.md`](docs/development.md).
 
 The optional `%USERPROFILE%\.ronecone.env` is private. The committed
-`.ronecone.env.example` defines the reserved local-only diagnostics schema; version 0.5.0 does not
+`.ronecone.env.example` defines the reserved local-only diagnostics schema; version 0.6.0 does not
 read it or emit runtime logs.
 
 ## Release roadmap
 
-Delegates, expression lambdas, runtime-generic `List<T>`, and foundational LINQ are available now.
-The release sequence continues with structured exceptions, additional generic collections, tasks
-and async/await, events, disposables, and native-safe parallel operations. See
+Delegates, expression lambdas, runtime-generic `List<T>`, foundational LINQ, events, and structured
+exceptions are available now. The release sequence continues with additional generic collections,
+tasks and async/await, disposables, and native-safe parallel operations. See
 [`docs/architecture.md`](docs/architecture.md).
 
 ## License

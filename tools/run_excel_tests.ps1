@@ -9,6 +9,16 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Start-Process rejects environments that contain both Path and PATH. Some
+# automation hosts expose both spellings even on Windows, so collapse them in
+# this task process before launching the bounded worker.
+$taskPath = [Environment]::GetEnvironmentVariable("Path")
+if (-not [string]::IsNullOrWhiteSpace($taskPath)) {
+    [Environment]::SetEnvironmentVariable("PATH", $null, [EnvironmentVariableTarget]::Process)
+    [Environment]::SetEnvironmentVariable("Path", $taskPath, [EnvironmentVariableTarget]::Process)
+}
+
 $resolvedWorkbook = (Resolve-Path -LiteralPath $WorkbookPath).Path
 $outputDirectory = Join-Path $PSScriptRoot "..\tests\output"
 $workerOutput = Join-Path $outputDirectory "excel-test-worker.stdout.log"

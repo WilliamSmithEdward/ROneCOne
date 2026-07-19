@@ -8,6 +8,13 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+$taskPath = [Environment]::GetEnvironmentVariable("Path")
+if (-not [string]::IsNullOrWhiteSpace($taskPath)) {
+    [Environment]::SetEnvironmentVariable("PATH", $null, [EnvironmentVariableTarget]::Process)
+    [Environment]::SetEnvironmentVariable("Path", $taskPath, [EnvironmentVariableTarget]::Process)
+}
+
 $resolvedInput = (Resolve-Path -LiteralPath $InputPath).Path
 $resolvedOutput = [System.IO.Path]::GetFullPath($OutputPath)
 $resolvedProcessInfo = [System.IO.Path]::GetFullPath($ProcessInfoPath)

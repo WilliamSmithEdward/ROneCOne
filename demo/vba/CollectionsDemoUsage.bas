@@ -10,6 +10,8 @@ Private Const BENCHMARKS_SHEET As String = "Benchmarks"
 Private Const START_SHEET As String = "Start Here"
 Private Const USER_CLASS_SHEET As String = "User Class LINQ"
 
+Private mForEachTotal As Long
+
 ' -----------------------------------------------------------------------------
 ' Entry point
 ' -----------------------------------------------------------------------------
@@ -40,7 +42,6 @@ End Sub
 Private Sub WritePrimitiveCollectionExamples()
     Dim ada As DemoCustomer
     Dim customers As ROneCOne
-    Dim customerPrototype As DemoCustomer
     Dim enumerationValues As ROneCOne
     Dim filtered As ROneCOne
     Dim grace As DemoCustomer
@@ -49,28 +50,19 @@ Private Sub WritePrimitiveCollectionExamples()
     Dim sequence As ROneCOne
     Dim strictTypeRejected As Boolean
     Dim total As Long
-    Dim value As Variant
     Dim x As ROneCOne
 
-    Set numbers = ROneCOne.ListOf(vbLong)
-    numbers.Add CLng(5)
-    numbers.Add CLng(10)
-    numbers.Add CLng(15)
+    Set numbers = ROneCOne.ListOf( _
+        vbLong, CLng(5), CLng(10), CLng(15))
     strictTypeRejected = RaisesExpectedTypeMismatch(numbers)
 
-    ' A prototype captures T without being retained by the collection.
-    Set customerPrototype = New DemoCustomer
-    Set customers = ROneCOne.ListOf(customerPrototype)
-    Set customerPrototype = Nothing
+    ' ListFrom infers the exact user class from its first value.
     Set ada = CreateCustomer("Ada", CLng(36), "London")
     Set grace = CreateCustomer("Grace", CLng(40), "Arlington")
-    customers.Add ada
-    customers.Add grace
+    Set customers = ROneCOne.ListFrom(ada, grace)
 
     ' Deferred execution means this query observes the later Add operation.
-    Set numbers = ROneCOne.ListOf(vbLong)
-    numbers.Add CLng(5)
-    numbers.Add CLng(20)
+    Set numbers = ROneCOne.ListOf(vbLong, CLng(5), CLng(20))
     Set x = numbers.Element
     Set filtered = numbers.Where(x.GreaterThan(CLng(10)))
     numbers.Add CLng(30)
@@ -83,10 +75,7 @@ Private Sub WritePrimitiveCollectionExamples()
         .Take(CLng(2)) _
         .ToList
 
-    Set sequence = ROneCOne.ListOf(vbLong)
-    sequence.Add CLng(2)
-    sequence.Add CLng(2)
-    sequence.Add CLng(3)
+    Set sequence = ROneCOne.ListOf(vbLong, CLng(2), CLng(2), CLng(3))
     Set sequence = sequence.Distinct _
         .Prepend(CLng(1)) _
         .Append(CLng(4)) _
@@ -96,9 +85,10 @@ Private Sub WritePrimitiveCollectionExamples()
 
     Set numbers = ROneCOne.Range(CLng(1), CLng(5))
     Set enumerationValues = ROneCOne.Range(CLng(1), CLng(4))
-    For Each value In enumerationValues
-        total = total + CLng(value)
-    Next value
+    mForEachTotal = 0
+    enumerationValues.ForEach ROneCOne.Action( _
+        "CollectionsDemoUsage.DemoAccumulateLong").Takes(vbLong)
+    total = mForEachTotal
 
     With ThisWorkbook.Worksheets(BASIC_EXAMPLES_SHEET)
         .Range("E6").Value2 = numbers.GenericTypeName
@@ -106,8 +96,8 @@ Private Sub WritePrimitiveCollectionExamples()
         .Range("E8").Value2 = customers.GenericTypeName & ":" & _
             customers.Item(1).CustomerName
         .Range("E9").Value2 = CStr(filtered.Count) & "|" & CStr(filtered.Last)
-        .Range("E10").Value2 = JoinList(projected, ",")
-        .Range("E11").Value2 = JoinList(sequence, ",")
+        .Range("E10").Value2 = projected.JoinText(",")
+        .Range("E11").Value2 = sequence.JoinText(",")
         .Range("E12").Value2 = CStr(numbers.Sum) & "|" & _
             CStr(numbers.Average) & "|" & CStr(numbers.Min) & "|" & _
             CStr(numbers.Max)
@@ -123,7 +113,6 @@ Private Sub WriteUserClassLinqExamples()
     Dim allExperienced As Boolean
     Dim anyLondon As Boolean
     Dim customer As ROneCOne
-    Dim customerPrototype As DemoCustomer
     Dim customers As ROneCOne
     Dim experienced As ROneCOne
     Dim firstCustomer As DemoCustomer
@@ -131,13 +120,10 @@ Private Sub WriteUserClassLinqExamples()
     Dim names As ROneCOne
     Dim orderedCustomers As ROneCOne
 
-    Set customerPrototype = New DemoCustomer
-    Set customers = ROneCOne.ListOf(customerPrototype)
-    Set customerPrototype = Nothing
-
-    customers.Add CreateCustomer("Ada", CLng(36), "London")
-    customers.Add CreateCustomer("Grace", CLng(40), "Arlington")
-    customers.Add CreateCustomer("Katherine", CLng(49), "Cleveland")
+    Set customers = ROneCOne.ListFrom( _
+        CreateCustomer("Ada", CLng(36), "London"), _
+        CreateCustomer("Grace", CLng(40), "Arlington"), _
+        CreateCustomer("Katherine", CLng(49), "Cleveland"))
 
     ' Element represents one typed customer. Its default member selects a
     ' scalar property, so customer("Age") is the VBA equivalent of c.Age.
@@ -167,7 +153,7 @@ Private Sub WriteUserClassLinqExamples()
         .Range("E6").Value2 = customers.GenericTypeName & ":" & customers.Count
         .Range("E7").Value2 = CStr(experienced.Count) & "|" & _
             lastCustomer.CustomerName
-        .Range("E8").Value2 = JoinList(names, "|")
+        .Range("E8").Value2 = names.JoinText("|")
         .Range("E9").Value2 = firstCustomer.CustomerName & "|" & _
             CStr(firstCustomer.Age)
         .Range("E10").Value2 = CStr(anyLondon) & "|" & CStr(allExperienced)
@@ -234,16 +220,9 @@ Private Function CreateCustomer( _
     Set CreateCustomer = customer
 End Function
 
-Private Function JoinList(ByVal values As ROneCOne, ByVal separator As String) As String
-    Dim index As Long
-    Dim result As String
-
-    For index = 0 To values.Count - 1
-        If index > 0 Then result = result & separator
-        result = result & CStr(values.Item(index))
-    Next index
-    JoinList = result
-End Function
+Public Sub DemoAccumulateLong(ByVal value As Variant)
+    mForEachTotal = mForEachTotal + CLng(value)
+End Sub
 
 Private Function RaisesExpectedTypeMismatch(ByVal values As ROneCOne) As Boolean
     Dim description As String

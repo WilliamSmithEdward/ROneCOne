@@ -51,11 +51,9 @@ Private Sub WriteDelegateExamples()
     Dim combined As ROneCOne
     Dim doubleValue As ROneCOne
     Dim firstAction As ROneCOne
-    Dim ignored As Variant
     Dim increment As ROneCOne
     Dim maximum As ROneCOne
     Dim pipeline As ROneCOne
-    Dim reference As ROneCOne
     Dim safeFalse As ROneCOne
     Dim secondAction As ROneCOne
     Dim square As ROneCOne
@@ -79,8 +77,9 @@ Private Sub WriteDelegateExamples()
 
     ' Func adapts an object method or a standard-module procedure.
     Set worksheetFunctions = Application.WorksheetFunction
-    Set maximum = ROneCOne.Func(worksheetFunctions, "Max")
-    Set maximum = maximum.Takes(vbLong, vbLong).Returns(vbDouble)
+    Set maximum = ROneCOne.Func(worksheetFunctions, "Max") _
+        .Takes(vbLong, vbLong) _
+        .Returns(vbDouble)
     Set workbookAdd = ROneCOne.Func("DemoUsage.DemoAddValues") _
         .Takes(vbLong, vbLong) _
         .Returns(vbLong)
@@ -92,15 +91,14 @@ Private Sub WriteDelegateExamples()
         .Takes(vbString)
     Set combined = ROneCOne.Combine(firstAction, secondAction)
     mTrace = vbNullString
-    ignored = combined("value")
+    combined.Execute "value"
 
     ' NativeAction supplies true ByRef semantics when identity must be preserved.
     value = 41
 #If Win64 Then
     Set increment = ROneCOne.NativeAction(DemoNativeIncrementLongAddress) _
         .Takes(ROneCOne.RefOf(vbLong))
-    Set reference = ROneCOne.RefLong(value)
-    ignored = increment(reference)
+    increment.Execute ROneCOne.RefLong(value)
 #End If
 
     Set doubleValue = x.Add(x).AsFunc

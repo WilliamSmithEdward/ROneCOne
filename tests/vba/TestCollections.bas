@@ -24,6 +24,10 @@ Public Sub RunROneCOneCollectionTests()
     TestUserClassLinq
     mCurrentTest = "TestSyntaxSugar"
     TestSyntaxSugar
+    mCurrentTest = "TestCollectionInitializers"
+    TestCollectionInitializers
+    mCurrentTest = "TestCollectionActions"
+    TestCollectionActions
     mCurrentTest = "TestListMutation"
     TestListMutation
     mCurrentTest = "TestDeferredWhere"
@@ -54,6 +58,77 @@ FatalFailure:
         .Range("B5").Value2 = mCurrentTest & " | " & CStr(capturedNumber) & _
             " | " & capturedSource & " | " & capturedDescription
     End With
+End Sub
+
+Private Sub TestCollectionInitializers()
+    Dim actualError As Long
+    Dim ada As GenericCustomer
+    Dim customers As ROneCOne
+    Dim grace As GenericCustomer
+    Dim inferredEmpty As ROneCOne
+    Dim numbers As ROneCOne
+    Dim values As Collection
+
+    Set numbers = ROneCOne.ListOf( _
+        vbLong, CLng(1), CLng(2), CLng(3))
+    AssertEqual "typed initializer count", CLng(3), numbers.Count
+    AssertEqual "typed initializer value", CLng(2), numbers.Item(1)
+
+    Set ada = New GenericCustomer
+    ada.CustomerName = "Ada"
+    Set grace = New GenericCustomer
+    grace.CustomerName = "Grace"
+    Set customers = ROneCOne.ListFrom(ada, grace)
+    Set inferredEmpty = ROneCOne.ListLike(ada)
+
+    AssertEqual "inferred initializer type", _
+        "List<GenericCustomer>", customers.GenericTypeName
+    AssertTrue "inferred initializer identity", customers.Item(0) Is ada
+    AssertEqual "ListLike type", _
+        "List<GenericCustomer>", inferredEmpty.GenericTypeName
+    AssertEqual "ListLike empty", CLng(0), inferredEmpty.Count
+
+    Set values = New Collection
+    values.Add CLng(4)
+    values.Add CLng(5)
+    numbers.AddRange values
+    numbers.AddRange Array(CLng(6), CLng(7))
+    AssertEqual "AddRange Collection and array", CLng(7), numbers.Count
+
+    On Error Resume Next
+    numbers.AddRange Array(CLng(8), "not a Long")
+    actualError = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertEqual "AddRange strict type", ROneCOne.TypeMismatchError, actualError
+    AssertEqual "AddRange remains atomic", CLng(7), numbers.Count
+End Sub
+
+Private Sub TestCollectionActions()
+    Dim actionValue As ROneCOne
+    Dim emptyValues As ROneCOne
+    Dim evenValues As ROneCOne
+    Dim predicate As ROneCOne
+    Dim values As ROneCOne
+
+    Set values = ROneCOne.ListOf( _
+        vbLong, CLng(1), CLng(2), CLng(3), CLng(4))
+    Set actionValue = ROneCOne.Action("DelegateProcedures.AccumulateLong") _
+        .Takes(vbLong)
+    DelegateProcedures.ResetTotal
+    values.ForEach actionValue
+
+    AssertEqual "ForEach Action", CLng(10), DelegateProcedures.CurrentTotal
+    AssertTrue "Exists without predicate", values.Exists
+    Set emptyValues = ROneCOne.ListOf(vbLong)
+    AssertTrue "Exists empty", Not emptyValues.Exists
+    AssertEqual "JoinText", "1|2|3|4", values.JoinText("|")
+
+    Set predicate = ROneCOne.Func("DelegateProcedures.IsEvenLong") _
+        .Takes(vbLong) _
+        .Returns(vbBoolean)
+    Set evenValues = values.Where(predicate).ToList
+    AssertEqual "procedure Func in LINQ", CLng(2), evenValues.Count
 End Sub
 
 Private Sub TestSyntaxSugar()

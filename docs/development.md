@@ -15,12 +15,14 @@ The live suite exercises explicit and inferred lambda creation, `Var`/`VarLike`,
 calls, explicit and default invocation, comparisons, short-circuit behavior, typed failures,
 object-member expressions, universal `Func`/`Action` adapters, callable objects, procedure calls,
 object returns, `DynamicInvoke`, metadata, multicast ordering/removal, native function pointers,
-true `ByRef`, fail-closed ABI boundaries, composition, and unbound-parameter rejection.
+true `ByRef`, fail-closed ABI boundaries, composition, typed events, structured exceptions, and
+unbound-parameter rejection.
 
 The collection suite adds strict primitive/user-class lists, atomic mutation failures, zero-based
-indexing, deferred source mutation, query chaining, numeric terminals, nested enumeration, and
-enumerator refresh after mutation. The current live totals are 39 delegate and 52 collection
-assertions.
+indexing, populated/inferred initializers, atomic heterogeneous inputs, deferred source mutation,
+universal procedure delegates in LINQ, `ForEach(Action)`, text joining, query chaining, numeric
+terminals, nested enumeration, and enumerator refresh after mutation. The current live totals are
+58 delegate/event/exception and 66 collection assertions.
 
 The invocation benchmark has a configurable release ceiling (`-MaxBenchmarkSeconds`, default
 `0.5` for 10,000 calls). The v0.1.0 measurements are stored in
@@ -35,6 +37,10 @@ Measurements are stored in `benchmarks/v0.3.0-baseline.json`.
 The v0.5.0 baseline runs the same hot paths after the universal delegate kernel, native ABI, and
 multicast changes. Measurements and live assertion totals are stored in
 `benchmarks/v0.5.0-baseline.json`.
+
+The v0.6.0 baseline repeats those gates after collection initializers, typed events, and structured
+exceptions. It records three fresh-process samples plus the expanded live assertion totals in
+`benchmarks/v0.6.0-baseline.json`.
 
 ## Popup-adaptive Excel harness
 
@@ -65,22 +71,42 @@ visual inspection, converted by a bounded task-owned Excel process, and then pop
 pyOpenVBA.
 
 ```powershell
-$env:NODE_PATH = "C:\Users\William\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\node_modules"
+# Set NODE_PATH to the artifact-tool node_modules directory reported by the
+# workspace dependency loader, or expose that directory as the local node_modules.
 node tools\build_demo_workbook.cjs
 node tools\build_collections_demo_workbook.cjs
+node tools\build_capability_demo_workbooks.cjs
 powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1
 powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
     -InputPath demo\.working\ROneCOne_Collections_Demo.xlsx `
     -OutputPath demo\ROneCOne_Collections_Demo.xlsm
+powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
+    -InputPath demo\.working\ROneCOne_Events_Demo.xlsx `
+    -OutputPath demo\ROneCOne_Events_Demo.xlsm
+powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
+    -InputPath demo\.working\ROneCOne_Exceptions_Demo.xlsx `
+    -OutputPath demo\ROneCOne_Exceptions_Demo.xlsm
 .venv\Scripts\python.exe tools\package_demo_workbook.py
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Collections_Demo.xlsm `
     -MacroName RunROneCOneCollectionsDemo
+powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Events_Demo.xlsm `
+    -MacroName RunROneCOneEventsDemo
+powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Exceptions_Demo.xlsm `
+    -MacroName RunROneCOneExceptionsDemo
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Collections_Demo.xlsm `
     -OutputPrefix collections
+powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Events_Demo.xlsm `
+    -OutputPrefix events
+powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Exceptions_Demo.xlsm `
+    -OutputPrefix exceptions
 ```
 
 Development-only VBIDE trust is used once during each conversion to seed an otherwise empty

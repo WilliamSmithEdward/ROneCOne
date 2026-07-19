@@ -159,14 +159,14 @@ async function main() {
   ]];
   tableHeader(examples.getRange("A5:F5"));
   examples.getRange("A6:D13").values = [
-    ["Primitive list", "List<long>", "Set values = ROneCOne.ListOf(vbLong)", "List<Long>"],
+    ["Primitive list", "new List<long> { 5, 10, 15 }", "ROneCOne.ListOf(vbLong, CLng(5), CLng(10), CLng(15))", "List<Long>"],
     ["Strict T", "Compile-time element type", "values.Add \"not a Long\"", true],
-    ["User class", "List<DemoCustomer>", "ROneCOne.ListOf(customerPrototype)", "List<DemoCustomer>:Grace"],
+    ["User class", "new List<DemoCustomer> { ada, grace }", "ROneCOne.ListFrom(ada, grace)", "List<DemoCustomer>:Grace"],
     ["Deferred Where", "query observes later mutation", "Set element = values.Element\nSet query = values.Where(element.AtLeast(10))\nvalues.Add 30", "2|30"],
     ["LINQ pipeline", "Where.Select.OrderBy.Take", ".Where(...).Map(...).SortedDescending.Take(2)", "60,40"],
     ["Sequence ops", "Distinct.Prepend.Append.Reverse.Skip", "values.Distinct.Prepend(1).Append(4).Reverse.Skip(1)", "3,2,1"],
     ["Terminals", "Sum/Average/Min/Max", "Range(1, 5).Sum / Average / Min / Max", "15|3|1|5"],
-    ["Enumeration", "foreach (var x in values)", "For Each value In values", 10],
+    ["ForEach Action", "values.ForEach(action)", "values.ForEach ROneCOne.Action(...)", 10],
   ];
   examples.getRange("F6").formulas = [
     ["=IF(E6=\"\",\"NOT RUN\",IF(E6=D6,\"PASS\",\"CHECK\"))"],
@@ -218,7 +218,7 @@ async function main() {
     [
       "Typed class list",
       "List<DemoCustomer>",
-      "Set customers = ROneCOne.ListOf(customerPrototype)",
+      "Set customers = ROneCOne.ListFrom(ada, grace, katherine)",
       "List<DemoCustomer>:4",
     ],
     [
@@ -338,7 +338,7 @@ async function main() {
   tableHeader(architecture.getRange("A5:F5"));
   architecture.getRange("A6:F12").values = [
     ["Concrete T", "VarType or exact class name", "Reject before mutation", "ENFORCED", 1, 0],
-    ["User classes", "Prototype type token", "Prototype is not retained", "ENFORCED", 1, 0],
+    ["User classes", "ListFrom or prototype token", "Exact class identity", "ENFORCED", 1, 0],
     ["Deferred LINQ", "Immutable query nodes", "Evaluate on consumption", "ENFORCED", 1, 0],
     ["Syntax sugar", "Implicit unary expressions", "Canonical API remains available", "ENFORCED", 1, 0],
     ["Enumeration", "Persistent list mirror", "Nested For Each works", "ENFORCED", 1, 0],

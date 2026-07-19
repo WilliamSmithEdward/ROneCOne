@@ -66,6 +66,7 @@ class SourceContractTests(unittest.TestCase):
             "Action",
             "Native",
             "Run",
+            "Execute",
             "DynamicInvoke",
             "Takes",
             "Returns",
@@ -107,9 +108,20 @@ class SourceContractTests(unittest.TestCase):
             "ByRefInvocationError",
             "InvalidOperationError",
             "TypeMismatchError",
+            "EventOf",
+            "Subscribe",
+            "Unsubscribe",
+            "Emit",
+            "HandlerCount",
+            "Try",
+            "Catch",
+            "Finally",
+            "Exception",
+            "ErrorNumber",
+            "Message",
         )
         for member in required_members:
-            pattern = rf"Public\s+(?:Function|Property\s+Get)\s+{member}\b"
+            pattern = rf"Public\s+(?:Function|Sub|Property\s+Get)\s+{member}\b"
             self.assertRegex(self.source, re.compile(pattern, re.IGNORECASE), member)
         self.assertNotRegex(
             self.source,
@@ -120,6 +132,7 @@ class SourceContractTests(unittest.TestCase):
         required_members = (
             "ListOf",
             "ListLike",
+            "ListFrom",
             "AddRange",
             "Clear",
             "Contains",
@@ -156,6 +169,8 @@ class SourceContractTests(unittest.TestCase):
             "Member",
             "Map",
             "Exists",
+            "ForEach",
+            "JoinText",
             "Sorted",
             "SortedDescending",
             "AtLeast",

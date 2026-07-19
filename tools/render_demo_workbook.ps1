@@ -1,6 +1,8 @@
 param(
     [string]$WorkbookPath = "demo\ROneCOne_Delegates_Demo.xlsm",
     [string]$OutputPrefix = "delegates",
+    [string]$NodeExecutable = "",
+    [string]$NodeModulesPath = "",
     [ValidateRange(10, 180)]
     [int]$TimeoutSeconds = 45,
     [ValidateRange(0, 15)]
@@ -8,8 +10,31 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$nodePath = "C:\Users\William\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe"
-$nodeModules = "C:\Users\William\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\node_modules"
+
+$taskPath = [Environment]::GetEnvironmentVariable("Path")
+if (-not [string]::IsNullOrWhiteSpace($taskPath)) {
+    [Environment]::SetEnvironmentVariable("PATH", $null, [EnvironmentVariableTarget]::Process)
+    [Environment]::SetEnvironmentVariable("Path", $taskPath, [EnvironmentVariableTarget]::Process)
+}
+
+if ([string]::IsNullOrWhiteSpace($NodeExecutable)) {
+    $nodePath = (Get-Command node -ErrorAction Stop).Source
+} else {
+    $nodePath = (Resolve-Path -LiteralPath $NodeExecutable).Path
+}
+
+if (-not [string]::IsNullOrWhiteSpace($NodeModulesPath)) {
+    $nodeModules = (Resolve-Path -LiteralPath $NodeModulesPath).Path
+} elseif (-not [string]::IsNullOrWhiteSpace($env:NODE_PATH)) {
+    $nodeModules = $env:NODE_PATH
+} else {
+    $localNodeModules = Join-Path $PSScriptRoot "..\node_modules"
+    if (-not (Test-Path -LiteralPath $localNodeModules)) {
+        throw "Artifact-tool modules were not found. Set NODE_PATH or pass -NodeModulesPath."
+    }
+    $nodeModules = (Resolve-Path -LiteralPath $localNodeModules).Path
+}
+
 $scriptPath = Join-Path $PSScriptRoot "render_demo_workbook.cjs"
 $workingDirectory = Join-Path $PSScriptRoot "..\demo\.working"
 $resolvedWorkbook = (Resolve-Path -LiteralPath $WorkbookPath).Path
