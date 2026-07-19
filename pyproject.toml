@@ -1,0 +1,18 @@
+[project]
+name = "ronecone-development"
+version = "0.1.0"
+description = "Development and verification tooling for the one-file ROneCOne VBA runtime"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = []
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pyright]
+pythonVersion = "3.10"
+typeCheckingMode = "strict"
