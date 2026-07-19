@@ -246,9 +246,10 @@ Apply this section only when the repository ships a user interface and the task 
 - Establish hierarchy with size, weight, contrast, whitespace, and proximity. Use borders sparingly.
 - Use a small modular type scale, readable line-height, and roughly 50 to 75 characters per line for
   sustained reading.
-- Use an 8-point spacing system with 4-pixel substeps when the existing design system does not define
-  another scale.
-- Reserve emphasis and accent color for the most important action. Never use color as the only signal.
+- Use an 8-point spacing system with 4-pixel substeps when the existing design system does not
+  define another scale.
+- Reserve emphasis and accent color for the most important action. Never use color as the only
+  signal.
 - Build responsive, reflowable layouts rather than fixed desktop compositions.
 
 ### Forms, tables, navigation, and charts
@@ -269,7 +270,8 @@ Apply this section only when the repository ships a user interface and the task 
 - Keep system status visible. Match feedback to approximate 0.1-second, 1-second, and 10-second
   response thresholds, using appropriate progress feedback for longer work.
 - Use optimistic UI only for low-risk actions with clear rollback or undo.
-- Target WCAG 2.x AA: at least 4.5:1 contrast for body text and 3:1 for large text and UI components.
+- Target WCAG 2.x AA: at least 4.5:1 contrast for body text and 3:1 for large text and UI
+  components.
 - Support full keyboard use, logical focus order, visible focus, semantic HTML, landmarks, and a
   valid heading hierarchy.
 - Announce material dynamic updates with ARIA live regions without stealing focus.
