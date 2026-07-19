@@ -126,7 +126,10 @@ class DemoContractTests(unittest.TestCase):
     def test_task_demo_leads_with_task_coordination(self) -> None:
         source = TASKS_DEMO.read_text(encoding="utf-8")
 
-        self.assertIn("ROneCOne.Task.WhenAll(tasks)", source)
+        self.assertIn("ROneCOne.Task.WhenAll(firstTask, secondTask).Await", source)
+        self.assertIn("ignored = delayed.Await", source)
+        self.assertIn(".WaitAsync(100&)", source)
+        self.assertIn("ROneCOne.Task.YieldOnce.Await", source)
         self.assertIn("firstTask.ContinueWith(continuation).Await", source)
         self.assertIn("ROneCOne.CancellationTokenSource", source)
         self.assertIn("ROneCOne.TaskCompletionSourceOf(vbLong)", source)
@@ -135,10 +138,13 @@ class DemoContractTests(unittest.TestCase):
         source = DATA_DEMO.read_text(encoding="utf-8")
 
         self.assertIn('table.Column("Id", vbLong).AutoNumber', source)
+        self.assertIn(".AsPrimaryKey", source)
+        self.assertIn('table.Row("Ada", 90&, ROneCOne.DBNull).Add', source)
         self.assertIn("ROneCOne.DataView(table)", source)
         self.assertIn("ROneCOne.DataRelation", source)
         self.assertIn("ROneCOne.DbDataAdapter(command)", source)
         self.assertIn("ExecuteScalarAsync", source)
+        self.assertIn("connection.AsyncMode", source)
 
     def test_capability_builder_and_packager_ship_separate_workbooks(self) -> None:
         builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")

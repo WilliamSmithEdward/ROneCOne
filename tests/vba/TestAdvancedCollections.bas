@@ -57,12 +57,15 @@ FatalFailure:
 End Sub
 
 Private Sub TestDictionary()
+    Dim capacity As Long
     Dim dictionary As ROneCOne
     Dim keys As ROneCOne
     Dim returnedValue As Long
     Dim valueReference As ROneCOne
 
     Set dictionary = ROneCOne.DictionaryOf(vbString, vbLong)
+    capacity = dictionary.EnsureCapacity(128&)
+    AssertTrue "dictionary reserves hash capacity", capacity >= 128&
     dictionary.Add "Ada", CLng(36)
     dictionary.Item("Grace") = CLng(40)
 
@@ -81,8 +84,15 @@ Private Sub TestDictionary()
     AssertTrue "dictionary keys", keys.Contains("Ada")
     AssertTrue "dictionary remove", dictionary.Remove("Ada")
     AssertFalse "dictionary removed key", dictionary.ContainsKey("Ada")
+    dictionary.TrimExcess
+    AssertTrue "dictionary trims without losing keys", _
+        dictionary.ContainsKey("Grace")
     AssertEqual "dictionary type name", "Dictionary<String, Long>", _
         dictionary.GenericTypeName
+    dictionary.Clear
+    dictionary.Add "Katherine", CLng(38)
+    AssertEqual "dictionary reuses cleared hash index", CLng(38), _
+        dictionary.Item("Katherine")
 End Sub
 
 Private Sub TestHashSet()
@@ -90,6 +100,8 @@ Private Sub TestHashSet()
     Dim rightSet As ROneCOne
 
     Set leftSet = ROneCOne.HashSetOf(vbLong)
+    AssertTrue "hash set reserves capacity", _
+        leftSet.EnsureCapacity(64&) >= 64&
     AssertTrue "hash set first add", leftSet.TryAdd(CLng(1))
     AssertFalse "hash set duplicate add", leftSet.TryAdd(CLng(1))
     leftSet.UnionWith Array(CLng(2), CLng(3))
@@ -101,6 +113,9 @@ Private Sub TestHashSet()
         leftSet.SetEquals(Array(CLng(1), CLng(2), CLng(3)))
     leftSet.IntersectWith rightSet
     AssertEqual "hash set intersection", CLng(2), leftSet.Count
+    leftSet.Clear
+    AssertTrue "hash set reuses cleared hash index", leftSet.TryAdd(CLng(8))
+    AssertTrue "hash set finds value after clear", leftSet.Contains(CLng(8))
 End Sub
 
 Private Sub TestQueueStackAndPriorityQueue()

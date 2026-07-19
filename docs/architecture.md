@@ -87,6 +87,14 @@ the chain evaluates each selector once into a key matrix, then applies a stable 
 sort. This keeps composite ordering O(n log n), preserves equal-key source order, and avoids
 repeated property or delegate calls inside the comparison loop.
 
+Default-equality hash collections use open addressing with power-of-two slot arrays and direct
+key/value references. Capacity reservation sizes the table for its load factor before mutation.
+Keyed reads can bypass `Collection.Item`, whose numeric access is linear in VBA, while canonical
+collections remain the ordered enumeration source. Deletion and replacement rebuild the compact
+index so canonical positions and direct slots cannot diverge. Custom equality delegates use the
+linear path because the runtime cannot infer a hash function that honors an arbitrary comparer.
+Sorted maps and sets use binary search over their maintained order.
+
 The sequence default member distinguishes numeric indices from String member names. Numeric values
 retain zero-based indexing; names return `Condition(name)`. This makes VBA's native `sequence!Age`
 syntax an expression selector without code generation, parsing a new language, or accessing VBIDE.
@@ -94,6 +102,18 @@ syntax an expression selector without code generation, parsing a new language, o
 method delegates as `Func<T, Boolean>`.
 
 See [`collections.md`](collections.md) for the public surface and examples.
+
+## Task, data, and provider slice
+
+Tasks are explicit cooperative state machines driven on Excel's owning thread. Deadlines use
+`GetTickCount64`; bounded waits pump events, sleep briefly, and reject same-task reentrancy.
+Combinators retain child tasks, cancellation registrations own removable callback entries, and
+fault sets are represented as AggregateException values without losing VBA error identity.
+
+Data tables maintain primary-key hash indexes. Relations cache parent and child lookup indexes and
+invalidate them from table version changes. Provider objects remain late-bound ADO wrappers;
+task-returning calls report cooperative capability honestly, and deterministic scopes centralize
+cleanup and dual-failure aggregation.
 
 ## Event slice
 

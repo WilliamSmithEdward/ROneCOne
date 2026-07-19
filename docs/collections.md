@@ -20,6 +20,30 @@ Factories accept VBA type tokens or a real user-class instance. Specialized oper
 their .NET counterparts, including set algebra, linked nodes, priority pairs, builders, snapshots,
 bounded completion, and atomic-style `Try...` methods within Excel's single execution thread.
 
+## Indexed collections and capacity
+
+Default-equality dictionaries, hash sets, ordered/keyed collections, concurrent and immutable
+hash collections, lookups, primary keys, and relations share an open-address hash kernel with
+direct key/value slots. Average keyed lookup is O(1); removals rebuild a compact valid index.
+Sorted maps and sets use binary search. Supplying a custom equality comparer deliberately uses a
+linear equality path because VBA cannot derive a compatible hash code from an arbitrary delegate.
+
+`Capacity`, `EnsureCapacity(count)`, and `TrimExcess` expose allocation control on hash-backed
+collections. Reserving capacity before bulk insertion avoids repeated rehashing. These members
+reject collections whose comparer or storage strategy cannot honor the contract rather than
+pretending that a reservation occurred.
+
+```vba
+Dim scores As ROneCOne
+Dim reserved As Long
+
+Set scores = ROneCOne.DictionaryOf(vbLong, vbLong)
+reserved = scores.EnsureCapacity(10000&)
+scores.Add 1&, 95&
+Debug.Print scores.Item(1&)
+scores.TrimExcess
+```
+
 ## Primitive lists
 
 Use a `VbVarType` token as `T`. Values must have that exact VBA runtime type; ROneCOne does not

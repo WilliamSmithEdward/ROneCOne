@@ -257,9 +257,13 @@ End Sub
 ' -----------------------------------------------------------------------------
 
 Private Sub RunCollectionBenchmark()
+    Dim capacity As Long
     Dim customer As DemoCustomer
     Dim customers As ROneCOne
+    Dim dictionary As ROneCOne
     Dim filtered As ROneCOne
+    Dim index As Long
+    Dim lastValue As Long
     Dim numbers As ROneCOne
     Dim ordered As ROneCOne
     Dim started As Double
@@ -297,6 +301,31 @@ Private Sub RunCollectionBenchmark()
         .Range("B8").Value2 = BENCHMARK_ELEMENT_COUNT
         .Range("C8").Value2 = ElapsedSeconds(started)
         .Range("D8").Value2 = ordered.Count
+    End With
+
+    Set dictionary = ROneCOne.DictionaryOf(vbLong, vbLong)
+    capacity = dictionary.EnsureCapacity(BENCHMARK_ELEMENT_COUNT)
+    started = Timer
+    For index = 1 To BENCHMARK_ELEMENT_COUNT
+        dictionary.Add index, index
+    Next index
+    For index = 1 To BENCHMARK_ELEMENT_COUNT
+        lastValue = dictionary.Item(index)
+    Next index
+    With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
+        .Range("B9").Value2 = BENCHMARK_ELEMENT_COUNT
+        .Range("C9").Value2 = ElapsedSeconds(started)
+        .Range("D9").Value2 = lastValue
+    End With
+
+    started = Timer
+    For index = 1 To 100000
+        lastValue = dictionary.Item(((index - 1) Mod BENCHMARK_ELEMENT_COUNT) + 1)
+    Next index
+    With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
+        .Range("B10").Value2 = 100000
+        .Range("C10").Value2 = ElapsedSeconds(started)
+        .Range("D10").Value2 = lastValue
     End With
 End Sub
 

@@ -455,6 +455,8 @@ Private Sub TestUserClassLinq()
 End Sub
 
 Public Sub RunROneCOneCollectionBenchmark()
+    Dim capacity As Long
+    Dim dictionary As ROneCOne
     Dim elapsed As Double
     Dim filtered As ROneCOne
     Dim ordered As ROneCOne
@@ -462,6 +464,10 @@ Public Sub RunROneCOneCollectionBenchmark()
     Dim started As Double
     Dim values As ROneCOne
     Dim x As ROneCOne
+    Dim hashElapsed100K As Double
+    Dim hashElapsed10K As Double
+    Dim index As Long
+    Dim lastValue As Long
 
     Set x = ROneCOne.Parameter(vbLong)
     started = Timer
@@ -480,6 +486,30 @@ Public Sub RunROneCOneCollectionBenchmark()
     orderingElapsed = Timer - started
     If orderingElapsed < 0 Then orderingElapsed = orderingElapsed + 86400#
 
+    Set dictionary = ROneCOne.DictionaryOf(vbLong, vbLong)
+    capacity = dictionary.EnsureCapacity(10000&)
+    started = Timer
+    For index = 1 To 10000
+        dictionary.Add index, index
+    Next index
+    For index = 1 To 10000
+        lastValue = dictionary.Item(index)
+    Next index
+    hashElapsed10K = Timer - started
+    If hashElapsed10K < 0 Then hashElapsed10K = hashElapsed10K + 86400#
+
+    Set dictionary = ROneCOne.DictionaryOf(vbLong, vbLong)
+    capacity = dictionary.EnsureCapacity(10000&)
+    For index = 1 To 10000
+        dictionary.Add index, index
+    Next index
+    started = Timer
+    For index = 1 To 100000
+        lastValue = dictionary.Item(((index - 1) Mod 10000) + 1)
+    Next index
+    hashElapsed100K = Timer - started
+    If hashElapsed100K < 0 Then hashElapsed100K = hashElapsed100K + 86400#
+
     With ThisWorkbook.Worksheets("Collection Benchmarks")
         .Range("B2").Value2 = 10000
         .Range("B3").Value2 = elapsed
@@ -488,6 +518,11 @@ Public Sub RunROneCOneCollectionBenchmark()
         .Range("B6").Value2 = orderingElapsed
         .Range("B7").Value2 = ordered.Count
         .Range("B8").Value2 = ordered.First
+        .Range("B9").Value2 = 10000
+        .Range("B10").Value2 = hashElapsed10K
+        .Range("B11").Value2 = 100000
+        .Range("B12").Value2 = hashElapsed100K
+        .Range("B13").Value2 = lastValue
     End With
 End Sub
 

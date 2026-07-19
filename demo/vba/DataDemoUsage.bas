@@ -53,23 +53,18 @@ Private Sub WriteDataExamples( _
     Dim view As ROneCOne
 
     Set table = ROneCOne.DataTable("People")
-    table.Column("Id", vbLong).AutoNumber(100&, 10&).AsUnique
+    table.Column("Id", vbLong).AutoNumber(100&, 10&).AsPrimaryKey
     table.Column("Name", vbString).WithDefault "Unknown"
     table.Column "Score", vbLong
-    Set row = table.NewRow
-    row.Item("Name") = "Ada"
-    row.Item("Score") = 90&
-    table.AddRow row
-    Set row = table.NewRow
-    row.Item("Name") = "Grace"
-    row.Item("Score") = 95&
-    table.AddRow row
+    table.Column "Note", vbString
+    Set row = table.Row("Ada", 90&, ROneCOne.DBNull).Add
+    Set row = table.Row("Grace", 95&, "Compiler pioneer").Add
     Set view = ROneCOne.DataView(table) _
         .WithFilter(table.Rows!Score.AtLeast(90&)) _
         .WithSort("Score", True)
 
     Set parent = ROneCOne.DataTable("Customers")
-    parent.Column("Id", vbLong).AsUnique
+    parent.Column("Id", vbLong).AsPrimaryKey
     Set parentRow = parent.LoadRow(Array(1&))
     Set child = ROneCOne.DataTable("Orders")
     child.Column "CustomerId", vbLong
@@ -103,6 +98,9 @@ Private Sub WriteDataExamples( _
         .Range("E10").Value2 = adapter.Fill(filled)
         .Range("E11").Value2 = filled.Rows.Item(0).Item("Name")
         .Range("E12").Value2 = scalarTask.Await
+        .Range("E13").Value2 = IsNull(table.Rows.Item(0).Item("Note"))
+        .Range("E14").Value2 = connection.AsyncMode
+        .Range("E15").Value2 = connection.SupportsNativeAsync
     End With
 End Sub
 

@@ -29,6 +29,12 @@ Private Declare PtrSafe Sub CopyMemory Lib "kernel32" Alias "RtlMoveMemory" ( _
     ByVal length As LongPtr _
 )
 
+Private Declare PtrSafe Function GetTickCount64 Lib "kernel32" () As LongLong
+
+Private Declare PtrSafe Sub Sleep Lib "kernel32" ( _
+    ByVal milliseconds As Long _
+)
+
 ' MIT License
 '
 ' Copyright (c) 2026 William Smith
@@ -93,6 +99,9 @@ Private Const ROLE_DB_ADAPTER As Long = 38
 Private Const ROLE_DB_TRANSACTION As Long = 39
 Private Const ROLE_TASK_COMPLETION_SOURCE As Long = 40
 Private Const ROLE_PROGRESS As Long = 41
+Private Const ROLE_CANCELLATION_REGISTRATION As Long = 42
+Private Const ROLE_DB_NULL As Long = 43
+Private Const ROLE_USING As Long = 44
 
 Private Const TASK_WORK As Long = 1
 Private Const TASK_COMPLETED As Long = 2
@@ -102,6 +111,8 @@ Private Const TASK_WHEN_ANY As Long = 5
 Private Const TASK_CONTINUATION As Long = 6
 Private Const TASK_PROMISE As Long = 7
 Private Const TASK_PROVIDER_CALL As Long = 8
+Private Const TASK_YIELD As Long = 9
+Private Const TASK_WAIT_ASYNC As Long = 10
 
 Private Const TASK_STATUS_CREATED As Long = 0
 Private Const TASK_STATUS_RUNNING As Long = 1
@@ -224,6 +235,8 @@ Private Const ERROR_METHOD_INVOCATION As Long = vbObjectError + 4105
 Private Const ERROR_MEMBER_ACCESS As Long = vbObjectError + 4106
 Private Const ERROR_NATIVE_INVOCATION As Long = vbObjectError + 4107
 Private Const ERROR_BYREF_INVOCATION As Long = vbObjectError + 4108
+Private Const ERROR_TIMEOUT As Long = vbObjectError + 4109
+Private Const ERROR_CANCELED As Long = vbObjectError + 4110
 
 Private mRole As Long
 Private mOperator As Long
@@ -279,6 +292,12 @@ Private mContextMemberPath As String
 Private mCollectionKind As Long
 Private mKeys As Collection
 Private mPriorities As Collection
+Private mHashSlots() As Long
+Private mHashCodes() As Long
+Private mHashKeys() As ROneCOne
+Private mHashValues() As ROneCOne
+Private mHashCapacity As Long
+Private mHashCount As Long
 Private mKeyType As VbVarType
 Private mKeyObjectType As String
 Private mKeySelector As ROneCOne
@@ -292,13 +311,21 @@ Private mTaskResult As ROneCOne
 Private mTaskException As ROneCOne
 Private mTaskChildren As Collection
 Private mTaskStatus As Long
+Private mTaskDeadline As LongLong
+Private mTaskAdvancing As Boolean
+Private mTaskWaitActive As Boolean
 Private mCancellationSource As ROneCOne
 Private mCancellationRequested As Boolean
 Private mName As String
 Private mOriginalItems As Collection
 Private mPrimaryKey As Collection
+Private mDataIndex As ROneCOne
 Private mDataTables As Collection
 Private mDataRelations As Collection
+Private mRelationParentColumns As Collection
+Private mRelationChildColumns As Collection
+Private mRelationParentIndex As ROneCOne
+Private mRelationChildIndex As ROneCOne
 Private mAllowDBNull As Boolean
 Private mUnique As Boolean
 Private mAutoIncrement As Boolean
@@ -322,6 +349,9 @@ Private mCommandTimeout As Long
 Private mCommandType As Long
 Private mConnectionTimeout As Long
 Private mTransactionActive As Boolean
+Private mAdapterUseTransaction As Boolean
+Private mAdapterContinueOnError As Boolean
+Private mProviderErrors As Collection
 
 Public Function Parameter( _
     Optional ByVal expectedType As VbVarType = vbVariant _
@@ -858,8 +888,9 @@ Attribute Exception.VB_Description = "Gets the strongly typed exception prototyp
     Dim errorValue As ROneCOne
 
     If mRole = ROLE_TASK Then
-        EnsureTaskCompleted
-        Set Exception = mTaskException
+        If mTaskStatus = TASK_STATUS_FAULTED Then
+            Set Exception = AsAggregateException(mTaskException)
+        End If
         Exit Property
     End If
 
@@ -889,6 +920,23 @@ End Property
 Public Function FromResult(ByVal value As Variant) As ROneCOne
 Attribute FromResult.VB_Description = "Creates a completed Task<T> from a value."
     Set FromResult = TaskFromResult(value)
+End Function
+
+Public Function Using(ByVal resource As ROneCOne) As ROneCOne
+Attribute Using.VB_Description = "Creates a deterministic resource scope."
+    Dim scope As ROneCOne
+
+    If mRole <> ROLE_EMPTY Then
+        RaiseContractError ERROR_INVALID_OPERATION, "Using", _
+            "Using must be called from the ROneCOne factory."
+    End If
+    If resource Is Nothing Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "Using", _
+            "The resource cannot be Nothing."
+    End If
+    Set scope = New ROneCOne
+    scope.ConfigureUsing resource
+    Set Using = scope
 End Function
 
 Public Function TaskRun( _
@@ -929,15 +977,30 @@ Attribute Delay.VB_Description = "Creates a cooperative delay Task."
     Set taskValue = New ROneCOne
     taskValue.ConfigureTask TASK_DELAY, Nothing, cancellationToken
     taskValue.ConfigureCollectionCapacity milliseconds
+    taskValue.ConfigureTaskDeadline MonotonicMilliseconds + _
+        CLngLng(milliseconds)
     Set Delay = taskValue
 End Function
 
-Public Function WhenAll(ByVal tasks As Variant) As ROneCOne
+Public Function YieldOnce() As ROneCOne
+Attribute YieldOnce.VB_Description = "Creates a Task that yields once to Excel."
+    Dim taskValue As ROneCOne
+
+    If mRole <> ROLE_TASK_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, "YieldOnce", _
+            "YieldOnce must be called from the Task factory."
+    End If
+    Set taskValue = New ROneCOne
+    taskValue.ConfigureTask TASK_YIELD, Nothing, Nothing
+    Set YieldOnce = taskValue
+End Function
+
+Public Function WhenAll(ParamArray tasks() As Variant) As ROneCOne
 Attribute WhenAll.VB_Description = "Creates a Task that completes after every input Task."
     Set WhenAll = CreateTaskCombinator(tasks, TASK_WHEN_ALL, "WhenAll")
 End Function
 
-Public Function WhenAny(ByVal tasks As Variant) As ROneCOne
+Public Function WhenAny(ParamArray tasks() As Variant) As ROneCOne
 Attribute WhenAny.VB_Description = "Creates a Task that completes after one input Task."
     Set WhenAny = CreateTaskCombinator(tasks, TASK_WHEN_ANY, "WhenAny")
 End Function
@@ -960,6 +1023,31 @@ Attribute Wait.VB_Description = "Waits cooperatively for Task completion."
     If Not WaitForTaskCompletion(timeoutMilliseconds) Then Exit Function
     RaiseTaskTerminalState "Wait"
     Wait = True
+End Function
+
+Public Function WaitAsync( _
+    Optional ByVal timeoutMilliseconds As Long = -1, _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute WaitAsync.VB_Description = "Creates a Task that applies a timeout or cancellation."
+    Dim taskValue As ROneCOne
+
+    RequireTask Me, "WaitAsync"
+    If timeoutMilliseconds < -1 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "WaitAsync", _
+            "The timeout must be -1 or nonnegative."
+    End If
+    ValidateCancellationToken cancellationToken, "WaitAsync"
+    Set taskValue = New ROneCOne
+    taskValue.ConfigureTask TASK_WAIT_ASYNC, Nothing, cancellationToken
+    taskValue.ConfigureReadOnlySource Me
+    If timeoutMilliseconds >= 0 Then
+        taskValue.ConfigureTaskDeadline MonotonicMilliseconds + _
+            CLngLng(timeoutMilliseconds)
+    Else
+        taskValue.ConfigureTaskDeadline -1
+    End If
+    Set WaitAsync = taskValue
 End Function
 
 Public Function ContinueWith(ByVal continuation As ROneCOne) As ROneCOne
@@ -1103,7 +1191,11 @@ Attribute CancelAfter.VB_Description = "Schedules cooperative cancellation after
             "The delay must be -1 or nonnegative."
     End If
     mQueryCount = milliseconds
-    If milliseconds >= 0 Then mScalarValue = Timer
+    If milliseconds >= 0 Then
+        mTaskDeadline = MonotonicMilliseconds + CLngLng(milliseconds)
+    Else
+        mTaskDeadline = -1
+    End If
 End Sub
 
 Public Property Get IsCancellationRequested() As Boolean
@@ -1121,6 +1213,7 @@ End Property
 
 Public Function Register(ByVal callback As ROneCOne) As ROneCOne
 Attribute Register.VB_Description = "Registers a callback for cooperative cancellation."
+    Dim registration As ROneCOne
     Dim source As ROneCOne
 
     If mRole = ROLE_CANCELLATION_SOURCE Then
@@ -1132,8 +1225,10 @@ Attribute Register.VB_Description = "Registers a callback for cooperative cancel
             "Register requires a cancellation source or token."
     End If
     ValidateAction callback, "Register", True
-    source.RegisterCancellationCallback callback
-    Set Register = Me
+    Set registration = New ROneCOne
+    registration.ConfigureCancellationRegistration source, callback
+    source.RegisterCancellationCallback registration
+    Set Register = registration
 End Function
 
 Public Sub ThrowIfCancellationRequested()
@@ -1212,6 +1307,15 @@ Attribute Report.VB_Description = "Reports one typed progress value."
     Set ignored = mTaskBody.InvokeValue(arguments)
 End Sub
 
+Public Property Get DBNull() As ROneCOne
+Attribute DBNull.VB_Description = "Gets the explicit database-null sentinel."
+    Dim nullValue As ROneCOne
+
+    Set nullValue = New ROneCOne
+    nullValue.ConfigureDBNull
+    Set DBNull = nullValue
+End Property
+
 Public Function DataTable(Optional ByVal tableName As String = vbNullString) As ROneCOne
 Attribute DataTable.VB_Description = "Creates an in-memory DataTable."
     Dim tableValue As ROneCOne
@@ -1252,24 +1356,39 @@ End Function
 
 Public Function DataRelation( _
     ByVal relationName As String, _
-    ByVal parentColumn As ROneCOne, _
-    ByVal childColumn As ROneCOne, _
+    ByVal parentColumns As Variant, _
+    ByVal childColumns As Variant, _
     Optional ByVal createConstraints As Boolean = True _
 ) As ROneCOne
 Attribute DataRelation.VB_Description = "Creates a parent-child DataRelation."
+    Dim childColumn As ROneCOne
+    Dim childValues As Collection
+    Dim index As Long
+    Dim parentColumn As ROneCOne
+    Dim parentValues As Collection
     Dim relationValue As ROneCOne
 
-    RequireDataColumn parentColumn, "DataRelation parent"
-    RequireDataColumn childColumn, "DataRelation child"
-    If parentColumn.InternalExpectedType <> childColumn.InternalExpectedType Or _
-        parentColumn.InternalExpectedObjectType <> _
-            childColumn.InternalExpectedObjectType Then
-        RaiseContractError ERROR_TYPE_MISMATCH, "DataRelation", _
-            "Parent and child columns must have the same data type."
+    Set parentValues = NormalizeRelationColumns( _
+        parentColumns, "DataRelation parent")
+    Set childValues = NormalizeRelationColumns( _
+        childColumns, "DataRelation child")
+    If parentValues.Count <> childValues.Count Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "DataRelation", _
+            "Parent and child relations require the same column count."
     End If
+    For index = 1 To parentValues.Count
+        Set parentColumn = parentValues.Item(index)
+        Set childColumn = childValues.Item(index)
+        If parentColumn.InternalExpectedType <> childColumn.InternalExpectedType Or _
+            parentColumn.InternalExpectedObjectType <> _
+                childColumn.InternalExpectedObjectType Then
+            RaiseContractError ERROR_TYPE_MISMATCH, "DataRelation", _
+                "Paired parent and child columns must have the same data type."
+        End If
+    Next index
     Set relationValue = New ROneCOne
-    relationValue.ConfigureDataRelation relationName, parentColumn, _
-        childColumn, createConstraints
+    relationValue.ConfigureDataRelation relationName, parentValues, _
+        childValues, createConstraints
     Set DataRelation = relationValue
 End Function
 
@@ -1326,6 +1445,23 @@ Attribute AutoNumber.VB_Description = "Configures an auto-increment integer Data
     mAutoIncrementCurrent = seed
     mAllowDBNull = False
     Set AutoNumber = Me
+End Function
+
+Public Function AsPrimaryKey( _
+    Optional ByVal enabled As Boolean = True _
+) As ROneCOne
+Attribute AsPrimaryKey.VB_Description = "Makes this column the table primary key."
+    RequireDataColumn Me, "AsPrimaryKey"
+    If Not enabled Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "AsPrimaryKey", _
+            "AsPrimaryKey does not accept False."
+    End If
+    If mSource Is Nothing Or mSource.InternalRole <> ROLE_DATA_TABLE Then
+        RaiseContractError ERROR_INVALID_OPERATION, "AsPrimaryKey", _
+            "The DataColumn must belong to a DataTable."
+    End If
+    mSource.ConfigureSinglePrimaryKey Me
+    Set AsPrimaryKey = Me
 End Function
 
 Public Property Get AutoIncrement() As Boolean
@@ -1463,6 +1599,50 @@ Attribute NewRow.VB_Description = "Creates a detached DataRow for a DataTable."
     Set NewRow = rowValue
 End Function
 
+Public Function Row(ParamArray values() As Variant) As ROneCOne
+Attribute Row.VB_Description = "Creates a detached DataRow from positional values."
+    Dim index As Long
+    Dim column As ROneCOne
+    Dim columnIndex As Long
+    Dim nonAutoCount As Long
+    Dim rowValue As ROneCOne
+    Dim valueCount As Long
+    Dim valueIndex As Long
+
+    RequireDataTable Me, "Row"
+    Set rowValue = NewRow
+    On Error Resume Next
+    valueCount = UBound(values) - LBound(values) + 1
+    If Err.Number <> 0 Then
+        Err.Clear
+        valueCount = 0
+    End If
+    On Error GoTo 0
+    If valueCount > mKeys.Count Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "Row", _
+            "The row contains more values than the table has columns."
+    End If
+    For Each column In mKeys
+        If Not column.InternalAutoIncrement Then nonAutoCount = nonAutoCount + 1
+    Next column
+    If valueCount > 0 And nonAutoCount < mKeys.Count And _
+        valueCount <= nonAutoCount Then
+        valueIndex = LBound(values)
+        For columnIndex = 1 To mKeys.Count
+            Set column = mKeys.Item(columnIndex)
+            If Not column.InternalAutoIncrement And valueIndex <= UBound(values) Then
+                rowValue.Item(columnIndex - 1) = values(valueIndex)
+                valueIndex = valueIndex + 1
+            End If
+        Next columnIndex
+    ElseIf valueCount > 0 Then
+        For index = LBound(values) To UBound(values)
+            rowValue.Item(index - LBound(values)) = values(index)
+        Next index
+    End If
+    Set Row = rowValue
+End Function
+
 Public Sub AddRow(ByVal row As ROneCOne)
 Attribute AddRow.VB_Description = "Adds a detached DataRow after validating constraints."
     RequireDataTable Me, "AddRow"
@@ -1479,6 +1659,7 @@ Attribute AddRow.VB_Description = "Adds a detached DataRow after validating cons
     ValidateForeignKeyConstraints row
     mItems.Add row
     row.ConfigureRowState ROW_STATE_ADDED
+    RebuildPrimaryKeyIndex
     mVersion = mVersion + 1
 End Sub
 
@@ -1571,6 +1752,7 @@ Attribute Delete.VB_Description = "Marks a DataRow as deleted."
             "A detached DataRow cannot be deleted."
     End If
     mRowState = ROW_STATE_DELETED
+    mSource.RebuildPrimaryKeyIndex
     mSource.TouchDataVersion
 End Sub
 
@@ -1657,31 +1839,35 @@ Public Property Set PrimaryKey(ByVal columns As ROneCOne)
             RaiseContractError ERROR_INVALID_OPERATION, "PrimaryKey", _
                 "Every primary-key column must belong to this table."
         End If
-        column.ConfigureUniqueColumn
         mPrimaryKey.Add column
     Next column
     If mPrimaryKey.Count = 0 Then
         RaiseContractError ERROR_INVALID_ARGUMENT, "PrimaryKey", _
             "A primary key requires at least one column."
     End If
+    For Each column In mPrimaryKey
+        column.ConfigurePrimaryKeyColumn (mPrimaryKey.Count = 1)
+    Next column
+    RebuildPrimaryKeyIndex
 End Property
 
-Public Function Find(ByVal key As Variant) As ROneCOne
-Attribute Find.VB_Description = "Finds a DataRow by a single-column primary key."
-    Dim row As ROneCOne
+Public Function Find(ParamArray keys() As Variant) As ROneCOne
+Attribute Find.VB_Description = "Finds a DataRow by its single or composite primary key."
+    Dim arguments As Collection
+    Dim keyToken As String
 
     RequireDataTable Me, "Find"
-    If mPrimaryKey.Count <> 1 Then
+    If mPrimaryKey.Count = 0 Then
         RaiseContractError ERROR_INVALID_OPERATION, "Find", _
-            "This Find overload requires a single-column primary key."
+            "The DataTable does not define a primary key."
     End If
-    For Each row In mItems
-        If DataValuesEqual(row.DataFieldWrapped(mPrimaryKey.Item(1).ColumnName), _
-            WrapDataValue(key), "Find") Then
-            Set Find = row
-            Exit Function
-        End If
-    Next row
+    Set arguments = BuildPrimaryKeyArguments(keys)
+    If arguments.Count <> mPrimaryKey.Count Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "Find", _
+            "The key value count must match the primary-key column count."
+    End If
+    keyToken = PrimaryKeyTokenFromArguments(arguments)
+    If mDataIndex.ContainsKey(keyToken) Then Set Find = mDataIndex.Item(keyToken)
 End Function
 
 Public Sub AcceptChanges()
@@ -1702,6 +1888,8 @@ Attribute AcceptChanges.VB_Description = "Commits current DataRow values as orig
                 row.AcceptChanges
             End If
         Next index
+        RebuildPrimaryKeyIndex
+        mVersion = mVersion + 1
         Exit Sub
     End If
     If mRole = ROLE_DATA_SET Then
@@ -1732,6 +1920,8 @@ Attribute RejectChanges.VB_Description = "Rolls back DataRow values to their ori
                 row.RejectChanges
             End If
         Next index
+        RebuildPrimaryKeyIndex
+        mVersion = mVersion + 1
         Exit Sub
     End If
     If mRole = ROLE_DATA_SET Then
@@ -1995,6 +2185,26 @@ Attribute State.VB_Description = "Gets the .NET-aligned provider resource state.
     End Select
 End Property
 
+Public Property Get SupportsNativeAsync() As Boolean
+Attribute SupportsNativeAsync.VB_Description = "Reports native provider async support."
+    If mRole <> ROLE_DB_CONNECTION And mRole <> ROLE_DB_COMMAND And _
+        mRole <> ROLE_DB_READER And mRole <> ROLE_DB_ADAPTER Then
+        RaiseContractError ERROR_INVALID_OPERATION, "SupportsNativeAsync", _
+            "This property requires a provider resource."
+    End If
+    SupportsNativeAsync = False
+End Property
+
+Public Property Get AsyncMode() As String
+Attribute AsyncMode.VB_Description = "Gets the provider Task execution mode."
+    If mRole <> ROLE_DB_CONNECTION And mRole <> ROLE_DB_COMMAND And _
+        mRole <> ROLE_DB_READER And mRole <> ROLE_DB_ADAPTER Then
+        RaiseContractError ERROR_INVALID_OPERATION, "AsyncMode", _
+            "This property requires a provider resource."
+    End If
+    AsyncMode = "Cooperative"
+End Property
+
 Public Sub Connect()
 Attribute Connect.VB_Description = "Opens a database connection explicitly."
     RequireDbConnection Me, "Connect"
@@ -2056,18 +2266,29 @@ End Function
 Public Function ExecuteNonQuery() As Long
 Attribute ExecuteNonQuery.VB_Description = "Executes a command and returns affected rows."
     Dim commandObject As Object
+    Dim capturedDescription As String
+    Dim capturedNumber As Long
+    Dim capturedSource As String
     Dim recordsAffected As Variant
     Dim recordset As Object
 
     RequireDbCommand Me, "ExecuteNonQuery"
     Set commandObject = BuildAdoCommand
+    On Error GoTo ExecuteFailed
     Set recordset = commandObject.Execute(recordsAffected)
     ExecuteNonQuery = CLng(recordsAffected)
-    If Not recordset Is Nothing Then
-        If CLng(CallByName(recordset, "State", VbGet)) <> 0 Then
-            CallByName recordset, "Close", VbMethod
-        End If
-    End If
+    CloseProviderObject recordset
+    On Error GoTo 0
+    Exit Function
+
+ExecuteFailed:
+    capturedNumber = Err.Number
+    capturedSource = Err.Source
+    capturedDescription = Err.Description
+    On Error Resume Next
+    CloseProviderObject recordset
+    On Error GoTo 0
+    Err.Raise capturedNumber, capturedSource, capturedDescription
 End Function
 
 Public Function ExecuteNonQueryAsync( _
@@ -2081,10 +2302,25 @@ End Function
 Public Function ExecuteScalar() As Variant
 Attribute ExecuteScalar.VB_Description = "Executes a command and returns its first field."
     Dim reader As ROneCOne
+    Dim capturedDescription As String
+    Dim capturedNumber As Long
+    Dim capturedSource As String
 
+    On Error GoTo ScalarFailed
     Set reader = ExecuteReader
     If reader.Read Then ExecuteScalar = reader.Item(0)
     reader.Disconnect
+    On Error GoTo 0
+    Exit Function
+
+ScalarFailed:
+    capturedNumber = Err.Number
+    capturedSource = Err.Source
+    capturedDescription = Err.Description
+    On Error Resume Next
+    If Not reader Is Nothing Then reader.Disconnect
+    On Error GoTo 0
+    Err.Raise capturedNumber, capturedSource, capturedDescription
 End Function
 
 Public Function ExecuteScalarAsync( _
@@ -2298,10 +2534,38 @@ Public Property Set DeleteCommand(ByVal value As ROneCOne)
     Set mNext = value
 End Property
 
+Public Function UseTransaction( _
+    Optional ByVal enabled As Boolean = True _
+) As ROneCOne
+Attribute UseTransaction.VB_Description = "Makes adapter updates atomic."
+    RequireDbAdapter Me, "UseTransaction"
+    mAdapterUseTransaction = enabled
+    Set UseTransaction = Me
+End Function
+
+Public Function ContinueUpdateOnError( _
+    Optional ByVal enabled As Boolean = True _
+) As ROneCOne
+Attribute ContinueUpdateOnError.VB_Description = "Continues adapter updates after row errors."
+    RequireDbAdapter Me, "ContinueUpdateOnError"
+    mAdapterContinueOnError = enabled
+    Set ContinueUpdateOnError = Me
+End Function
+
+Public Property Get LastUpdateErrors() As ROneCOne
+Attribute LastUpdateErrors.VB_Description = "Gets errors captured by the last adapter update."
+    RequireDbAdapter Me, "LastUpdateErrors"
+    If mProviderErrors Is Nothing Then Set mProviderErrors = New Collection
+    Set LastUpdateErrors = CreateObjectListSnapshot(mProviderErrors)
+End Property
+
 Public Function Fill(ByVal dataTarget As ROneCOne) As Long
 Attribute Fill.VB_Description = "Fills a DataTable or DataSet from a DataAdapter."
     Dim reader As ROneCOne
     Dim table As ROneCOne
+    Dim capturedDescription As String
+    Dim capturedNumber As Long
+    Dim capturedSource As String
 
     If mRole <> ROLE_DB_ADAPTER Then
         RaiseContractError ERROR_INVALID_OPERATION, "Fill", _
@@ -2314,10 +2578,22 @@ Attribute Fill.VB_Description = "Fills a DataTable or DataSet from a DataAdapter
         RequireDataTable dataTarget, "Fill"
         Set table = dataTarget
     End If
+    On Error GoTo FillFailed
     Set reader = mSource.ExecuteReader
     Fill = FillTableFromReader(table, reader)
     reader.Disconnect
     table.AcceptChanges
+    On Error GoTo 0
+    Exit Function
+
+FillFailed:
+    capturedNumber = Err.Number
+    capturedSource = Err.Source
+    capturedDescription = Err.Description
+    On Error Resume Next
+    If Not reader Is Nothing Then reader.Disconnect
+    On Error GoTo 0
+    Err.Raise capturedNumber, capturedSource, capturedDescription
 End Function
 
 Public Function FillAsync( _
@@ -2366,8 +2642,15 @@ Attribute Dispose.VB_Description = "Releases a provider resource deterministical
         If mTransactionActive Then Rollback
         Exit Sub
     End If
+    If mRole = ROLE_CANCELLATION_REGISTRATION Then
+        If Not mAddingCompleted Then
+            mAddingCompleted = True
+            mSource.UnregisterCancellationRegistration Me
+        End If
+        Exit Sub
+    End If
     RaiseContractError ERROR_INVALID_OPERATION, "Dispose", _
-        "Dispose requires a provider connection, reader, or transaction."
+        "Dispose requires a provider resource or cancellation registration."
 End Sub
 
 Public Function Native(ByVal procedureAddress As LongPtr) As ROneCOne
@@ -2699,7 +2982,14 @@ Private Sub AssignInvocationResult( _
 )
     Dim argumentValue As ROneCOne
     Dim itemIndex As Long
+    Dim keyWrapped As ROneCOne
     Dim result As ROneCOne
+
+    If mRole = ROLE_USING Then
+        Set result = ExecuteUsingScope(argumentValues)
+        AssignPublicResult destination, result
+        Exit Sub
+    End If
 
     If mRole = ROLE_TASK_FACTORY Then
         If argumentValues.Count < 1 Or argumentValues.Count > 2 Then
@@ -2740,12 +3030,18 @@ Private Sub AssignInvocationResult( _
                 "A keyed indexer requires one argument."
         End If
         Set argumentValue = argumentValues.Item(1)
-        itemIndex = FindKeyIndex(WrapKey(Unwrap(argumentValue), "Run"), "Run")
-        If itemIndex < 0 Then
+        Set keyWrapped = WrapKey(Unwrap(argumentValue), "Run")
+        If HashIndexSupported Then
+            Set result = FindHashValue(keyWrapped, "Run")
+        Else
+            itemIndex = FindKeyIndex(keyWrapped, "Run")
+            If itemIndex >= 0 Then Set result = mItems.Item(itemIndex + 1)
+        End If
+        If result Is Nothing Then
             RaiseContractError ERROR_INVALID_ARGUMENT, "Run", _
                 "The requested key was not found."
         End If
-        AssignPublicResult destination, mItems.Item(itemIndex + 1)
+        AssignPublicResult destination, result
         Exit Sub
     End If
 
@@ -2800,12 +3096,22 @@ Attribute PipeTo.VB_Description = "Pipes this result into a one-parameter delega
 End Function
 
 Public Function Add( _
-    ByVal operand As Variant, _
+    Optional ByVal operand As Variant, _
     Optional ByVal value As Variant _
 ) As ROneCOne
 Attribute Add.VB_Description = "Adds a list item or creates an addition expression."
     Dim clone As ROneCOne
     Dim wrapped As ROneCOne
+
+    If mRole = ROLE_DATA_ROW Then
+        If Not IsMissing(operand) Or Not IsMissing(value) Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "DataRow.Add", _
+                "A DataRow.Add call accepts no arguments."
+        End If
+        mSource.AddRow Me
+        Set Add = Me
+        Exit Function
+    End If
 
     If mRole = ROLE_LIST Then
         If Not IsMissing(value) Then
@@ -3198,6 +3504,7 @@ End Function
 Public Property Get Item(ByVal index As Variant) As Variant
 Attribute Item.VB_Description = "Gets or sets a zero-based typed list item."
     Dim itemIndex As Long
+    Dim keyWrapped As ROneCOne
     Dim wrapped As ROneCOne
 
     If mRole = ROLE_DB_READER Then
@@ -3205,20 +3512,42 @@ Attribute Item.VB_Description = "Gets or sets a zero-based typed list item."
     ElseIf mRole = ROLE_DATA_ROW Then
         Set wrapped = DataRowItem(index)
     ElseIf IsDictionaryCollection Then
-        itemIndex = FindKeyIndex(WrapKey(index, "Item"), "Item")
-        If itemIndex < 0 Then
+        If HashIndexSupported Then
+            If DirectKeyLookupSupported Then
+                ValidateKeyValue index, "Item"
+                Set wrapped = FindHashValueByKey(index, "Item")
+            Else
+                Set keyWrapped = WrapKey(index, "Item")
+                Set wrapped = FindHashValue(keyWrapped, "Item")
+            End If
+        Else
+            Set keyWrapped = WrapKey(index, "Item")
+            itemIndex = FindKeyIndex(keyWrapped, "Item")
+            If itemIndex >= 0 Then Set wrapped = mItems.Item(itemIndex + 1)
+        End If
+        If wrapped Is Nothing Then
             RaiseContractError ERROR_INVALID_ARGUMENT, "Item", _
                 "The requested key was not found."
         End If
-        Set wrapped = mItems.Item(itemIndex + 1)
     ElseIf mCollectionKind = COLLECTION_KEYED Or _
         mCollectionKind = COLLECTION_LOOKUP Then
-        itemIndex = FindKeyIndex(WrapKey(index, "Item"), "Item")
-        If itemIndex < 0 Then
+        If HashIndexSupported Then
+            If DirectKeyLookupSupported Then
+                ValidateKeyValue index, "Item"
+                Set wrapped = FindHashValueByKey(index, "Item")
+            Else
+                Set keyWrapped = WrapKey(index, "Item")
+                Set wrapped = FindHashValue(keyWrapped, "Item")
+            End If
+        Else
+            Set keyWrapped = WrapKey(index, "Item")
+            itemIndex = FindKeyIndex(keyWrapped, "Item")
+            If itemIndex >= 0 Then Set wrapped = mItems.Item(itemIndex + 1)
+        End If
+        If wrapped Is Nothing Then
             RaiseContractError ERROR_INVALID_ARGUMENT, "Item", _
                 "The requested key was not found."
         End If
-        Set wrapped = mItems.Item(itemIndex + 1)
     ElseIf mCollectionKind = COLLECTION_READ_ONLY Then
         Set wrapped = mSource.MaterializeWrapped.Item(CLng(index) + 1)
     ElseIf IsGenericCollectionRole(mRole) Then
@@ -3262,6 +3591,36 @@ Attribute Count.VB_Description = "Counts every element or only predicate matches
         If InvokePredicate(predicateValue, wrapped, "Count") Then Count = Count + 1
     Next wrapped
 End Property
+
+Public Property Get Capacity() As Long
+Attribute Capacity.VB_Description = "Gets the reserved hash capacity."
+    RequireHashCapacityCollection "Capacity"
+    Capacity = mHashCapacity
+End Property
+
+Public Function EnsureCapacity(ByVal capacityValue As Long) As Long
+Attribute EnsureCapacity.VB_Description = "Reserves hash capacity without changing Count."
+    RequireHashCapacityCollection "EnsureCapacity"
+    If capacityValue < mItems.Count Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "EnsureCapacity", _
+            "Capacity cannot be smaller than Count."
+    End If
+    If capacityValue > mHashCapacity Then
+        ResizeHashIndex NextHashCapacity( _
+            CLng(((CLngLng(capacityValue) * 10) + 6) \ 7))
+    End If
+    EnsureCapacity = mHashCapacity
+End Function
+
+Public Sub TrimExcess()
+Attribute TrimExcess.VB_Description = "Rebuilds the hash index at the smallest safe capacity."
+    RequireHashCapacityCollection "TrimExcess"
+    If mItems.Count = 0 Then
+        ResetHashIndex
+    Else
+        ResizeHashIndex NextHashCapacity(mItems.Count * 2)
+    End If
+End Sub
 
 Public Property Get LongCount() As LongLong
 Attribute LongCount.VB_Description = "Counts sequence elements as a 64-bit integer."
@@ -3325,6 +3684,11 @@ Attribute Clear.VB_Description = "Removes every item from this typed list."
         Set mItems = New Collection
         Set mKeys = New Collection
         Set mPriorities = New Collection
+        If HashIndexSupported Then
+            RebuildHashIndex 8
+        Else
+            ResetHashIndex
+        End If
         mVersion = mVersion + 1
         NotifyCollectionChanged "Reset"
         Exit Sub
@@ -3579,13 +3943,20 @@ Public Function TryGetValue( _
 ) As Boolean
 Attribute TryGetValue.VB_Description = "Copies a keyed value into a typed reference."
     Dim itemIndex As Long
+    Dim keyWrapped As ROneCOne
+    Dim selected As ROneCOne
 
     RequireKeyedCollection "TryGetValue"
     RequireReference valueReference, "TryGetValue"
-    itemIndex = FindKeyIndex(WrapKey(key, "TryGetValue"), "TryGetValue")
-    If itemIndex < 0 Then Exit Function
-    AssignReferenceWrapped valueReference, mItems.Item(itemIndex + 1), _
-        "TryGetValue"
+    Set keyWrapped = WrapKey(key, "TryGetValue")
+    If HashIndexSupported Then
+        Set selected = FindHashValue(keyWrapped, "TryGetValue")
+    Else
+        itemIndex = FindKeyIndex(keyWrapped, "TryGetValue")
+        If itemIndex >= 0 Then Set selected = mItems.Item(itemIndex + 1)
+    End If
+    If selected Is Nothing Then Exit Function
+    AssignReferenceWrapped valueReference, selected, "TryGetValue"
     TryGetValue = True
 End Function
 
@@ -3974,16 +4345,22 @@ Public Function GetOrAdd( _
 Attribute GetOrAdd.VB_Description = "Gets an existing value or atomically adds one."
     Dim itemIndex As Long
     Dim keyWrapped As ROneCOne
+    Dim selected As ROneCOne
 
     RequireMutableCollection "GetOrAdd"
     RequireKeyedCollection "GetOrAdd"
     Set keyWrapped = WrapKey(key, "GetOrAdd")
-    itemIndex = FindKeyIndex(keyWrapped, "GetOrAdd")
-    If itemIndex < 0 Then
-        AddDictionaryPair keyWrapped, WrapElement(value, "GetOrAdd"), "GetOrAdd"
+    If HashIndexSupported Then
+        Set selected = FindHashValue(keyWrapped, "GetOrAdd")
+    Else
         itemIndex = FindKeyIndex(keyWrapped, "GetOrAdd")
+        If itemIndex >= 0 Then Set selected = mItems.Item(itemIndex + 1)
     End If
-    AssignPublicResult GetOrAdd, mItems.Item(itemIndex + 1)
+    If selected Is Nothing Then
+        Set selected = WrapElement(value, "GetOrAdd")
+        AddDictionaryPair keyWrapped, selected, "GetOrAdd"
+    End If
+    AssignPublicResult GetOrAdd, selected
 End Function
 
 Public Function TryRemove( _
@@ -3992,13 +4369,25 @@ Public Function TryRemove( _
 ) As Boolean
 Attribute TryRemove.VB_Description = "Atomically removes a keyed value when present."
     Dim itemIndex As Long
+    Dim keyWrapped As ROneCOne
+    Dim selected As ROneCOne
+    Dim slot As Long
 
     RequireMutableCollection "TryRemove"
     RequireKeyedCollection "TryRemove"
     RequireReference valueReference, "TryRemove"
-    itemIndex = FindKeyIndex(WrapKey(key, "TryRemove"), "TryRemove")
-    If itemIndex < 0 Then Exit Function
-    AssignReferenceWrapped valueReference, mItems.Item(itemIndex + 1), "TryRemove"
+    Set keyWrapped = WrapKey(key, "TryRemove")
+    If HashIndexSupported Then
+        slot = FindHashSlot(keyWrapped, "TryRemove")
+        If slot < 0 Then Exit Function
+        itemIndex = mHashSlots(slot) - 1
+        Set selected = mHashValues(slot)
+    Else
+        itemIndex = FindKeyIndex(keyWrapped, "TryRemove")
+        If itemIndex < 0 Then Exit Function
+        Set selected = mItems.Item(itemIndex + 1)
+    End If
+    AssignReferenceWrapped valueReference, selected, "TryRemove"
     RemoveCollectionAt itemIndex
     TryRemove = True
 End Function
@@ -4011,12 +4400,24 @@ Public Function TryUpdate( _
 Attribute TryUpdate.VB_Description = "Updates a concurrent value after comparison succeeds."
     Dim itemIndex As Long
     Dim expected As ROneCOne
+    Dim keyWrapped As ROneCOne
+    Dim selected As ROneCOne
+    Dim slot As Long
 
     RequireConcurrentDictionary "TryUpdate"
-    itemIndex = FindKeyIndex(WrapKey(key, "TryUpdate"), "TryUpdate")
-    If itemIndex < 0 Then Exit Function
+    Set keyWrapped = WrapKey(key, "TryUpdate")
+    If HashIndexSupported Then
+        slot = FindHashSlot(keyWrapped, "TryUpdate")
+        If slot < 0 Then Exit Function
+        itemIndex = mHashSlots(slot) - 1
+        Set selected = mHashValues(slot)
+    Else
+        itemIndex = FindKeyIndex(keyWrapped, "TryUpdate")
+        If itemIndex < 0 Then Exit Function
+        Set selected = mItems.Item(itemIndex + 1)
+    End If
     Set expected = WrapElement(comparisonValue, "TryUpdate")
-    If Not ValuesEqual(mItems.Item(itemIndex + 1), expected) Then Exit Function
+    If Not ValuesEqual(selected, expected) Then Exit Function
     ReplaceCollectionItem itemIndex, WrapElement(newValue, "TryUpdate")
     TryUpdate = True
 End Function
@@ -5818,6 +6219,74 @@ Attribute InternalOperator.VB_MemberFlags = "40"
     InternalOperator = mOperator
 End Property
 
+Public Property Get TimeoutError() As Long
+Attribute TimeoutError.VB_Description = "Gets the asynchronous timeout error number."
+    TimeoutError = ERROR_TIMEOUT
+End Property
+
+Public Property Get OperationCanceledError() As Long
+Attribute OperationCanceledError.VB_Description = "Gets the cancellation error number."
+    OperationCanceledError = ERROR_CANCELED
+End Property
+
+Public Property Get ExceptionType() As String
+Attribute ExceptionType.VB_Description = "Gets the structured exception type name."
+    RequireError Me, "ExceptionType"
+    If Len(mName) = 0 Then
+        ExceptionType = "Exception"
+    Else
+        ExceptionType = mName
+    End If
+End Property
+
+Public Property Get InnerExceptions() As ROneCOne
+Attribute InnerExceptions.VB_Description = "Gets AggregateException inner exceptions."
+    RequireError Me, "InnerExceptions"
+    If mItems Is Nothing Then
+        Set InnerExceptions = ROneCOne.ListOf(ROneCOne.Exception)
+    Else
+        Set InnerExceptions = CreateObjectListSnapshot(mItems)
+    End If
+End Property
+
+Public Function Flatten() As ROneCOne
+Attribute Flatten.VB_Description = "Flattens nested AggregateException values."
+    Dim flattened As Collection
+
+    RequireError Me, "Flatten"
+    Set flattened = New Collection
+    AppendFlattenedExceptions Me, flattened
+    Set Flatten = CreateAggregateException(flattened)
+End Function
+
+Public Sub Handle(ByVal predicate As ROneCOne)
+Attribute Handle.VB_Description = "Handles matching inner exceptions or raises the remainder."
+    Dim arguments As Collection
+    Dim errorValue As ROneCOne
+    Dim flattened As ROneCOne
+    Dim result As ROneCOne
+    Dim unhandled As Collection
+
+    RequireError Me, "Handle"
+    RequireDelegate predicate, "Handle"
+    If predicate.IsAction Or (predicate.Arity <> 1 And predicate.Arity <> -1) Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "Handle", _
+            "Handle requires a Func<Exception, Boolean>."
+    End If
+    Set unhandled = New Collection
+    Set flattened = Flatten
+    For Each errorValue In flattened.InternalInnerExceptions
+        Set arguments = New Collection
+        arguments.Add CreateObjectResult(errorValue)
+        Set result = predicate.InvokeValue(arguments)
+        If Not CBool(RequireScalar(result, "Handle")) Then
+            unhandled.Add errorValue
+        End If
+    Next errorValue
+    If unhandled.Count > 0 Then RaiseCapturedError _
+        CreateAggregateException(unhandled)
+End Sub
+
 Friend Property Get InternalSource() As ROneCOne
 Attribute InternalSource.VB_MemberFlags = "40"
     Set InternalSource = mSource
@@ -6003,9 +6472,19 @@ Attribute InternalRelationParentColumn.VB_MemberFlags = "40"
     Set InternalRelationParentColumn = mLeft
 End Property
 
+Friend Property Get InternalRelationParentColumns() As Collection
+Attribute InternalRelationParentColumns.VB_MemberFlags = "40"
+    Set InternalRelationParentColumns = mRelationParentColumns
+End Property
+
 Friend Property Get InternalRelationChildColumn() As ROneCOne
 Attribute InternalRelationChildColumn.VB_MemberFlags = "40"
     Set InternalRelationChildColumn = mRight
+End Property
+
+Friend Property Get InternalRelationChildColumns() As Collection
+Attribute InternalRelationChildColumns.VB_MemberFlags = "40"
+    Set InternalRelationChildColumns = mRelationChildColumns
 End Property
 
 Friend Property Get InternalProviderObject() As Object
@@ -6312,6 +6791,7 @@ Friend Sub ConfigureError( _
     ByVal errorHelpContext As Long _
 )
     mRole = ROLE_ERROR
+    mName = "Exception"
     mErrorNumber = errorNumber
     mErrorSource = errorSource
     mErrorDescription = errorDescription
@@ -6376,6 +6856,30 @@ Friend Sub ConfigureList( _
     mEnumerationVersion = 0
 End Sub
 
+Friend Sub ConfigureAggregateError(ByVal errors As Collection)
+    Dim errorValue As ROneCOne
+
+    mRole = ROLE_ERROR
+    mName = "AggregateException"
+    mErrorNumber = ERROR_INVALID_OPERATION
+    mErrorSource = "ROneCOne.AggregateException"
+    mErrorDescription = CStr(errors.Count) & _
+        " exception(s) occurred. Inspect InnerExceptions for details."
+    Set mItems = New Collection
+    For Each errorValue In errors
+        mItems.Add errorValue
+    Next errorValue
+End Sub
+
+Friend Sub ConfigureExceptionType(ByVal exceptionTypeName As String)
+    mName = exceptionTypeName
+End Sub
+
+Friend Property Get InternalInnerExceptions() As Collection
+Attribute InternalInnerExceptions.VB_MemberFlags = "40"
+    Set InternalInnerExceptions = mItems
+End Property
+
 Friend Sub ConfigureGenericCollection( _
     ByVal roleValue As Long, _
     ByVal collectionKind As Long, _
@@ -6396,6 +6900,7 @@ Friend Sub ConfigureGenericCollection( _
     Set mKeys = New Collection
     Set mPriorities = New Collection
     Set mEnumerationValues = New Collection
+    If HashIndexSupported Then RebuildHashIndex 8
 End Sub
 
 Friend Sub ConfigureReadOnlySource(ByVal source As ROneCOne)
@@ -6465,6 +6970,10 @@ Friend Sub ConfigureTaskArguments(ByVal arguments As Collection)
     Set mTaskChildren = arguments
 End Sub
 
+Friend Sub ConfigureTaskDeadline(ByVal deadline As LongLong)
+    mTaskDeadline = deadline
+End Sub
+
 Friend Sub ConfigureProviderTask( _
     ByVal providerTarget As ROneCOne, _
     ByVal methodName As String, _
@@ -6514,6 +7023,7 @@ Friend Sub ConfigureCancellationSource()
     mRole = ROLE_CANCELLATION_SOURCE
     mCancellationRequested = False
     mQueryCount = -1
+    mTaskDeadline = -1
     Set mInvocationList = New Collection
 End Sub
 
@@ -6522,8 +7032,65 @@ Friend Sub ConfigureCancellationToken(ByVal source As ROneCOne)
     Set mCancellationSource = source
 End Sub
 
-Friend Sub RegisterCancellationCallback(ByVal callback As ROneCOne)
-    mInvocationList.Add callback
+Friend Sub ConfigureCancellationRegistration( _
+    ByVal source As ROneCOne, _
+    ByVal callback As ROneCOne _
+)
+    mRole = ROLE_CANCELLATION_REGISTRATION
+    Set mSource = source
+    Set mQueryDelegate = callback
+End Sub
+
+Friend Property Get InternalTaskResult() As ROneCOne
+Attribute InternalTaskResult.VB_MemberFlags = "40"
+    Set InternalTaskResult = mTaskResult
+End Property
+
+Friend Property Get InternalTaskException() As ROneCOne
+Attribute InternalTaskException.VB_MemberFlags = "40"
+    Set InternalTaskException = mTaskException
+End Property
+
+Friend Property Get InternalTaskStatus() As Long
+Attribute InternalTaskStatus.VB_MemberFlags = "40"
+    InternalTaskStatus = mTaskStatus
+End Property
+
+Friend Property Get InternalTaskChildCount() As Long
+Attribute InternalTaskChildCount.VB_MemberFlags = "40"
+    InternalTaskChildCount = mTaskChildren.Count
+End Property
+
+Friend Property Get InternalRegistrationCallback() As ROneCOne
+Attribute InternalRegistrationCallback.VB_MemberFlags = "40"
+    Set InternalRegistrationCallback = mQueryDelegate
+End Property
+
+Friend Sub RegisterCancellationCallback(ByVal registration As ROneCOne)
+    Dim arguments As Collection
+    Dim ignored As ROneCOne
+
+    If mCancellationRequested Then
+        Set arguments = New Collection
+        Set ignored = registration.InternalRegistrationCallback.InvokeValue(arguments)
+    Else
+        mInvocationList.Add registration.InternalRegistrationCallback
+    End If
+End Sub
+
+Friend Sub UnregisterCancellationRegistration(ByVal registration As ROneCOne)
+    Dim callback As ROneCOne
+    Dim candidate As ROneCOne
+    Dim index As Long
+
+    Set callback = registration.InternalRegistrationCallback
+    For index = mInvocationList.Count To 1 Step -1
+        Set candidate = mInvocationList.Item(index)
+        If candidate Is callback Then
+            mInvocationList.Remove index
+            Exit Sub
+        End If
+    Next index
 End Sub
 
 Friend Function TryCompletePromise( _
@@ -6545,6 +7112,17 @@ Friend Sub ConfigureDataTable(ByVal tableName As String)
     Set mItems = New Collection
     Set mKeys = New Collection
     Set mPrimaryKey = New Collection
+    Set mDataIndex = ROneCOne.DictionaryOf(vbString, ROneCOne.Exception)
+End Sub
+
+Friend Sub ConfigureDBNull()
+    mRole = ROLE_DB_NULL
+    mName = "DBNull"
+End Sub
+
+Friend Sub ConfigureUsing(ByVal resource As ROneCOne)
+    mRole = ROLE_USING
+    Set mSource = resource
 End Sub
 
 Friend Sub ConfigureDataColumn( _
@@ -6569,16 +7147,104 @@ End Sub
 
 Friend Sub ConfigureDataRelation( _
     ByVal relationName As String, _
-    ByVal parentColumn As ROneCOne, _
-    ByVal childColumn As ROneCOne, _
+    ByVal parentColumns As Collection, _
+    ByVal childColumns As Collection, _
     ByVal createConstraints As Boolean _
 )
     mRole = ROLE_DATA_RELATION
     mName = relationName
-    Set mLeft = parentColumn
-    Set mRight = childColumn
+    Set mRelationParentColumns = parentColumns
+    Set mRelationChildColumns = childColumns
+    Set mLeft = parentColumns.Item(1)
+    Set mRight = childColumns.Item(1)
     mExpressionOption = Abs(CLng(createConstraints))
+    mVersion = -1
+    mEnumerationVersion = -1
 End Sub
+
+Friend Function FindRelatedRows( _
+    ByVal sourceRow As ROneCOne, _
+    ByVal findChildren As Boolean _
+) As ROneCOne
+    Dim group As ROneCOne
+    Dim indexValue As ROneCOne
+    Dim keyToken As String
+    Dim sourceColumns As Collection
+
+    EnsureRelationIndexes
+    If findChildren Then
+        Set sourceColumns = mRelationParentColumns
+        Set indexValue = mRelationChildIndex
+    Else
+        Set sourceColumns = mRelationChildColumns
+        Set indexValue = mRelationParentIndex
+    End If
+    keyToken = RelationKeyToken(sourceRow, sourceColumns)
+    If indexValue.ContainsKey(keyToken) Then
+        Set group = indexValue.Item(keyToken)
+        Set FindRelatedRows = group.ToList
+    Else
+        Set FindRelatedRows = ROneCOne.ListOf(sourceRow)
+    End If
+End Function
+
+Private Sub EnsureRelationIndexes()
+    Dim childColumn As ROneCOne
+    Dim childTable As ROneCOne
+    Dim parentColumn As ROneCOne
+    Dim parentTable As ROneCOne
+
+    Set parentColumn = mRelationParentColumns.Item(1)
+    Set childColumn = mRelationChildColumns.Item(1)
+    Set parentTable = parentColumn.InternalSource
+    Set childTable = childColumn.InternalSource
+    If mVersion = parentTable.InternalSequenceVersion And _
+        mEnumerationVersion = childTable.InternalSequenceVersion Then Exit Sub
+    Set mRelationParentIndex = BuildRelationIndex( _
+        parentTable, mRelationParentColumns)
+    Set mRelationChildIndex = BuildRelationIndex( _
+        childTable, mRelationChildColumns)
+    mVersion = parentTable.InternalSequenceVersion
+    mEnumerationVersion = childTable.InternalSequenceVersion
+End Sub
+
+Private Function BuildRelationIndex( _
+    ByVal table As ROneCOne, _
+    ByVal columns As Collection _
+) As ROneCOne
+    Dim group As ROneCOne
+    Dim indexValue As ROneCOne
+    Dim keyToken As String
+    Dim row As ROneCOne
+
+    Set indexValue = ROneCOne.DictionaryOf(vbString, ROneCOne.Exception)
+    For Each row In table.InternalDataRows
+        If row.RowState <> "Deleted" Then
+            keyToken = RelationKeyToken(row, columns)
+            If indexValue.ContainsKey(keyToken) Then
+                Set group = indexValue.Item(keyToken)
+            Else
+                Set group = ROneCOne.ListOf(row)
+                indexValue.Add keyToken, group
+            End If
+            group.Add row
+        End If
+    Next row
+    Set BuildRelationIndex = indexValue
+End Function
+
+Private Function RelationKeyToken( _
+    ByVal row As ROneCOne, _
+    ByVal columns As Collection _
+) As String
+    Dim column As ROneCOne
+    Dim token As String
+
+    For Each column In columns
+        token = DataIndexToken(row.DataFieldWrapped(column.ColumnName))
+        RelationKeyToken = RelationKeyToken & CStr(Len(token)) & ":" & token
+    Next column
+End Function
 
 Friend Sub ConfigureDataView(ByVal table As ROneCOne)
     mRole = ROLE_DATA_VIEW
@@ -6615,6 +7281,18 @@ End Sub
 Friend Sub ConfigureUniqueColumn()
     mUnique = True
     mAllowDBNull = False
+End Sub
+
+Friend Sub ConfigurePrimaryKeyColumn(ByVal singleColumn As Boolean)
+    mAllowDBNull = False
+    If singleColumn Then mUnique = True
+End Sub
+
+Friend Sub ConfigureSinglePrimaryKey(ByVal column As ROneCOne)
+    Set mPrimaryKey = New Collection
+    column.ConfigurePrimaryKeyColumn True
+    mPrimaryKey.Add column
+    RebuildPrimaryKeyIndex
 End Sub
 
 Friend Property Get InternalAutoIncrement() As Boolean
@@ -6713,6 +7391,7 @@ End Sub
 Friend Sub ConfigureDbAdapter(ByVal selectCommand As ROneCOne)
     mRole = ROLE_DB_ADAPTER
     Set mSource = selectCommand
+    Set mProviderErrors = New Collection
 End Sub
 
 Friend Sub ConfigureDbReader(ByVal providerReader As Object)
@@ -6748,8 +7427,13 @@ Friend Sub InternalAddLookupGroup( _
     ByVal keyWrapped As ROneCOne, _
     ByVal group As ROneCOne _
 )
+    Dim groupWrapped As ROneCOne
+
+    PrepareHashInsert
+    Set groupWrapped = CreateObjectResult(group)
     mKeys.Add keyWrapped
-    mItems.Add CreateObjectResult(group)
+    mItems.Add groupWrapped
+    AddHashIndexEntry keyWrapped, mKeys.Count - 1, groupWrapped
 End Sub
 
 Friend Function InternalCollectionItem(ByVal index As Long) As ROneCOne
@@ -7714,26 +8398,51 @@ Friend Function ExecuteNonQueryForDataRow( _
     ByVal dataRow As ROneCOne _
 ) As Long
     Dim commandObject As Object
+    Dim capturedDescription As String
+    Dim capturedNumber As Long
+    Dim capturedSource As String
     Dim recordsAffected As Variant
     Dim recordset As Object
 
     RequireDbCommand Me, "Update"
     Set commandObject = BuildAdoCommand(dataRow)
+    On Error GoTo ExecuteFailed
     Set recordset = commandObject.Execute(recordsAffected)
-    If Not recordset Is Nothing Then
-        If CLng(CallByName(recordset, "State", VbGet)) <> 0 Then
-            CallByName recordset, "Close", VbMethod
-        End If
-    End If
+    CloseProviderObject recordset
     ExecuteNonQueryForDataRow = CLng(recordsAffected)
+    On Error GoTo 0
+    Exit Function
+
+ExecuteFailed:
+    capturedNumber = Err.Number
+    capturedSource = Err.Source
+    capturedDescription = Err.Description
+    On Error Resume Next
+    CloseProviderObject recordset
+    On Error GoTo 0
+    Err.Raise capturedNumber, capturedSource, capturedDescription
 End Function
 
 Private Function UpdateDataTable(ByVal table As ROneCOne) As Long
+    Dim capturedDescription As String
+    Dim capturedNumber As Long
+    Dim capturedSource As String
     Dim command As ROneCOne
+    Dim connection As ROneCOne
+    Dim errorValue As ROneCOne
     Dim row As ROneCOne
     Dim rowState As String
+    Dim transaction As ROneCOne
+    Dim transactionState As String
 
     RequireDataTable table, "Update"
+    Set mProviderErrors = New Collection
+    If mAdapterUseTransaction Then
+        Set connection = mSource.InternalSource
+        RequireDbConnection connection, "Update transaction"
+        Set transaction = connection.BeginTransaction
+    End If
+    On Error GoTo UpdateFailed
     For Each row In table.InternalDataRows
         rowState = row.RowState
         Set command = Nothing
@@ -7750,11 +8459,62 @@ Private Function UpdateDataTable(ByVal table As ROneCOne) As Long
                 RaiseContractError ERROR_INVALID_OPERATION, "Update", _
                     "The adapter has no command for " & rowState & " rows."
             End If
-            command.ExecuteNonQueryForDataRow row
-            UpdateDataTable = UpdateDataTable + 1
+            If mAdapterContinueOnError Then
+                Set errorValue = Nothing
+                If ExecuteUpdateRowCaptured(command, row, errorValue) Then
+                    UpdateDataTable = UpdateDataTable + 1
+                Else
+                    mProviderErrors.Add errorValue
+                End If
+            Else
+                command.ExecuteNonQueryForDataRow row
+                UpdateDataTable = UpdateDataTable + 1
+            End If
         End If
     Next row
+    If mProviderErrors.Count > 0 Then
+        If Not transaction Is Nothing Then
+            transaction.Rollback
+            UpdateDataTable = 0
+        End If
+        Exit Function
+    End If
+    If Not transaction Is Nothing Then transaction.Commit
     If UpdateDataTable > 0 Then table.AcceptChanges
+    On Error GoTo 0
+    Exit Function
+
+UpdateFailed:
+    capturedNumber = Err.Number
+    capturedSource = Err.Source
+    capturedDescription = Err.Description
+    On Error Resume Next
+    If Not transaction Is Nothing Then
+        transactionState = transaction.State
+        If transactionState = "Open" Then transaction.Rollback
+    End If
+    On Error GoTo 0
+    Err.Raise capturedNumber, capturedSource, capturedDescription
+End Function
+
+Private Function ExecuteUpdateRowCaptured( _
+    ByVal command As ROneCOne, _
+    ByVal row As ROneCOne, _
+    ByRef errorValue As ROneCOne _
+) As Boolean
+    Dim ignored As Long
+
+    On Error GoTo UpdateFailed
+    ignored = command.ExecuteNonQueryForDataRow(row)
+    ExecuteUpdateRowCaptured = True
+    Exit Function
+
+UpdateFailed:
+    Set errorValue = New ROneCOne
+    errorValue.ConfigureError Err.Number, Err.Source, Err.Description, _
+        Err.HelpFile, Err.HelpContext
+    Err.Clear
+    On Error GoTo 0
 End Function
 
 Private Function AdoTypeForValue(ByVal wrapped As ROneCOne) As Long
@@ -7796,6 +8556,13 @@ Private Function ReadProviderField(ByVal index As Variant) As Variant
     Set field = CallByName(fields, "Item", VbGet, index)
     ReadProviderField = CallByName(field, "Value", VbGet)
 End Function
+
+Private Sub CloseProviderObject(ByVal providerValue As Object)
+    If providerValue Is Nothing Then Exit Sub
+    If CLng(CallByName(providerValue, "State", VbGet)) <> 0 Then
+        CallByName providerValue, "Close", VbMethod
+    End If
+End Sub
 
 Private Function FillTableFromReader( _
     ByVal table As ROneCOne, _
@@ -7875,6 +8642,42 @@ Private Sub RequireDataRelation( _
     End If
 End Sub
 
+Private Function NormalizeRelationColumns( _
+    ByVal candidate As Variant, _
+    ByVal memberName As String _
+) As Collection
+    Dim candidateObject As Object
+    Dim column As ROneCOne
+    Dim result As Collection
+    Dim sequenceValue As ROneCOne
+
+    Set result = New Collection
+    If Not IsObject(candidate) Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "Relation columns must be DataColumns or a typed sequence."
+    End If
+    Set candidateObject = candidate
+    If candidateObject Is Nothing Or Not TypeOf candidateObject Is ROneCOne Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "Relation columns must be ROneCOne values."
+    End If
+    Set sequenceValue = candidateObject
+    If sequenceValue.InternalRole = ROLE_DATA_COLUMN Then
+        result.Add sequenceValue
+    Else
+        RequireSequence sequenceValue, memberName
+        For Each column In sequenceValue
+            RequireDataColumn column, memberName
+            result.Add column
+        Next column
+    End If
+    If result.Count = 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "A relation requires at least one column on each side."
+    End If
+    Set NormalizeRelationColumns = result
+End Function
+
 Private Function FindNamedObjectIndex( _
     ByVal values As Collection, _
     ByVal objectName As String _
@@ -7906,6 +8709,7 @@ Private Function CreateNamedDataCollection( _
             CreateScalarResult(runtimeValue.InternalName)
         result.InternalAppendCollectionItem CreateObjectResult(runtimeValue)
     Next runtimeValue
+    result.RebuildHashIndex 8
     Set CreateNamedDataCollection = result
 End Function
 
@@ -8083,6 +8887,7 @@ Private Sub SetDataRowItem(ByVal index As Variant, ByVal value As Variant)
         mSource.ValidateForeignKeyConstraints Me
     End If
     If mRowState = ROW_STATE_UNCHANGED Then mRowState = ROW_STATE_MODIFIED
+    If mRowState <> ROW_STATE_DETACHED Then mSource.RebuildPrimaryKeyIndex
     mSource.TouchDataVersion
     On Error GoTo 0
     Exit Sub
@@ -8106,9 +8911,17 @@ End Function
 
 Private Function WrapDataValue(ByVal value As Variant) As ROneCOne
     Dim valueObject As Object
+    Dim runtimeValue As ROneCOne
 
     If IsObject(value) Then
         Set valueObject = value
+        If TypeOf valueObject Is ROneCOne Then
+            Set runtimeValue = valueObject
+            If runtimeValue.InternalRole = ROLE_DB_NULL Then
+                Set WrapDataValue = CreateScalarResult(Null)
+                Exit Function
+            End If
+        End If
         Set WrapDataValue = CreateObjectResult(valueObject)
     Else
         Set WrapDataValue = CreateScalarResult(value)
@@ -8177,6 +8990,118 @@ Private Sub ValidateDataColumnValue( _
         column.InternalExpectedObjectType, memberName, "value"
 End Sub
 
+Private Function BuildPrimaryKeyArguments( _
+    ByVal keys As Variant _
+) As Collection
+    Dim candidate As Object
+    Dim hasSingle As Boolean
+    Dim rawValue As Variant
+    Dim result As Collection
+    Dim sequenceValue As ROneCOne
+
+    Set result = New Collection
+    On Error Resume Next
+    hasSingle = (UBound(keys) = LBound(keys))
+    On Error GoTo 0
+    If hasSingle Then
+        If IsArray(keys(LBound(keys))) Then
+            For Each rawValue In keys(LBound(keys))
+                result.Add WrapDataValue(rawValue)
+            Next rawValue
+            Set BuildPrimaryKeyArguments = result
+            Exit Function
+        End If
+        If IsObject(keys(LBound(keys))) Then
+            Set candidate = keys(LBound(keys))
+            If TypeOf candidate Is ROneCOne Then
+                Set sequenceValue = candidate
+                If sequenceValue.InternalRole = ROLE_LIST Or _
+                    sequenceValue.InternalRole = ROLE_QUERY Or _
+                    IsGenericCollectionRole(sequenceValue.InternalRole) Then
+                    For Each rawValue In sequenceValue
+                        result.Add WrapDataValue(rawValue)
+                    Next rawValue
+                    Set BuildPrimaryKeyArguments = result
+                    Exit Function
+                End If
+            End If
+        End If
+    End If
+    For Each rawValue In keys
+        result.Add WrapDataValue(rawValue)
+    Next rawValue
+    Set BuildPrimaryKeyArguments = result
+End Function
+
+Friend Sub RebuildPrimaryKeyIndex()
+    Dim keyToken As String
+    Dim row As ROneCOne
+
+    If mRole <> ROLE_DATA_TABLE Then Exit Sub
+    Set mDataIndex = ROneCOne.DictionaryOf(vbString, ROneCOne.Exception)
+    If mPrimaryKey.Count = 0 Then Exit Sub
+    For Each row In mItems
+        If row.RowState <> "Deleted" Then
+            keyToken = PrimaryKeyTokenForRow(row)
+            If Not mDataIndex.TryAdd(keyToken, row) Then
+                RaiseContractError ERROR_INVALID_OPERATION, "PrimaryKey", _
+                    "The composite primary key contains a duplicate value."
+            End If
+        End If
+    Next row
+End Sub
+
+Private Function PrimaryKeyTokenForRow( _
+    ByVal row As ROneCOne _
+) As String
+    Dim column As ROneCOne
+    Dim token As String
+
+    For Each column In mPrimaryKey
+        token = DataIndexToken(row.DataFieldWrapped(column.ColumnName))
+        PrimaryKeyTokenForRow = PrimaryKeyTokenForRow & _
+            CStr(Len(token)) & ":" & token
+    Next column
+End Function
+
+Private Function PrimaryKeyTokenFromArguments( _
+    ByVal arguments As Collection _
+) As String
+    Dim column As ROneCOne
+    Dim index As Long
+    Dim token As String
+    Dim wrapped As ROneCOne
+
+    For index = 1 To arguments.Count
+        Set column = mPrimaryKey.Item(index)
+        Set wrapped = arguments.Item(index)
+        ValidateDataColumnValue column, wrapped, "Find"
+        token = DataIndexToken(wrapped)
+        PrimaryKeyTokenFromArguments = PrimaryKeyTokenFromArguments & _
+            CStr(Len(token)) & ":" & token
+    Next index
+End Function
+
+Private Function DataIndexToken(ByVal wrapped As ROneCOne) As String
+    Dim scalarValue As Variant
+
+    If wrapped.InternalHasObjectValue Then
+        DataIndexToken = "O:" & CStr(ObjPtr(wrapped.InternalObjectValue))
+        Exit Function
+    End If
+    scalarValue = wrapped.InternalScalarValue
+    If IsNull(scalarValue) Then
+        DataIndexToken = "NULL"
+    ElseIf IsEmpty(scalarValue) Then
+        DataIndexToken = "N:0"
+    ElseIf IsNumeric(scalarValue) Or VarType(scalarValue) = vbDate Or _
+        VarType(scalarValue) = vbBoolean Then
+        DataIndexToken = "N:" & CStr(CDec(scalarValue))
+    Else
+        DataIndexToken = CStr(VarType(scalarValue)) & ":" & CStr(scalarValue)
+    End If
+End Function
+
 Private Sub ReplaceDataValue( _
     ByVal columnIndex As Long, _
     ByVal wrapped As ROneCOne _
@@ -8204,6 +9129,7 @@ Friend Sub ValidateDataRowConstraints( _
     Dim column As ROneCOne
     Dim columnIndex As Long
     Dim existing As ROneCOne
+    Dim keyToken As String
     Dim wrapped As ROneCOne
 
     columnIndex = 0
@@ -8224,6 +9150,16 @@ Friend Sub ValidateDataRowConstraints( _
         End If
         columnIndex = columnIndex + 1
     Next column
+    If mPrimaryKey.Count > 0 Then
+        keyToken = PrimaryKeyTokenForRow(row)
+        If mDataIndex.ContainsKey(keyToken) Then
+            Set existing = mDataIndex.Item(keyToken)
+            If Not existing Is row Then
+                RaiseContractError ERROR_INVALID_OPERATION, "PrimaryKey", _
+                    "The composite primary key contains a duplicate value."
+            End If
+        End If
+    End If
 End Sub
 
 Friend Sub ValidateForeignKeyConstraints(ByVal row As ROneCOne)
@@ -8286,12 +9222,20 @@ Private Sub RejectRowChanges()
 End Sub
 
 Private Sub ValidateRelationOwnership(ByVal relation As ROneCOne)
+    Dim childColumn As ROneCOne
+    Dim childColumns As Collection
     Dim childTable As ROneCOne
     Dim childRow As ROneCOne
+    Dim parentColumn As ROneCOne
+    Dim parentColumns As Collection
     Dim parentTable As ROneCOne
 
-    Set parentTable = relation.InternalRelationParentColumn.InternalSource
-    Set childTable = relation.InternalRelationChildColumn.InternalSource
+    Set parentColumns = relation.InternalRelationParentColumns
+    Set childColumns = relation.InternalRelationChildColumns
+    Set parentColumn = parentColumns.Item(1)
+    Set childColumn = childColumns.Item(1)
+    Set parentTable = parentColumn.InternalSource
+    Set childTable = childColumn.InternalSource
     If parentTable Is Nothing Or childTable Is Nothing Then
         RaiseContractError ERROR_INVALID_OPERATION, "AddRelation", _
             "Relation columns must belong to DataTables."
@@ -8301,34 +9245,46 @@ Private Sub ValidateRelationOwnership(ByVal relation As ROneCOne)
         RaiseContractError ERROR_INVALID_OPERATION, "AddRelation", _
             "Both relation tables must belong to this DataSet."
     End If
+    For Each parentColumn In parentColumns
+        If Not parentColumn.InternalSource Is parentTable Then
+            RaiseContractError ERROR_INVALID_OPERATION, "AddRelation", _
+                "All parent columns must belong to one DataTable."
+        End If
+    Next parentColumn
+    For Each childColumn In childColumns
+        If Not childColumn.InternalSource Is childTable Then
+            RaiseContractError ERROR_INVALID_OPERATION, "AddRelation", _
+                "All child columns must belong to one DataTable."
+        End If
+    Next childColumn
     If relation.InternalExpressionOption <> 0 Then
-        ValidateExistingUniqueColumn relation.InternalRelationParentColumn
+        ValidateExistingUniqueRelation parentColumns
         For Each childRow In childTable.InternalDataRows
             ValidateChildRowAgainstRelation childRow, relation
         Next childRow
-        relation.InternalRelationParentColumn.ConfigureUniqueColumn
+        For Each parentColumn In parentColumns
+            parentColumn.ConfigurePrimaryKeyColumn (parentColumns.Count = 1)
+        Next parentColumn
     End If
 End Sub
 
-Private Sub ValidateExistingUniqueColumn(ByVal column As ROneCOne)
+Private Sub ValidateExistingUniqueRelation(ByVal columns As Collection)
+    Dim firstColumn As ROneCOne
     Dim firstIndex As Long
     Dim firstRow As ROneCOne
-    Dim firstValue As ROneCOne
     Dim rows As Collection
     Dim secondIndex As Long
     Dim secondRow As ROneCOne
 
-    Set rows = column.InternalSource.InternalDataRows
+    Set firstColumn = columns.Item(1)
+    Set rows = firstColumn.InternalSource.InternalDataRows
     For firstIndex = 1 To rows.Count
         Set firstRow = rows.Item(firstIndex)
-        Set firstValue = firstRow.DataFieldWrapped(column.ColumnName)
         For secondIndex = firstIndex + 1 To rows.Count
             Set secondRow = rows.Item(secondIndex)
-            If DataValuesEqual(firstValue, _
-                secondRow.DataFieldWrapped(column.ColumnName), _
-                "DataRelation") Then
+            If RelationRowsMatch(firstRow, columns, secondRow, columns) Then
                 RaiseContractError ERROR_INVALID_OPERATION, "AddRelation", _
-                    "The parent DataColumn contains duplicate values."
+                    "The parent relation key contains duplicate values."
             End If
         Next secondIndex
     Next firstIndex
@@ -8339,20 +9295,23 @@ Private Sub ValidateChildRowAgainstRelation( _
     ByVal relation As ROneCOne _
 )
     Dim childColumn As ROneCOne
-    Dim childValue As ROneCOne
+    Dim childColumns As Collection
     Dim foundParent As Boolean
-    Dim parentColumn As ROneCOne
+    Dim parentColumns As Collection
     Dim parentRow As ROneCOne
+    Dim parentTable As ROneCOne
 
-    Set childColumn = relation.InternalRelationChildColumn
-    Set childValue = childRow.DataFieldWrapped(childColumn.ColumnName)
-    If IsNullDataValue(childValue) Then Exit Sub
-    Set parentColumn = relation.InternalRelationParentColumn
-    For Each parentRow In parentColumn.InternalSource.InternalDataRows
+    Set childColumns = relation.InternalRelationChildColumns
+    For Each childColumn In childColumns
+        If IsNullDataValue( _
+            childRow.DataFieldWrapped(childColumn.ColumnName)) Then Exit Sub
+    Next childColumn
+    Set parentColumns = relation.InternalRelationParentColumns
+    Set parentTable = relation.InternalRelationParentColumn.InternalSource
+    For Each parentRow In parentTable.InternalDataRows
         If parentRow.RowState <> "Deleted" Then
-            If DataValuesEqual(childValue, _
-                parentRow.DataFieldWrapped(parentColumn.ColumnName), _
-                "ForeignKey") Then
+            If RelationRowsMatch( _
+                childRow, childColumns, parentRow, parentColumns) Then
                 foundParent = True
                 Exit For
             End If
@@ -8368,15 +9327,11 @@ Private Function NavigateRelation( _
     ByVal relationName As String, _
     ByVal findChildren As Boolean _
 ) As ROneCOne
-    Dim candidate As ROneCOne
     Dim dataSetValue As ROneCOne
     Dim relation As ROneCOne
     Dim relationIndex As Long
-    Dim result As ROneCOne
     Dim sourceColumn As ROneCOne
-    Dim sourceValue As ROneCOne
-    Dim targetColumn As ROneCOne
-    Dim targetTable As ROneCOne
+    Dim sourceColumns As Collection
 
     Set dataSetValue = mSource.InternalSource
     If dataSetValue Is Nothing Then
@@ -8391,25 +9346,37 @@ Private Function NavigateRelation( _
     End If
     Set relation = dataSetValue.InternalDataRelations.Item(relationIndex + 1)
     If findChildren Then
-        Set sourceColumn = relation.InternalRelationParentColumn
-        Set targetColumn = relation.InternalRelationChildColumn
+        Set sourceColumns = relation.InternalRelationParentColumns
     Else
-        Set sourceColumn = relation.InternalRelationChildColumn
-        Set targetColumn = relation.InternalRelationParentColumn
+        Set sourceColumns = relation.InternalRelationChildColumns
     End If
+    Set sourceColumn = sourceColumns.Item(1)
     If Not sourceColumn.InternalSource Is mSource Then
         RaiseContractError ERROR_INVALID_OPERATION, "Relation navigation", _
             "The DataRow is on the wrong side of this relation."
     End If
-    Set sourceValue = DataFieldWrapped(sourceColumn.ColumnName)
-    Set targetTable = targetColumn.InternalSource
-    Set result = ROneCOne.ListOf(Me)
-    For Each candidate In targetTable.InternalDataRows
-        If DataValuesEqual(sourceValue, _
-            candidate.DataFieldWrapped(targetColumn.ColumnName), _
-            "Relation navigation") Then result.Add candidate
-    Next candidate
-    Set NavigateRelation = result
+    Set NavigateRelation = relation.FindRelatedRows(Me, findChildren)
+End Function
+
+Private Function RelationRowsMatch( _
+    ByVal leftRow As ROneCOne, _
+    ByVal leftColumns As Collection, _
+    ByVal rightRow As ROneCOne, _
+    ByVal rightColumns As Collection _
+) As Boolean
+    Dim index As Long
+    Dim leftColumn As ROneCOne
+    Dim rightColumn As ROneCOne
+
+    For index = 1 To leftColumns.Count
+        Set leftColumn = leftColumns.Item(index)
+        Set rightColumn = rightColumns.Item(index)
+        If Not DataValuesEqual( _
+            leftRow.DataFieldWrapped(leftColumn.ColumnName), _
+            rightRow.DataFieldWrapped(rightColumn.ColumnName), _
+            "DataRelation") Then Exit Function
+    Next index
+    RelationRowsMatch = True
 End Function
 
 Private Sub ValidateTaskWork( _
@@ -8492,31 +9459,52 @@ Private Function CreateTaskCombinator( _
 ) As ROneCOne
     Dim candidate As Object
     Dim child As ROneCOne
+    Dim hasAny As Boolean
+    Dim hasSingle As Boolean
     Dim rawTask As Variant
     Dim sequenceValue As ROneCOne
     Dim taskValue As ROneCOne
 
     Set taskValue = New ROneCOne
     taskValue.ConfigureTask taskKind, Nothing, Nothing
-    If IsObject(tasks) Then
-        Set candidate = tasks
+    If Not IsArray(tasks) Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "Tasks must be supplied directly or as a typed sequence or array."
+    End If
+    On Error Resume Next
+    hasAny = (UBound(tasks) >= LBound(tasks))
+    hasSingle = (UBound(tasks) = LBound(tasks))
+    On Error GoTo 0
+    If Not hasAny Then
+        If taskKind = TASK_WHEN_ANY Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+                "WhenAny requires at least one Task."
+        End If
+        Set CreateTaskCombinator = taskValue
+        Exit Function
+    End If
+    If hasSingle And IsObject(tasks(LBound(tasks))) Then
+        Set candidate = tasks(LBound(tasks))
         If Not candidate Is Nothing Then
             If TypeOf candidate Is ROneCOne Then
                 Set sequenceValue = candidate
-                RequireSequence sequenceValue, memberName
-                For Each rawTask In sequenceValue
-                    Set child = RequireROneCOne(rawTask, memberName)
-                    RequireTask child, memberName
-                    taskValue.InternalAddTaskChild child
-                Next rawTask
-                Set CreateTaskCombinator = taskValue
-                Exit Function
+                If sequenceValue.InternalRole <> ROLE_TASK Then
+                    RequireSequence sequenceValue, memberName
+                    For Each rawTask In sequenceValue
+                        Set child = RequireROneCOne(rawTask, memberName)
+                        RequireTask child, memberName
+                        taskValue.InternalAddTaskChild child
+                    Next rawTask
+                    If taskKind = TASK_WHEN_ANY And _
+                        taskValue.InternalTaskChildCount = 0 Then
+                        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+                            "WhenAny requires at least one Task."
+                    End If
+                    Set CreateTaskCombinator = taskValue
+                    Exit Function
+                End If
             End If
         End If
-    End If
-    If Not IsArray(tasks) Then
-        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
-            "Tasks must be supplied as a typed sequence or array."
     End If
     For Each rawTask In tasks
         Set child = RequireROneCOne(rawTask, memberName)
@@ -8532,26 +9520,53 @@ End Sub
 
 Friend Sub AdvanceTask()
 Attribute AdvanceTask.VB_MemberFlags = "40"
-    Dim arguments As Collection
-    Dim allCompleted As Boolean
     Dim capturedDescription As String
     Dim capturedHelpContext As Long
     Dim capturedHelpFile As String
     Dim capturedNumber As Long
     Dim capturedSource As String
+
+    If mTaskStatus >= TASK_STATUS_COMPLETED Then Exit Sub
+    If mTaskAdvancing Then
+        RaiseContractError ERROR_INVALID_OPERATION, "Await", _
+            "A Task cannot await itself or contain a dependency cycle."
+    End If
+    mTaskAdvancing = True
+    On Error GoTo TaskFailed
+    AdvanceTaskCore
+    mTaskAdvancing = False
+    On Error GoTo 0
+    Exit Sub
+
+TaskFailed:
+    capturedNumber = Err.Number
+    capturedSource = Err.Source
+    capturedDescription = Err.Description
+    capturedHelpFile = Err.HelpFile
+    capturedHelpContext = Err.HelpContext
+    On Error GoTo 0
+    Set mTaskException = New ROneCOne
+    mTaskException.ConfigureError capturedNumber, capturedSource, _
+        capturedDescription, capturedHelpFile, capturedHelpContext
+    mTaskStatus = TASK_STATUS_FAULTED
+    mTaskAdvancing = False
+End Sub
+
+Private Sub AdvanceTaskCore()
+    Dim arguments As Collection
+    Dim allCompleted As Boolean
     Dim child As ROneCOne
     Dim dataTarget As ROneCOne
+    Dim errors As Collection
     Dim results As ROneCOne
     Dim sawCanceled As Boolean
 
-    If mTaskStatus >= TASK_STATUS_COMPLETED Then Exit Sub
     If TaskCancellationRequested Then
         mTaskStatus = TASK_STATUS_CANCELED
         Exit Sub
     End If
     If mOperator = TASK_PROMISE Then Exit Sub
     mTaskStatus = TASK_STATUS_RUNNING
-    On Error GoTo TaskFailed
     Select Case mOperator
         Case TASK_WORK
             Set arguments = New Collection
@@ -8559,6 +9574,12 @@ Attribute AdvanceTask.VB_MemberFlags = "40"
         Case TASK_DELAY
             AdvanceDelayTask
             Exit Sub
+        Case TASK_YIELD
+            If mExpressionOption = 0 Then
+                mExpressionOption = 1
+                Exit Sub
+            End If
+            Set mTaskResult = CreateScalarResult(Empty)
         Case TASK_WHEN_ALL
             allCompleted = True
             For Each child In mTaskChildren
@@ -8567,18 +9588,18 @@ Attribute AdvanceTask.VB_MemberFlags = "40"
             Next child
             If Not allCompleted Then Exit Sub
             Set results = ROneCOne.ListOf(vbVariant)
+            Set errors = New Collection
             For Each child In mTaskChildren
                 If child.IsFaulted Then
-                    If mTaskException Is Nothing Then
-                        Set mTaskException = child.Exception
-                    End If
+                    AppendFlattenedExceptions child.Exception, errors
                 End If
                 If child.IsCanceled Then sawCanceled = True
                 If Not child.IsFaulted And Not child.IsCanceled Then
                     results.Add child.Result
                 End If
             Next child
-            If Not mTaskException Is Nothing Then
+            If errors.Count > 0 Then
+                Set mTaskException = CreateAggregateException(errors)
                 mTaskStatus = TASK_STATUS_FAULTED
                 Exit Sub
             End If
@@ -8600,6 +9621,24 @@ Attribute AdvanceTask.VB_MemberFlags = "40"
                     Exit Sub
                 End If
             Next child
+            Exit Sub
+        Case TASK_WAIT_ASYNC
+            mSource.AdvanceTask
+            If mSource.IsCompleted Then
+                mTaskStatus = mSource.InternalTaskStatus
+                Set mTaskResult = mSource.InternalTaskResult
+                Set mTaskException = mSource.InternalTaskException
+                Exit Sub
+            End If
+            If mTaskDeadline >= 0 And _
+                MonotonicMilliseconds >= mTaskDeadline Then
+                Set mTaskException = New ROneCOne
+                mTaskException.ConfigureError ERROR_TIMEOUT, _
+                    "ROneCOne.TimeoutException", _
+                    "The asynchronous wait timed out.", vbNullString, 0
+                mTaskException.ConfigureExceptionType "TimeoutException"
+                mTaskStatus = TASK_STATUS_FAULTED
+            End If
             Exit Sub
         Case TASK_CONTINUATION
             mSource.AdvanceTask
@@ -8633,62 +9672,68 @@ Attribute AdvanceTask.VB_MemberFlags = "40"
             End Select
     End Select
     mTaskStatus = TASK_STATUS_COMPLETED
-    On Error GoTo 0
-    Exit Sub
-
-TaskFailed:
-    capturedNumber = Err.Number
-    capturedSource = Err.Source
-    capturedDescription = Err.Description
-    capturedHelpFile = Err.HelpFile
-    capturedHelpContext = Err.HelpContext
-    On Error GoTo 0
-    Set mTaskException = New ROneCOne
-    mTaskException.ConfigureError capturedNumber, capturedSource, _
-        capturedDescription, capturedHelpFile, capturedHelpContext
-    mTaskStatus = TASK_STATUS_FAULTED
 End Sub
 
 Private Function WaitForTaskCompletion( _
     ByVal timeoutMilliseconds As Long _
 ) As Boolean
-    Dim elapsed As Double
-    Dim startedAt As Double
+    Dim capturedDescription As String
+    Dim capturedHelpContext As Long
+    Dim capturedHelpFile As String
+    Dim capturedNumber As Long
+    Dim capturedSource As String
+    Dim startedAt As LongLong
 
-    startedAt = Timer
+    If mTaskWaitActive Then
+        RaiseContractError ERROR_INVALID_OPERATION, "Await", _
+            "Reentrant waits on the same Task are not supported."
+    End If
+    mTaskWaitActive = True
+    startedAt = MonotonicMilliseconds
+    On Error GoTo WaitFailed
     Do While mTaskStatus < TASK_STATUS_COMPLETED
         AdvanceTask
         If mTaskStatus >= TASK_STATUS_COMPLETED Then Exit Do
         DoEvents
+        Sleep 1
         If timeoutMilliseconds >= 0 Then
-            elapsed = ElapsedMilliseconds(startedAt)
-            If elapsed >= CDbl(timeoutMilliseconds) Then Exit Function
+            If MonotonicMilliseconds - startedAt >= _
+                CLngLng(timeoutMilliseconds) Then
+                mTaskWaitActive = False
+                Exit Function
+            End If
         End If
     Loop
+    mTaskWaitActive = False
     WaitForTaskCompletion = True
+    On Error GoTo 0
+    Exit Function
+
+WaitFailed:
+    capturedNumber = Err.Number
+    capturedSource = Err.Source
+    capturedDescription = Err.Description
+    capturedHelpFile = Err.HelpFile
+    capturedHelpContext = Err.HelpContext
+    mTaskWaitActive = False
+    On Error GoTo 0
+    Err.Raise capturedNumber, capturedSource, capturedDescription, _
+        capturedHelpFile, capturedHelpContext
 End Function
 
 Private Sub AdvanceDelayTask()
-    If mExpressionOption = 0 Then
-        mScalarValue = Timer
-        mExpressionOption = 1
-    End If
     If TaskCancellationRequested Then
         mTaskStatus = TASK_STATUS_CANCELED
         Exit Sub
     End If
-    If ElapsedMilliseconds(CDbl(mScalarValue)) >= CDbl(mQueryCount) Then
+    If MonotonicMilliseconds >= mTaskDeadline Then
         Set mTaskResult = CreateScalarResult(Empty)
         mTaskStatus = TASK_STATUS_COMPLETED
     End If
 End Sub
 
-Private Function ElapsedMilliseconds(ByVal startedAt As Double) As Double
-    Dim elapsed As Double
-
-    elapsed = Timer - startedAt
-    If elapsed < 0 Then elapsed = elapsed + 86400#
-    ElapsedMilliseconds = elapsed * 1000#
+Private Function MonotonicMilliseconds() As LongLong
+    MonotonicMilliseconds = GetTickCount64()
 End Function
 
 Private Function TaskCancellationRequested() As Boolean
@@ -8698,33 +9743,124 @@ End Function
 
 Private Sub EvaluateScheduledCancellation()
     If mCancellationRequested Or mQueryCount < 0 Then Exit Sub
-    If ElapsedMilliseconds(CDbl(mScalarValue)) >= CDbl(mQueryCount) Then
+    If MonotonicMilliseconds >= mTaskDeadline Then
         CancelCancellationSource
     End If
 End Sub
 
 Private Sub CancelCancellationSource()
-    Dim arguments As Collection
     Dim callback As ROneCOne
     Dim callbacks As Collection
-    Dim ignored As ROneCOne
+    Dim callbackError As ROneCOne
+    Dim errors As Collection
 
     If mCancellationRequested Then Exit Sub
     mCancellationRequested = True
     Set callbacks = CopyWrappedCollection(mInvocationList)
-    Set arguments = New Collection
+    Set errors = New Collection
     For Each callback In callbacks
-        Set ignored = callback.InvokeValue(arguments)
+        Set callbackError = InvokeCancellationCallback(callback)
+        If Not callbackError Is Nothing Then errors.Add callbackError
     Next callback
+    Set mInvocationList = New Collection
+    If errors.Count > 0 Then RaiseCapturedError _
+        CreateAggregateException(errors)
 End Sub
+
+Private Function InvokeCancellationCallback( _
+    ByVal callback As ROneCOne _
+) As ROneCOne
+    Dim arguments As Collection
+    Dim capturedDescription As String
+    Dim capturedHelpContext As Long
+    Dim capturedHelpFile As String
+    Dim capturedNumber As Long
+    Dim capturedSource As String
+    Dim ignored As ROneCOne
+
+    On Error GoTo CallbackFailed
+    Set arguments = New Collection
+    Set ignored = callback.InvokeValue(arguments)
+    On Error GoTo 0
+    Exit Function
+
+CallbackFailed:
+    capturedNumber = Err.Number
+    capturedSource = Err.Source
+    capturedDescription = Err.Description
+    capturedHelpFile = Err.HelpFile
+    capturedHelpContext = Err.HelpContext
+    On Error GoTo 0
+    Set InvokeCancellationCallback = New ROneCOne
+    InvokeCancellationCallback.ConfigureError capturedNumber, _
+        capturedSource, capturedDescription, capturedHelpFile, _
+        capturedHelpContext
+End Function
+
+Private Function CreateAggregateException( _
+    ByVal errors As Collection _
+) As ROneCOne
+    Dim aggregate As ROneCOne
+
+    Set aggregate = New ROneCOne
+    aggregate.ConfigureAggregateError errors
+    Set CreateAggregateException = aggregate
+End Function
+
+Private Function AsAggregateException( _
+    ByVal errorValue As ROneCOne _
+) As ROneCOne
+    Dim errors As Collection
+
+    If errorValue Is Nothing Then Exit Function
+    If errorValue.ExceptionType = "AggregateException" Then
+        Set AsAggregateException = errorValue
+        Exit Function
+    End If
+    Set errors = New Collection
+    errors.Add errorValue
+    Set AsAggregateException = CreateAggregateException(errors)
+End Function
+
+Private Sub AppendFlattenedExceptions( _
+    ByVal errorValue As ROneCOne, _
+    ByVal output As Collection _
+)
+    Dim inner As ROneCOne
+
+    If errorValue Is Nothing Then Exit Sub
+    If errorValue.ExceptionType <> "AggregateException" Then
+        output.Add errorValue
+        Exit Sub
+    End If
+    For Each inner In errorValue.InternalInnerExceptions
+        AppendFlattenedExceptions inner, output
+    Next inner
+End Sub
+
+Private Function PrimaryException( _
+    ByVal errorValue As ROneCOne _
+) As ROneCOne
+    Dim flattened As Collection
+
+    If errorValue Is Nothing Then Exit Function
+    If errorValue.ExceptionType <> "AggregateException" Then
+        Set PrimaryException = errorValue
+        Exit Function
+    End If
+    Set flattened = New Collection
+    AppendFlattenedExceptions errorValue, flattened
+    If flattened.Count > 0 Then Set PrimaryException = flattened.Item(1)
+End Function
 
 Private Sub RaiseTaskTerminalState(ByVal memberName As String)
     If mTaskStatus = TASK_STATUS_CANCELED Then
-        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+        Err.Raise ERROR_CANCELED, _
+            "ROneCOne.OperationCanceledException", _
             "The Task was canceled."
     End If
     If mTaskStatus = TASK_STATUS_FAULTED Then
-        RaiseCapturedError mTaskException
+        RaiseCapturedError PrimaryException(mTaskException)
     End If
 End Sub
 
@@ -8940,6 +10076,31 @@ TypeFailed:
         "The collection " & valueName & " does not match its generic type."
 End Sub
 
+Private Sub ValidateKeyValue( _
+    ByVal value As Variant, _
+    ByVal memberName As String _
+)
+    Dim valueObject As Object
+
+    If IsNull(value) Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "A collection key cannot be Null."
+    End If
+    If mKeyType = vbVariant Then Exit Sub
+    If mKeyType = vbObject Then
+        If Not IsObject(value) Then GoTo TypeFailed
+        Set valueObject = value
+        If valueObject Is Nothing Then Exit Sub
+        If TypeName(valueObject) = mKeyObjectType Then Exit Sub
+        GoTo TypeFailed
+    End If
+    If IsObject(value) Then GoTo TypeFailed
+    If VarType(value) = mKeyType Then Exit Sub
+TypeFailed:
+    RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
+        "The collection key does not match its generic type."
+End Sub
+
 Private Function BuildCollectionTypeName() As String
     Dim keyName As String
     Dim valueName As String
@@ -9079,8 +10240,10 @@ Friend Sub AddMutable( _
             RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
                 "An item with the same key already exists."
         End If
+        PrepareHashInsert
         mKeys.Add keyWrapped
         mItems.Add valueWrapped
+        AddHashIndexEntry keyWrapped, mKeys.Count - 1, valueWrapped
     ElseIf IsPriorityQueueKind(mCollectionKind) Then
         If IsMissing(value) Then
             RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
@@ -9130,8 +10293,10 @@ Friend Sub AddDictionaryPair( _
             mItems.Add valueWrapped
         End If
     Else
+        PrepareHashInsert
         mKeys.Add keyWrapped
         mItems.Add valueWrapped
+        AddHashIndexEntry keyWrapped, mKeys.Count - 1, valueWrapped
     End If
     mVersion = mVersion + 1
 End Sub
@@ -9150,7 +10315,9 @@ Friend Sub AddSetValue( _
             mItems.Add wrapped
         End If
     Else
+        PrepareHashInsert
         mItems.Add wrapped
+        AddHashIndexEntry wrapped, mItems.Count - 1
     End If
     mVersion = mVersion + 1
 End Sub
@@ -9186,21 +10353,385 @@ Private Function IsSortedSetKind(ByVal collectionKind As Long) As Boolean
         collectionKind = COLLECTION_IMMUTABLE_SORTED_SET)
 End Function
 
+Friend Function HashIndexSupported() As Boolean
+    If Not mQueryComparer Is Nothing Then Exit Function
+    Select Case mCollectionKind
+        Case COLLECTION_DICTIONARY, COLLECTION_HASH_SET
+            HashIndexSupported = True
+        Case COLLECTION_ORDERED_DICTIONARY, COLLECTION_KEYED
+            HashIndexSupported = True
+        Case COLLECTION_CONCURRENT_DICTIONARY
+            HashIndexSupported = True
+        Case COLLECTION_IMMUTABLE_DICTIONARY
+            HashIndexSupported = True
+        Case COLLECTION_IMMUTABLE_HASH_SET, COLLECTION_LOOKUP
+            HashIndexSupported = True
+    End Select
+End Function
+
+Private Function DirectKeyLookupSupported() As Boolean
+    Select Case mKeyType
+        Case vbByte, vbInteger, vbLong, vbLongLong, vbBoolean
+            DirectKeyLookupSupported = True
+    End Select
+End Function
+
+Private Sub RequireHashCapacityCollection(ByVal memberName As String)
+    If HashIndexSupported Then Exit Sub
+    RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+        "This collection does not use the default hash index."
+End Sub
+
+Private Function NextHashCapacity(ByVal minimum As Long) As Long
+    Dim result As Long
+
+    result = 8
+    Do While result < minimum
+        If result > 536870912 Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "EnsureCapacity", _
+                "The requested capacity is too large."
+        End If
+        result = result * 2
+    Loop
+    NextHashCapacity = result
+End Function
+
+Private Sub ResetHashIndex()
+    Erase mHashSlots
+    Erase mHashCodes
+    Erase mHashKeys
+    Erase mHashValues
+    mHashCapacity = 0
+    mHashCount = 0
+End Sub
+
+Friend Sub RebuildHashIndex(ByVal requestedCapacity As Long)
+    Dim index As Long
+    Dim indexedValues As Collection
+    Dim itemWrapped As ROneCOne
+    Dim indexedItems() As ROneCOne
+    Dim minimum As Long
+    Dim wrapped As ROneCOne
+
+    If Not HashIndexSupported Then
+        ResetHashIndex
+        Exit Sub
+    End If
+    If requestedCapacity < 8 Then requestedCapacity = 8
+    minimum = mItems.Count * 2
+    If requestedCapacity < minimum Then requestedCapacity = minimum
+    mHashCapacity = NextHashCapacity(requestedCapacity)
+    ReDim mHashSlots(0 To mHashCapacity - 1)
+    ReDim mHashCodes(0 To mHashCapacity - 1)
+    ReDim mHashKeys(0 To mHashCapacity - 1)
+    ReDim mHashValues(0 To mHashCapacity - 1)
+    mHashCount = 0
+    If IsDictionaryCollection Or mCollectionKind = COLLECTION_KEYED Or _
+        mCollectionKind = COLLECTION_LOOKUP Then
+        Set indexedValues = mKeys
+    Else
+        Set indexedValues = mItems
+    End If
+    If indexedValues.Count = 0 Then Exit Sub
+    ReDim indexedItems(1 To mItems.Count)
+    index = 0
+    For Each itemWrapped In mItems
+        index = index + 1
+        Set indexedItems(index) = itemWrapped
+    Next itemWrapped
+    index = 0
+    For Each wrapped In indexedValues
+        index = index + 1
+        If IsDictionaryCollection Or mCollectionKind = COLLECTION_KEYED Or _
+            mCollectionKind = COLLECTION_LOOKUP Then
+            InsertHashSlot wrapped, index - 1, indexedItems(index)
+        Else
+            InsertHashSlot wrapped, index - 1, wrapped
+        End If
+    Next wrapped
+End Sub
+
+Private Sub ResizeHashIndex(ByVal requestedCapacity As Long)
+    Dim index As Long
+    Dim savedCount As Long
+    Dim savedIndices() As Long
+    Dim savedKeys() As ROneCOne
+    Dim savedValues() As ROneCOne
+    Dim slot As Long
+
+    If Not HashIndexSupported Then Exit Sub
+    If mHashCount = 0 Then
+        RebuildHashIndex requestedCapacity
+        Exit Sub
+    End If
+    ReDim savedIndices(1 To mHashCount)
+    ReDim savedKeys(1 To mHashCount)
+    ReDim savedValues(1 To mHashCount)
+    For slot = 0 To mHashCapacity - 1
+        If mHashSlots(slot) <> 0 Then
+            savedCount = savedCount + 1
+            savedIndices(savedCount) = mHashSlots(slot) - 1
+            Set savedKeys(savedCount) = mHashKeys(slot)
+            Set savedValues(savedCount) = mHashValues(slot)
+        End If
+    Next slot
+    mHashCapacity = NextHashCapacity(requestedCapacity)
+    ReDim mHashSlots(0 To mHashCapacity - 1)
+    ReDim mHashCodes(0 To mHashCapacity - 1)
+    ReDim mHashKeys(0 To mHashCapacity - 1)
+    ReDim mHashValues(0 To mHashCapacity - 1)
+    mHashCount = 0
+    For index = 1 To savedCount
+        InsertHashSlot savedKeys(index), savedIndices(index), savedValues(index)
+    Next index
+End Sub
+
+Private Sub PrepareHashInsert()
+    If Not HashIndexSupported Then Exit Sub
+    If mHashCapacity = 0 Then
+        RebuildHashIndex 8
+    ElseIf (mHashCount + 1) * 10 >= mHashCapacity * 7 Then
+        ResizeHashIndex mHashCapacity * 2
+    End If
+End Sub
+
+Private Sub AddHashIndexEntry( _
+    ByVal wrapped As ROneCOne, _
+    ByVal canonicalIndex As Long, _
+    Optional ByVal valueWrapped As ROneCOne _
+)
+    If Not HashIndexSupported Then Exit Sub
+    If valueWrapped Is Nothing Then Set valueWrapped = wrapped
+    InsertHashSlot wrapped, canonicalIndex, valueWrapped
+End Sub
+
+Private Sub InsertHashSlot( _
+    ByVal wrapped As ROneCOne, _
+    ByVal canonicalIndex As Long, _
+    ByVal valueWrapped As ROneCOne _
+)
+    Dim hashCode As Long
+    Dim slot As Long
+
+    hashCode = WrappedHashCode(wrapped)
+    slot = hashCode And (mHashCapacity - 1)
+    Do While mHashSlots(slot) <> 0
+        slot = (slot + 1) And (mHashCapacity - 1)
+    Loop
+    mHashCodes(slot) = hashCode
+    mHashSlots(slot) = canonicalIndex + 1
+    Set mHashKeys(slot) = wrapped
+    Set mHashValues(slot) = valueWrapped
+    mHashCount = mHashCount + 1
+End Sub
+
+Private Function FindHashSlot( _
+    ByVal candidate As ROneCOne, _
+    ByVal memberName As String _
+) As Long
+    Dim hashCode As Long
+    Dim probes As Long
+    Dim slot As Long
+
+    FindHashSlot = -1
+    If mHashCapacity = 0 Then Exit Function
+    hashCode = WrappedHashCode(candidate)
+    slot = hashCode And (mHashCapacity - 1)
+    Do While mHashSlots(slot) <> 0 And probes < mHashCapacity
+        If mHashCodes(slot) = hashCode Then
+            If ValuesEqualWithComparer(mHashKeys(slot), _
+                candidate, Nothing, memberName) Then
+                FindHashSlot = slot
+                Exit Function
+            End If
+        End If
+        slot = (slot + 1) And (mHashCapacity - 1)
+        probes = probes + 1
+    Loop
+End Function
+
+Private Function FindHashIndex( _
+    ByVal candidate As ROneCOne, _
+    ByVal values As Collection, _
+    ByVal memberName As String _
+) As Long
+    Dim slot As Long
+
+    slot = FindHashSlot(candidate, memberName)
+    If slot < 0 Then
+        FindHashIndex = -1
+    Else
+        FindHashIndex = mHashSlots(slot) - 1
+    End If
+End Function
+
+Private Function FindHashValue( _
+    ByVal candidate As ROneCOne, _
+    ByVal memberName As String _
+) As ROneCOne
+    Dim slot As Long
+
+    slot = FindHashSlot(candidate, memberName)
+    If slot >= 0 Then Set FindHashValue = mHashValues(slot)
+End Function
+
+Private Function FindHashSlotByKey( _
+    ByVal candidate As Variant, _
+    ByVal memberName As String _
+) As Long
+    Dim hashCode As Long
+    Dim probes As Long
+    Dim slot As Long
+
+    FindHashSlotByKey = -1
+    If mHashCapacity = 0 Then Exit Function
+    hashCode = ValueHashCode(candidate)
+    slot = hashCode And (mHashCapacity - 1)
+    Do While mHashSlots(slot) <> 0 And probes < mHashCapacity
+        If mHashCodes(slot) = hashCode Then
+            If WrappedEqualsValue(mHashKeys(slot), candidate) Then
+                FindHashSlotByKey = slot
+                Exit Function
+            End If
+        End If
+        slot = (slot + 1) And (mHashCapacity - 1)
+        probes = probes + 1
+    Loop
+End Function
+
+Private Function FindHashValueByKey( _
+    ByVal candidate As Variant, _
+    ByVal memberName As String _
+) As ROneCOne
+    Dim slot As Long
+
+    slot = FindHashSlotByKey(candidate, memberName)
+    If slot >= 0 Then Set FindHashValueByKey = mHashValues(slot)
+End Function
+
+Private Function WrappedHashCode(ByVal wrapped As ROneCOne) As Long
+    If wrapped.InternalHasObjectValue Then
+        WrappedHashCode = ObjectHashCode(wrapped.InternalObjectValue)
+    Else
+        WrappedHashCode = ValueHashCode(wrapped.InternalScalarValue)
+    End If
+End Function
+
+Private Function ValueHashCode(ByVal scalarValue As Variant) As Long
+    Dim scalarType As VbVarType
+
+    If IsObject(scalarValue) Then
+        ValueHashCode = ObjectHashCode(scalarValue)
+        Exit Function
+    End If
+    scalarType = VarType(scalarValue)
+    If IsNull(scalarValue) Then
+        ValueHashCode = HashText("NULL")
+    ElseIf IsEmpty(scalarValue) Then
+        ValueHashCode = 0
+    ElseIf scalarType = vbByte Or scalarType = vbInteger Or _
+        scalarType = vbLong Or scalarType = vbBoolean Then
+        ValueHashCode = CLng(scalarValue) And &H7FFFFFFF
+    ElseIf IsNumeric(scalarValue) Or scalarType = vbDate Then
+        ValueHashCode = NumericHashCode(scalarValue)
+    Else
+        ValueHashCode = HashText(CStr(VarType(scalarValue)) & _
+            ":" & CStr(scalarValue))
+    End If
+End Function
+
+Private Function ObjectHashCode(ByVal value As Object) As Long
+    Dim pointerValue As LongLong
+
+    pointerValue = ObjPtr(value)
+    ObjectHashCode = CLng(pointerValue And &H7FFFFFFF)
+End Function
+
+Private Function WrappedEqualsValue( _
+    ByVal wrapped As ROneCOne, _
+    ByVal candidate As Variant _
+) As Boolean
+    Dim candidateObject As Object
+
+    If wrapped.InternalHasObjectValue Or IsObject(candidate) Then
+        If Not wrapped.InternalHasObjectValue Or Not IsObject(candidate) Then Exit Function
+        Set candidateObject = candidate
+        WrappedEqualsValue = wrapped.InternalObjectValue Is candidateObject
+    ElseIf IsNull(wrapped.InternalScalarValue) Or IsNull(candidate) Then
+        WrappedEqualsValue = IsNull(wrapped.InternalScalarValue) And IsNull(candidate)
+    Else
+        WrappedEqualsValue = (wrapped.InternalScalarValue = candidate)
+    End If
+End Function
+
+Private Function NumericHashCode(ByVal scalarValue As Variant) As Long
+    Dim decimalValue As Variant
+
+    If VarType(scalarValue) = vbDate Then
+        decimalValue = CDec(CDbl(scalarValue))
+    Else
+        decimalValue = CDec(scalarValue)
+    End If
+    If decimalValue = Fix(decimalValue) Then
+        If decimalValue >= CDec(-2147483648#) And _
+            decimalValue <= CDec(2147483647#) Then
+            NumericHashCode = CLng(decimalValue) And &H7FFFFFFF
+            Exit Function
+        End If
+    End If
+    NumericHashCode = HashText("N:" & CStr(decimalValue))
+End Function
+
+Private Function HashText(ByVal value As String) As Long
+    Dim hashValue As LongLong
+    Dim index As Long
+
+    hashValue = 2166136261^
+    For index = 1 To Len(value)
+        hashValue = ((hashValue Xor AscW(Mid$(value, index, 1))) * 16777619) _
+            Mod 2147483647
+    Next index
+    HashText = CLng(hashValue And &H7FFFFFFF)
+End Function
+
+Private Function FindSortedValueIndex( _
+    ByVal values As Collection, _
+    ByVal candidate As ROneCOne, _
+    ByVal memberName As String _
+) As Long
+    Dim position As Long
+
+    FindSortedValueIndex = -1
+    position = FindSortedInsertIndex(values, candidate, memberName)
+    If position > values.Count Then Exit Function
+    If CompareWithComparer(values.Item(position), candidate, _
+        mQueryComparer, memberName) = 0 Then
+        FindSortedValueIndex = position - 1
+    End If
+End Function
+
 Private Function FindSortedInsertIndex( _
     ByVal values As Collection, _
     ByVal candidate As ROneCOne, _
     ByVal memberName As String _
 ) As Long
-    Dim index As Long
+    Dim high As Long
+    Dim low As Long
+    Dim middle As Long
 
-    For index = 1 To values.Count
-        If CompareWithComparer(candidate, values.Item(index), _
-            mQueryComparer, memberName) < 0 Then
-            FindSortedInsertIndex = index
-            Exit Function
+    low = 1
+    high = values.Count + 1
+    Do While low < high
+        middle = low + ((high - low) \ 2)
+        If middle <= values.Count And _
+            CompareWithComparer(values.Item(middle), candidate, _
+                mQueryComparer, memberName) < 0 Then
+            low = middle + 1
+        Else
+            high = middle
         End If
-    Next index
-    FindSortedInsertIndex = values.Count + 1
+    Loop
+    FindSortedInsertIndex = low
 End Function
 
 Friend Function FindKeyIndex( _
@@ -9208,6 +10739,15 @@ Friend Function FindKeyIndex( _
     ByVal memberName As String _
 ) As Long
     Dim index As Long
+
+    If IsSortedMapKind(mCollectionKind) Then
+        FindKeyIndex = FindSortedValueIndex(mKeys, candidate, memberName)
+        Exit Function
+    End If
+    If HashIndexSupported Then
+        FindKeyIndex = FindHashIndex(candidate, mKeys, memberName)
+        Exit Function
+    End If
 
     FindKeyIndex = -1
     For index = 1 To mKeys.Count
@@ -9229,6 +10769,14 @@ Friend Function FindElementIndex( _
     ByVal candidate As ROneCOne, _
     ByVal memberName As String _
 ) As Long
+    If IsSortedSetKind(mCollectionKind) Then
+        FindElementIndex = FindSortedValueIndex(mItems, candidate, memberName)
+        Exit Function
+    End If
+    If HashIndexSupported Then
+        FindElementIndex = FindHashIndex(candidate, mItems, memberName)
+        Exit Function
+    End If
     FindElementIndex = FindWrappedInCollection(mItems, candidate, memberName)
 End Function
 
@@ -9360,6 +10908,7 @@ Friend Sub ReplaceCollectionItem( _
         End If
     Next position
     Set mItems = replacement
+    If HashIndexSupported Then RebuildHashIndex mHashCapacity
     mVersion = mVersion + 1
     NotifyCollectionChanged "Replace"
 End Sub
@@ -9391,6 +10940,7 @@ Friend Sub RemoveCollectionAt(ByVal index As Long)
         mPriorities.Remove index + 1
     End If
     mVersion = mVersion + 1
+    If HashIndexSupported Then RebuildHashIndex mHashCapacity
     NotifyCollectionChanged "Remove"
 End Sub
 
@@ -9422,6 +10972,7 @@ Private Function CloneGenericCollection( _
     clone.ConfigureCollectionCapacity source.InternalCollectionCapacity
     clone.ConfigureCollectionVersion source.InternalCollectionVersion
     clone.ConfigureCollectionBuilder source.InternalIsBuilder
+    If clone.HashIndexSupported Then clone.RebuildHashIndex 8
     Set CloneGenericCollection = clone
 End Function
 
@@ -11749,6 +13300,82 @@ Private Sub ExecuteTryOperation()
     End If
     If Not errorValue Is Nothing Then RaiseCapturedError errorValue
 End Sub
+
+Private Function ExecuteUsingScope( _
+    ByVal suppliedArguments As Collection _
+) As ROneCOne
+    Dim cleanupError As ROneCOne
+    Dim errors As Collection
+    Dim invocationArguments As Collection
+    Dim result As ROneCOne
+    Dim work As ROneCOne
+    Dim workArity As Long
+    Dim workError As ROneCOne
+
+    If suppliedArguments.Count <> 1 Then
+        RaiseContractError ERROR_ARITY_MISMATCH, "Using.Run", _
+            "Using.Run requires one Action or Func."
+    End If
+    Set work = RequireROneCOne( _
+        Unwrap(suppliedArguments.Item(1)), "Using.Run")
+    RequireDelegate work, "Using.Run"
+    workArity = work.Arity
+    If workArity <> 0 And workArity <> 1 And workArity <> -1 Then
+        RaiseContractError ERROR_ARITY_MISMATCH, "Using.Run", _
+            "The delegate must accept zero arguments or the resource."
+    End If
+    Set invocationArguments = New Collection
+    If workArity = 1 Then invocationArguments.Add CreateObjectResult(mSource)
+    Call InvokeDelegateCaptured(work, invocationArguments, result, workError)
+    Call DisposeResourceCaptured(mSource, cleanupError)
+    If Not workError Is Nothing Or Not cleanupError Is Nothing Then
+        Set errors = New Collection
+        If Not workError Is Nothing Then errors.Add workError
+        If Not cleanupError Is Nothing Then errors.Add cleanupError
+        If errors.Count = 1 Then
+            RaiseCapturedError errors.Item(1)
+        Else
+            RaiseCapturedError CreateAggregateException(errors)
+        End If
+    End If
+    Set ExecuteUsingScope = result
+End Function
+
+Private Function InvokeDelegateCaptured( _
+    ByVal delegateValue As ROneCOne, _
+    ByVal arguments As Collection, _
+    ByRef result As ROneCOne, _
+    ByRef errorValue As ROneCOne _
+) As Boolean
+    On Error GoTo InvocationFailed
+    Set result = delegateValue.InvokeValue(arguments)
+    InvokeDelegateCaptured = True
+    Exit Function
+
+InvocationFailed:
+    Set errorValue = New ROneCOne
+    errorValue.ConfigureError Err.Number, Err.Source, Err.Description, _
+        Err.HelpFile, Err.HelpContext
+    Err.Clear
+    On Error GoTo 0
+End Function
+
+Private Function DisposeResourceCaptured( _
+    ByVal resource As ROneCOne, _
+    ByRef errorValue As ROneCOne _
+) As Boolean
+    On Error GoTo DisposeFailed
+    resource.Dispose
+    DisposeResourceCaptured = True
+    Exit Function
+
+DisposeFailed:
+    Set errorValue = New ROneCOne
+    errorValue.ConfigureError Err.Number, Err.Source, Err.Description, _
+        Err.HelpFile, Err.HelpContext
+    Err.Clear
+    On Error GoTo 0
+End Function
 
 Private Function InvokeActionCaptured( _
     ByVal actionValue As ROneCOne, _

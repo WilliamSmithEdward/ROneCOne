@@ -13,6 +13,7 @@ contracts and edge cases.
 | Numeric sequence | `Range(start, count)` |
 | Repeated value | `Repeat(value, count)` |
 | Dictionary | `DictionaryOf(keyType, valueType)` |
+| Reserve or compact hash storage | `Capacity`, `EnsureCapacity`, `TrimExcess` |
 | Set | `HashSetOf(typeToken)` or `SortedSetOf(typeToken)` |
 | Queue or stack | `QueueOf(typeToken)` or `StackOf(typeToken)` |
 | Linked list | `LinkedListOf(typeToken)` |
@@ -94,12 +95,15 @@ Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 | Need | Member |
 |---|---|
 | Completed or delayed task | `Task.FromResult`, `Task.CompletedTask`, `Task.Delay` |
-| Coordinate tasks | `Await`, `Wait`, `WhenAll`, `WhenAny`, `ContinueWith` |
-| Cancellation | `CancellationTokenSource`, `Cancel`, `CancelAfter`, `Register` |
+| Coordinate tasks | `Await`, `Wait`, `WaitAsync`, `WhenAll`, `WhenAny`, `ContinueWith`, `YieldOnce` |
+| Observe task failures | `Exception`, `InnerExceptions`, `Flatten`, `Handle` |
+| Cancellation | `CancellationTokenSource`, `Cancel`, `CancelAfter`, `Register`, `Dispose` |
 | Progress or external completion | `ProgressOf`, `TaskCompletionSourceOf` |
-| In-memory data | `DataTable`, `DataColumn`, `DataSet`, `DataRelation`, `DataView` |
+| In-memory data | `DataTable`, `DataColumn`, `Row`, `DBNull`, `Find`, `DataSet`, `DataRelation`, `DataView` |
 | Provider access | `DbConnection`, `DbCommand`, `DbParameter`, `DbDataAdapter` |
 | Async provider access | `OpenAsync`, `ExecuteReaderAsync`, `FillAsync`, `UpdateAsync` |
+| Provider capability | `SupportsNativeAsync`, `AsyncMode` |
+| Deterministic cleanup | `Using(resource).Run(work)` |
 
 ## Type tokens
 

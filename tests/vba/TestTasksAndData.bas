@@ -28,6 +28,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestDataTable
     mCurrentTest = "TestDataSetRelations"
     TestDataSetRelations
+    mCurrentTest = "TestCompositeRelations"
+    TestCompositeRelations
     mCurrentTest = "TestAdvancedDataTable"
     TestAdvancedDataTable
     mCurrentTest = "TestDataViewAndMerge"
@@ -107,6 +109,9 @@ Private Sub TestProviderSurface()
         "HDR=YES"";"
     Set connection = ROneCOne.DbConnection(connectionString)
     AssertEqual "provider starts closed", "Closed", connection.State
+    AssertFalse "provider reports native async truthfully", _
+        connection.SupportsNativeAsync
+    AssertEqual "provider async mode", "Cooperative", connection.AsyncMode
     mCurrentTest = "TestProviderSurface.Connect"
     connection.Connect
     AssertEqual "provider opens", "Open", connection.State
@@ -129,6 +134,9 @@ Private Sub TestProviderSurface()
 
     mCurrentTest = "TestProviderSurface.Fill"
     Set adapter = ROneCOne.DbDataAdapter(command)
+    Set adapter = adapter.UseTransaction(False).ContinueUpdateOnError(False)
+    AssertEqual "adapter starts without update errors", 0&, _
+        adapter.LastUpdateErrors.Count
     Set table = ROneCOne.DataTable("ProviderRows")
     AssertEqual "adapter fill count", 2&, adapter.Fill(table)
     AssertEqual "adapter fill rows", 2&, table.Rows.Count
@@ -210,6 +218,9 @@ Private Sub TestTaskCombinators()
     Dim secondTask As ROneCOne
     Dim tasks As ROneCOne
     Dim winner As ROneCOne
+    Dim faulted As ROneCOne
+    Dim faultNumber As Long
+    Dim ignored As Variant
 
     Set firstTask = ROneCOne.TaskFromResult(CLng(10))
     Set secondTask = ROneCOne.TaskFromResult(CLng(20))
@@ -221,6 +232,11 @@ Private Sub TestTaskCombinators()
     AssertEqual "WhenAll preserves order", CLng(20), results.Item(1)
     AssertTrue "WhenAny completes", ROneCOne.Task.WhenAny(tasks).Await Is firstTask
 
+    Set results = ROneCOne.Task.WhenAll(firstTask, secondTask).Await
+    AssertEqual "WhenAll accepts direct Tasks", 2&, results.Count
+    Set winner = ROneCOne.Task.WhenAny(secondTask, firstTask).Await
+    AssertTrue "WhenAny accepts direct Tasks", winner Is secondTask
+
     Set completion = ROneCOne.TaskCompletionSourceOf(vbLong)
     Set pending = completion.Task
     Set completed = ROneCOne.Task.FromResult(42&)
@@ -228,17 +244,67 @@ Private Sub TestTaskCombinators()
     Set winner = ROneCOne.Task.WhenAny(tasks).Await
     AssertTrue "WhenAny selects a completed task", winner Is completed
     AssertEqual "WhenAny completed result", 42&, winner.Result
+
+    Set faulted = ROneCOne.Task.WhenAll( _
+        ROneCOne.Task.Run(ROneCOne.Value(1&).Divide(0&).AsFunc), _
+        ROneCOne.Task.Run(ROneCOne.Value(2&).Divide(0&).AsFunc))
+    On Error Resume Next
+    ignored = faulted.Await
+    faultNumber = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertTrue "WhenAll await reports a fault", faultNumber <> 0
+    AssertEqual "WhenAll exposes AggregateException", _
+        "AggregateException", faulted.Exception.ExceptionType
+    AssertEqual "WhenAll retains every fault", 2&, _
+        faulted.Exception.InnerExceptions.Count
 End Sub
 
 Private Sub TestCancellation()
+    Dim callback As ROneCOne
+    Dim registration As ROneCOne
+    Dim secondRegistration As ROneCOne
     Dim source As ROneCOne
     Dim token As ROneCOne
+    Dim usingResult As Variant
 
     Set source = ROneCOne.CancellationTokenSource
     Set token = source.Token
     AssertFalse "token starts active", token.IsCancellationRequested
     source.Cancel
     AssertTrue "token observes cancellation", token.IsCancellationRequested
+
+    DelegateProcedures.ResetTrace
+    Set source = ROneCOne.CancellationTokenSource
+    Set registration = source.Token.Register(ROneCOne.Action( _
+        "DelegateProcedures.RecordCancellation").Takes)
+    registration.Dispose
+    source.Cancel
+    AssertEqual "disposed cancellation registration", vbNullString, _
+        DelegateProcedures.CurrentTrace
+
+    DelegateProcedures.ResetTrace
+    Set source = ROneCOne.CancellationTokenSource
+    Set callback = ROneCOne.Action( _
+        "DelegateProcedures.RecordCancellation").Takes
+    Set registration = source.Token.Register(callback)
+    Set secondRegistration = source.Token.Register(callback)
+    registration.Dispose
+    source.Cancel
+    AssertEqual "duplicate registration removes one callback", "canceled|", _
+        DelegateProcedures.CurrentTrace
+    secondRegistration.Dispose
+
+    DelegateProcedures.ResetTrace
+    Set source = ROneCOne.CancellationTokenSource
+    Set registration = source.Token.Register(ROneCOne.Action( _
+        "DelegateProcedures.RecordCancellation").Takes)
+    usingResult = ROneCOne.Using(registration).Run( _
+        ROneCOne.Value(42&).AsFunc)
+    source.Cancel
+    AssertEqual "Using returns Func result", 42&, usingResult
+    AssertEqual "Using disposes the resource", vbNullString, _
+        DelegateProcedures.CurrentTrace
 End Sub
 
 Private Sub TestTaskCompletionAndProgress()
@@ -268,12 +334,34 @@ End Sub
 Private Sub TestTaskTimeoutAndContinuation()
     Dim continuation As ROneCOne
     Dim delayed As ROneCOne
+    Dim ignored As Variant
     Dim resultTask As ROneCOne
     Dim source As ROneCOne
+    Dim timeoutError As Long
+    Dim waitTask As ROneCOne
 
     Set delayed = ROneCOne.Task.Delay(20&)
+    AssertTrue "pending Task.Exception is Nothing", delayed.Exception Is Nothing
     AssertFalse "delay timeout", delayed.Wait(1&)
     AssertTrue "delay eventually completes", delayed.Wait(100&)
+
+    ignored = ROneCOne.Task.YieldOnce.Await
+    AssertTrue "Task.YieldOnce completes", True
+
+    Set waitTask = ROneCOne.Task.Delay(20&).WaitAsync(100&)
+    ignored = waitTask.Await
+    AssertTrue "WaitAsync completes before timeout", waitTask.IsCompleted
+
+    Set waitTask = ROneCOne.Task.Delay(50&).WaitAsync(1&)
+    On Error Resume Next
+    ignored = waitTask.Await
+    timeoutError = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertEqual "WaitAsync raises TimeoutException", _
+        ROneCOne.TimeoutError, timeoutError
+    AssertEqual "WaitAsync exception type", "TimeoutException", _
+        waitTask.Exception.InnerExceptions.Item(0).ExceptionType
 
     Set continuation = ROneCOne.Func( _
         "DelegateProcedures.TaskResultPlusOne") _
@@ -293,31 +381,49 @@ End Sub
 
 Private Sub TestDataTable()
     Dim duplicateError As Long
+    Dim found As ROneCOne
     Dim row As ROneCOne
     Dim table As ROneCOne
 
+    mCurrentTest = "TestDataTable.Table"
     Set table = ROneCOne.DataTable("Customers")
+    mCurrentTest = "TestDataTable.Columns"
     table.AddColumn ROneCOne.DataColumn("Id", vbLong).AsUnique
     table.AddColumn ROneCOne.DataColumn("Name", vbString)
+    mCurrentTest = "TestDataTable.PrimaryKey"
     Set table.PrimaryKey = table.Columns.Where("ColumnName").EqualTo("Id").ToList
 
+    mCurrentTest = "TestDataTable.NewRow"
     Set row = table.NewRow
     row.Item("Id") = CLng(1)
     row.Item("Name") = "Ada"
+    mCurrentTest = "TestDataTable.AddRow"
     table.AddRow row
 
     AssertEqual "table column count", CLng(2), table.Columns.Count
     AssertEqual "table row count", CLng(1), table.Rows.Count
     AssertEqual "row field by name", "Ada", table.Rows.Item(0).Item("Name")
-    AssertEqual "primary-key find", "Ada", table.Find(CLng(1)).Item("Name")
+    mCurrentTest = "TestDataTable.Find.Call"
+    Set found = table.Find(CLng(1))
+    mCurrentTest = "TestDataTable.Find.Return"
+    AssertTrue "primary-key row returned", Not found Is Nothing
+    AssertTrue "primary-key identity", found Is row
+    mCurrentTest = "TestDataTable.Find.Item"
+    If found Is row Then
+        AssertEqual "primary-key find", "Ada", found.Item("Name")
+    End If
 
+    mCurrentTest = "TestDataTable.AcceptChanges"
     table.AcceptChanges
     AssertEqual "accepted row state", "Unchanged", row.RowState
+    mCurrentTest = "TestDataTable.Modify"
     row.Item("Name") = "Augusta"
     AssertEqual "modified row state", "Modified", row.RowState
+    mCurrentTest = "TestDataTable.RejectChanges"
     row.RejectChanges
     AssertEqual "reject restores original", "Ada", row.Item("Name")
 
+    mCurrentTest = "TestDataTable.Duplicate"
     On Error Resume Next
     Set row = table.NewRow
     row.Item("Id") = CLng(1)
@@ -353,13 +459,17 @@ Private Sub TestDataSetRelations()
     Set data = ROneCOne.DataSet("Sales")
     data.AddTable customers
     data.AddTable orders
+    mCurrentTest = "TestDataSetRelations.CreateRelation"
     Set relation = ROneCOne.DataRelation( _
         "CustomerOrders", customers.Columns.Item("Id"), _
         orders.Columns.Item("CustomerId"))
+    mCurrentTest = "TestDataSetRelations.AddRelation"
     data.AddRelation relation
 
+    mCurrentTest = "TestDataSetRelations.GetChildren"
     Set children = parent.GetChildRows("CustomerOrders")
     AssertEqual "relation child navigation", CLng(1), children.Count
+    mCurrentTest = "TestDataSetRelations.GetParent"
     AssertTrue "relation parent navigation", _
         child.GetParentRow("CustomerOrders") Is parent
     AssertEqual "dataset table count", CLng(2), data.Tables.Count
@@ -367,19 +477,26 @@ End Sub
 
 Private Sub TestAdvancedDataTable()
     Dim changes As ROneCOne
+    Dim composite As ROneCOne
     Dim row As ROneCOne
     Dim selected As ROneCOne
     Dim table As ROneCOne
 
     Set table = ROneCOne.DataTable("People")
-    table.Column("Id", vbLong).AutoNumber(100&, 10&).AsUnique
+    mCurrentTest = "TestAdvancedDataTable.IdSchema"
+    table.Column("Id", vbLong).AutoNumber(100&, 10&).AsPrimaryKey
+    mCurrentTest = "TestAdvancedDataTable.NameSchema"
     table.Column("Name", vbString).WithDefault "Unknown"
-    Set row = table.NewRow
-    table.AddRow row
+    mCurrentTest = "TestAdvancedDataTable.NoteSchema"
+    table.Column "Note", vbString
+    mCurrentTest = "TestAdvancedDataTable.RowAdd"
+    Set row = table.Row("Ada", ROneCOne.DBNull).Add
 
     AssertEqual "auto increment", 100&, row.Item("Id")
-    AssertEqual "column default", "Unknown", row.Item("Name")
-    Set selected = table.SelectRows(table.Rows!Name.EqualTo("Unknown"))
+    AssertEqual "fluent row value", "Ada", row.Item("Name")
+    AssertTrue "explicit DBNull", IsNull(row.Item("Note"))
+    AssertTrue "indexed primary-key Find", table.Find(100&) Is row
+    Set selected = table.SelectRows(table.Rows!Name.EqualTo("Ada"))
     AssertEqual "table SelectRows", 1&, selected.Count
 
     table.AcceptChanges
@@ -388,6 +505,46 @@ Private Sub TestAdvancedDataTable()
     AssertEqual "table GetChanges", 1&, changes.Rows.Count
     row.Delete
     AssertEqual "row Delete", "Deleted", row.RowState
+
+    Set composite = ROneCOne.DataTable("Composite")
+    mCurrentTest = "TestAdvancedDataTable.CompositeSchema"
+    composite.Column "Region", vbString
+    composite.Column "Id", vbLong
+    Set composite.PrimaryKey = ROneCOne.ListFrom( _
+        composite.Columns("Region"), composite.Columns("Id"))
+    mCurrentTest = "TestAdvancedDataTable.CompositeRow"
+    Set row = composite.Row("US", 7&).Add
+    AssertTrue "composite primary-key Find", _
+        composite.Find("US", 7&) Is row
+End Sub
+
+Private Sub TestCompositeRelations()
+    Dim child As ROneCOne
+    Dim childRow As ROneCOne
+    Dim data As ROneCOne
+    Dim parent As ROneCOne
+    Dim parentRow As ROneCOne
+
+    Set parent = ROneCOne.DataTable("CompositeParent")
+    parent.Column "Region", vbString
+    parent.Column "Id", vbLong
+    Set child = ROneCOne.DataTable("CompositeChild")
+    child.Column "Region", vbString
+    child.Column "ParentId", vbLong
+    child.Column "Name", vbString
+    Set data = ROneCOne.DataSet("CompositeRelations")
+    data.AddTable parent
+    data.AddTable child
+    data.AddRelation ROneCOne.DataRelation( _
+        "CompositeParentChild", _
+        ROneCOne.ListFrom(parent.Columns("Region"), parent.Columns("Id")), _
+        ROneCOne.ListFrom(child.Columns("Region"), child.Columns("ParentId")))
+    Set parentRow = parent.Row("US", 1&).Add
+    Set childRow = child.Row("US", 1&, "Order").Add
+    AssertEqual "composite relation child navigation", 1&, _
+        parentRow.GetChildRows("CompositeParentChild").Count
+    AssertTrue "composite relation parent navigation", _
+        childRow.GetParentRow("CompositeParentChild") Is parentRow
 End Sub
 
 Private Sub TestDataViewAndMerge()

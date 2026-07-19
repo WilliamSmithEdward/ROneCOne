@@ -10,18 +10,20 @@ Dim people As ROneCOne
 Dim row As ROneCOne
 
 Set people = ROneCOne.DataTable("People")
-people.Column("Id", vbLong).AutoNumber(100&, 10&).AsUnique
+people.Column("Id", vbLong).AutoNumber(100&, 10&).AsPrimaryKey
 people.Column("Name", vbString).WithDefault "Unknown"
 people.Column "Age", vbLong
+people.Column "Note", vbString
 
-Set row = people.NewRow
-row.Item("Name") = "Ada"
-row.Item("Age") = 47&
-people.AddRow row
+Set row = people.Row("Ada", 47&, ROneCOne.DBNull).Add
+Debug.Print people.Find(100&).Item("Name")
 ```
 
 Rows track `Detached`, `Added`, `Unchanged`, `Modified`, and `Deleted` states. `AcceptChanges`,
 `RejectChanges`, and `GetChanges` follow the familiar DataTable workflow.
+`Row(...).Add` skips omitted auto-number columns, `AsPrimaryKey` creates the common one-column key,
+and `Find` uses an index rather than scanning every row. Set `PrimaryKey` to a typed list of
+columns for a composite key. `ROneCOne.DBNull` is the explicit database-null value.
 
 ## Query a view
 
@@ -59,6 +61,12 @@ VBA reserves `Open` and `Close` as language keywords, so direct calls use `Conne
 `Disconnect`; `OpenAsync` retains the .NET-aligned async name. Parameterized commands, readers,
 transactions, scalar and non-query execution, adapter commands, source-column binding, and
 task-returning provider operations are available without adding an ADO reference.
+
+For deterministic cleanup around a zero-argument function, use
+`ROneCOne.Using(connection).Run(work)`. Adapter batch updates expose `UseTransaction`,
+`ContinueUpdateOnError`, and `LastUpdateErrors`. Inspect `connection.AsyncMode` and
+`connection.SupportsNativeAsync` when behavior depends on provider capabilities; the built-in
+late-bound ADO path reports cooperative scheduling rather than native asynchronous I/O.
 
 Provider capabilities still depend on the selected driver. For example, the Excel ISAM supports
 worksheet reads, updates, and inserts but rejects row deletion.

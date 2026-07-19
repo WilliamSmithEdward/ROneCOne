@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.1.0 - 2026-07-19
+
+### Added
+
+- Open-address hash indexes with direct value slots for default-equality dictionaries, hash sets,
+  keyed and ordered collections, concurrent and immutable variants, and lookups.
+- `Capacity`, `EnsureCapacity`, and `TrimExcess` contracts with live reuse-after-`Clear` coverage.
+- `Task.YieldOnce`, `WaitAsync`, direct `WhenAll(task...)` and `WhenAny(task...)` inputs,
+  nonblocking `Task.Exception`, and AggregateException inspection and handling.
+- Disposable cancellation registrations, deterministic `Using(resource).Run(work)`, typed timeout
+  and cancellation errors, and monotonic task deadlines.
+- `DataColumn.AsPrimaryKey`, `DataTable.Row(...).Add`, explicit `ROneCOne.DBNull`, indexed
+  single/composite primary-key `Find`, and indexed multi-column relation navigation.
+- Provider capability reporting plus transactional and continue-on-error DataAdapter options.
+- Live 10,000-item hash build/read and 100,000-lookup performance gates.
+
+### Changed
+
+- Replaced linear default dictionary/set lookup with average O(1) hashing and linear sorted
+  map/set lookup with binary search. Custom equality comparers retain a truthful linear path.
+- Hardened the cooperative scheduler against deadline wraparound, same-task reentrant waits,
+  dependency cycles, callback failures, and leaked registrations.
+- Made `WhenAll` retain every child fault while preserving ordinary VBA error identity on Await.
+- Made primary-key and relation indexes rebuild atomically when table versions change.
+- Made provider task APIs report cooperative execution instead of implying native asynchronous I/O.
+- Expanded the live host contract to 414 assertions and refreshed the Tasks, Data, and Collections
+  living demos around the shortest proven syntax.
+
+### Host boundaries
+
+- VBA does not resolve a class member named `Yield`, so the legal C#-aligned form is `YieldOnce`.
+- Tasks and provider calls remain cooperative on Excel's owning thread; no second Excel application
+  or unsafe worker-thread COM access is used.
+
 ## 1.0.0 - 2026-07-19
 
 ### Added

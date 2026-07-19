@@ -374,24 +374,26 @@ async function main() {
     "Elements / second",
   ]];
   tableHeader(benchmarks.getRange("A5:E5"));
-  benchmarks.getRange("A6:A8").values = [
+  benchmarks.getRange("A6:A10").values = [
     ["Range.Where.ToList"],
     ["Repeated object member Where"],
     ["OrderBy.ThenByDescending.ToList"],
+    ["Dictionary Add + Item (10K)"],
+    ["Dictionary Item (100K)"],
   ];
   benchmarks.getRange("E6").formulas = [["=IF(C6=0,0,B6/C6)"]];
-  benchmarks.getRange("E6:E8").fillDown();
-  benchmarks.getRange("A6:E8").format = {
+  benchmarks.getRange("E6:E10").fillDown();
+  benchmarks.getRange("A6:E10").format = {
     borders: { preset: "all", style: "thin", color: colors.line },
   };
-  benchmarks.getRange("B6:B8").format.numberFormat = "#,##0";
-  benchmarks.getRange("C6:C8").format.numberFormat = "0.000000";
-  benchmarks.getRange("D6:E8").format.numberFormat = "#,##0";
-  benchmarks.getRange("A10:F10").merge();
-  benchmarks.getRange("A10").values = [[
-    "Release gates: 10,000-element filtering and composite ordering stay bounded in one Excel process.",
+  benchmarks.getRange("B6:B10").format.numberFormat = "#,##0";
+  benchmarks.getRange("C6:C10").format.numberFormat = "0.000000";
+  benchmarks.getRange("D6:E10").format.numberFormat = "#,##0";
+  benchmarks.getRange("A12:F12").merge();
+  benchmarks.getRange("A12").values = [[
+    "Release gates: filtering, composite ordering, and indexed dictionary workloads stay bounded in one Excel process.",
   ]];
-  benchmarks.getRange("A10:F10").format = {
+  benchmarks.getRange("A12:F12").format = {
     fill: "#FFF4E8",
     font: { color: "#9A4A00" },
     wrapText: true,
@@ -415,23 +417,24 @@ async function main() {
     "Dependencies",
   ]];
   tableHeader(architecture.getRange("A5:F5"));
-  architecture.getRange("A6:F14").values = [
+  architecture.getRange("A6:F15").values = [
     ["Concrete T", "VarType or exact class name", "Reject before mutation", "ENFORCED", 1, 0],
     ["User classes", "ListFrom or prototype token", "Exact class identity", "ENFORCED", 1, 0],
     ["Deferred LINQ", "Immutable query nodes", "Evaluate on consumption", "ENFORCED", 1, 0],
     ["Syntax sugar", "Contextual members + native bang", "Canonical API remains available", "ENFORCED", 1, 0],
     ["Predicate algebra", "Composable immutable nodes", "Membership, null-safe paths, quantifiers", "ENFORCED", 1, 0],
     ["Stable ordering", "OrderBy + ThenBy chain", "Cached keys and O(n log n) merge sort", "ENFORCED", 1, 0],
+    ["Hash indexing", "Open addressing + direct value slots", "Average O(1) keyed lookup", "ENFORCED", 1, 0],
     ["Enumeration", "Persistent list mirror", "Nested For Each works", "ENFORCED", 1, 0],
     ["One process", "In-process execution", "Never launches Excel", "ENFORCED", 1, 0],
     ["Privacy", "No transmission", "Workbook data stays local", "ENFORCED", 1, 0],
   ];
-  architecture.getRange("A6:F14").format = {
+  architecture.getRange("A6:F15").format = {
     borders: { preset: "all", style: "thin", color: colors.line },
     wrapText: true,
     verticalAlignment: "top",
   };
-  architecture.getRange("D6:D14").format = {
+  architecture.getRange("D6:D15").format = {
     fill: colors.pale,
     font: { bold: true, color: colors.green },
   };

@@ -15,7 +15,15 @@ param(
 
     [Parameter(Mandatory = $true)]
     [ValidateRange(0.01, 60)]
-    [double]$MaxOrderingBenchmarkSeconds
+    [double]$MaxOrderingBenchmarkSeconds,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(0.01, 60)]
+    [double]$MaxHash10KBenchmarkSeconds,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(0.01, 60)]
+    [double]$MaxHash100KBenchmarkSeconds
 )
 
 $ErrorActionPreference = "Stop"
@@ -190,7 +198,7 @@ public static class ROneCOneExcelProcess
     $taskDataSheet.Range("A3").Value2 = "Failed"
     $taskDataSheet.Range("A4").Value2 = "Status"
     $taskDataSheet.Range("A5").Value2 = "Error"
-    $collectionBenchmarkSheet.Range("A1:B8").ClearContents()
+    $collectionBenchmarkSheet.Range("A1:B13").ClearContents()
     $collectionBenchmarkSheet.Range("A1").Value2 = "ROneCOne collection benchmark"
     $collectionBenchmarkSheet.Range("A2").Value2 = "Source elements"
     $collectionBenchmarkSheet.Range("A3").Value2 = "Seconds"
@@ -199,6 +207,11 @@ public static class ROneCOneExcelProcess
     $collectionBenchmarkSheet.Range("A6").Value2 = "Composite ordering seconds"
     $collectionBenchmarkSheet.Range("A7").Value2 = "Ordered elements"
     $collectionBenchmarkSheet.Range("A8").Value2 = "First ordered result"
+    $collectionBenchmarkSheet.Range("A9").Value2 = "Hash operations (10K)"
+    $collectionBenchmarkSheet.Range("A10").Value2 = "Hash seconds (10K)"
+    $collectionBenchmarkSheet.Range("A11").Value2 = "Hash operations (100K)"
+    $collectionBenchmarkSheet.Range("A12").Value2 = "Hash seconds (100K)"
+    $collectionBenchmarkSheet.Range("A13").Value2 = "Last hash lookup"
     $macroPrefix = "'" + $workbook.Name.Replace("'", "''") + "'!"
     $stage = "run delegate tests"
     $excel.Run($macroPrefix + "RunROneCOneTests") | Out-Null
@@ -238,6 +251,8 @@ public static class ROneCOneExcelProcess
     $seconds = [double]$benchmarkSheet.Range("B3").Value2
     $collectionSeconds = [double]$collectionBenchmarkSheet.Range("B3").Value2
     $orderingSeconds = [double]$collectionBenchmarkSheet.Range("B6").Value2
+    $hash10KSeconds = [double]$collectionBenchmarkSheet.Range("B10").Value2
+    $hash100KSeconds = [double]$collectionBenchmarkSheet.Range("B12").Value2
 
     $stage = "validate observed results"
     if ($status -ne "PASS" -or $failed -ne 0) {
@@ -314,6 +329,17 @@ public static class ROneCOneExcelProcess
         $orderingSeconds -gt $MaxOrderingBenchmarkSeconds) {
         throw "Ordering benchmark missed gate: seconds=$orderingSeconds maximum=$MaxOrderingBenchmarkSeconds"
     }
+    if ($hash10KSeconds -le 0 -or `
+        $hash10KSeconds -gt $MaxHash10KBenchmarkSeconds) {
+        throw "10K hash benchmark missed gate: seconds=$hash10KSeconds maximum=$MaxHash10KBenchmarkSeconds"
+    }
+    if ($hash100KSeconds -le 0 -or `
+        $hash100KSeconds -gt $MaxHash100KBenchmarkSeconds) {
+        throw "100K hash benchmark missed gate: seconds=$hash100KSeconds maximum=$MaxHash100KBenchmarkSeconds"
+    }
+    if ([int]$collectionBenchmarkSheet.Range("B13").Value2 -ne 10000) {
+        throw "Hash benchmark produced an invalid lookup result."
+    }
     if ([int]$collectionBenchmarkSheet.Range("B7").Value2 -ne 10000 -or `
         [int]$collectionBenchmarkSheet.Range("B8").Value2 -ne 10000) {
         throw "Ordering benchmark produced an invalid composite order."
@@ -342,6 +368,10 @@ public static class ROneCOneExcelProcess
         ordering_benchmark_elements = [int]$collectionBenchmarkSheet.Range("B5").Value2
         ordering_benchmark_seconds = $orderingSeconds
         ordering_benchmark_gate_seconds = $MaxOrderingBenchmarkSeconds
+        hash_10k_seconds = $hash10KSeconds
+        hash_10k_gate_seconds = $MaxHash10KBenchmarkSeconds
+        hash_100k_seconds = $hash100KSeconds
+        hash_100k_gate_seconds = $MaxHash100KBenchmarkSeconds
     } | ConvertTo-Json -Compress
 }
 catch {

@@ -29,7 +29,7 @@ DemoFailure:
 End Sub
 
 Private Sub WriteTaskExamples()
-    Dim allTask As ROneCOne
+    Dim bounded As ROneCOne
     Dim completion As ROneCOne
     Dim continuation As ROneCOne
     Dim delayed As ROneCOne
@@ -38,13 +38,12 @@ Private Sub WriteTaskExamples()
     Dim results As ROneCOne
     Dim secondTask As ROneCOne
     Dim source As ROneCOne
-    Dim tasks As ROneCOne
+    Dim ignored As Variant
+    Dim registration As ROneCOne
 
     Set firstTask = ROneCOne.Task.FromResult(10&)
     Set secondTask = ROneCOne.Task.FromResult(20&)
-    Set tasks = ROneCOne.ListOf(ROneCOne.Task, firstTask, secondTask)
-    Set allTask = ROneCOne.Task.WhenAll(tasks)
-    Set results = allTask.Await
+    Set results = ROneCOne.Task.WhenAll(firstTask, secondTask).Await
 
     Set delayed = ROneCOne.Task.Delay(5&)
     Set continuation = ROneCOne.Func( _
@@ -54,9 +53,10 @@ Private Sub WriteTaskExamples()
 
     Set source = ROneCOne.CancellationTokenSource
     mTrace = vbNullString
-    source.Token.Register ROneCOne.Action( _
-        "TasksDemoUsage.RecordCancellation").Takes
+    Set registration = source.Token.Register(ROneCOne.Action( _
+        "TasksDemoUsage.RecordCancellation").Takes)
     source.Cancel
+    registration.Dispose
 
     mProgressTotal = 0
     Set progress = ROneCOne.ProgressOf( _
@@ -67,14 +67,21 @@ Private Sub WriteTaskExamples()
     Set completion = ROneCOne.TaskCompletionSourceOf(vbLong)
     completion.SetResult 99&
 
+    Set bounded = ROneCOne.Task.Delay(5&).WaitAsync(100&)
+    ignored = bounded.Await
+    ignored = ROneCOne.Task.YieldOnce.Await
+
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
         .Range("E6").Value2 = ROneCOne.Task.FromResult(42&).Await
-        .Range("E7").Value2 = delayed.Wait(100&)
+        ignored = delayed.Await
+        .Range("E7").Value2 = delayed.IsCompleted
         .Range("E8").Value2 = results.JoinText(",")
         .Range("E9").Value2 = firstTask.ContinueWith(continuation).Await
         .Range("E10").Value2 = source.Token.IsCancellationRequested
         .Range("E11").Value2 = mProgressTotal
         .Range("E12").Value2 = completion.Task.Await
+        .Range("E13").Value2 = bounded.IsCompleted
+        .Range("E14").Value2 = True
     End With
 End Sub
 

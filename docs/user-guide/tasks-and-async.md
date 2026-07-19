@@ -19,33 +19,51 @@ captured number, source, description, help file, and help context.
 
 ```vba
 Dim results As ROneCOne
-Dim tasks As ROneCOne
 
-Set tasks = ROneCOne.ListOf( _
-    ROneCOne.Task, _
+Set results = ROneCOne.Task.WhenAll( _
     ROneCOne.Task.FromResult(10&), _
-    ROneCOne.Task.FromResult(20&))
-
-Set results = ROneCOne.Task.WhenAll(tasks).Await
+    ROneCOne.Task.FromResult(20&)).Await
 Debug.Print results.JoinText(",")
 ```
 
 `WhenAll` preserves task order. `WhenAny` returns the first completed task. `ContinueWith`
 accepts a typed `Func<Task, TResult>`.
 
+## Delay, yield, and add a timeout
+
+```vba
+Dim ignored As Variant
+
+ignored = ROneCOne.Task.Delay(25&).Await
+ignored = ROneCOne.Task.Delay(25&).WaitAsync(1000&).Await
+ignored = ROneCOne.Task.YieldOnce.Await
+```
+
+`Await` is the primary composition surface. `Wait(timeout)` remains useful when the result needed
+is simply whether a task completed in time. `WaitAsync` is the task-returning form: it composes
+with continuations and raises a typed timeout or cancellation error. VBA will not resolve a class
+member named `Yield`, so the closest legal form is `YieldOnce`.
+
 ## Cancellation, progress, and completion sources
 
 ```vba
+Dim registration As ROneCOne
 Dim source As ROneCOne
 
 Set source = ROneCOne.CancellationTokenSource
-source.Token.Register ROneCOne.Action("Module1.OnCanceled").Takes
+Set registration = source.Token.Register( _
+    ROneCOne.Action("Module1.OnCanceled").Takes)
 source.CancelAfter 1000&
+registration.Dispose
 ```
 
 Use `ProgressOf(T, handler)` for typed progress reports. Use `TaskCompletionSourceOf(T)` when an
 event or callback owns completion; `SetResult`, `SetException`, and `SetCanceled` are paired with
 non-throwing `TrySet...` forms.
+
+`WhenAll` retains every child failure in `task.Exception.InnerExceptions`. Use `Flatten` for nested
+aggregates and `Handle(predicate)` when a caller deliberately marks matching failures handled.
+`Task.Exception` never starts or waits for a task.
 
 ## What async means in VBA
 

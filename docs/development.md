@@ -22,8 +22,10 @@ The collection suite adds strict primitive/user-class lists, atomic mutation fai
 indexing, populated/inferred initializers, atomic heterogeneous inputs, deferred source mutation,
 universal procedure delegates in LINQ, `ForEach(Action)`, text joining, query chaining, numeric
 terminals, predicate algebra, collection membership, null-safe paths, custom comparers, nested
-quantifiers, stable composite ordering, and enumerator refresh after mutation. The current live
-totals are 58 delegate/event/exception and 146 collection assertions.
+quantifiers, stable composite ordering, indexed hash collections, capacity control, and enumerator
+refresh after mutation. Dedicated advanced-collection and task/data/provider suites cover
+specialized families, scheduler state, cancellation, indexed data relations, and provider
+capabilities. The current live total is 414 assertions across all four suites.
 
 The invocation benchmark has a configurable release ceiling (`-MaxBenchmarkSeconds`, default
 `0.5` for 10,000 calls). The v0.1.0 measurements are stored in
@@ -54,10 +56,15 @@ repeats both established release gates across five fresh Excel processes. Measur
 in `benchmarks/v0.8.0-baseline.json`.
 
 The v1.0.0 baseline retains the 10,000-element `OrderBy.ThenByDescending.ToList` scenario after the
-stable O(n log n) ordering rewrite. Three fresh Excel processes establish a `1.0`-second release
-ceiling for the isolated suite. The living Collections workbook has a separate `2.5`-second ceiling
-to cover its observed host-level variance. Both are recorded in
+stable O(n log n) ordering rewrite. Three fresh Excel processes established its initial gate.
+Measurements are recorded in
 `benchmarks/v1.0.0-baseline.json`.
+
+The v1.1.0 baseline adds a 10,000-item dictionary build-and-read scenario and 100,000 indexed
+lookups over a reserved 10,000-item dictionary. The live release gates are 1.5 and 2.0 seconds.
+The composite-ordering gate is 2.0 seconds to cover directly observed fresh-process host variance;
+its implementation and 10,000-element workload are unchanged. Three samples and all 414 live
+assertions are recorded in `benchmarks/v1.1.0-baseline.json`.
 
 pyVBAanalysis 1.2.0 treats a VBA bang identifier such as `!Age` as an ordinary variable token.
 Live bang examples therefore declare the token name in their local scope even though VBA uses it

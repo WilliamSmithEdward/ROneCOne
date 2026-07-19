@@ -270,6 +270,9 @@ class SourceContractTests(unittest.TestCase):
             "IsReadOnly",
             "ToBuilder",
             "ToImmutable",
+            "EnsureCapacity",
+            "TrimExcess",
+            "Capacity",
         )
         for member in factories + members:
             pattern = (
@@ -293,6 +296,8 @@ class SourceContractTests(unittest.TestCase):
             "WhenAny",
             "Await",
             "Wait",
+            "WaitAsync",
+            "YieldOnce",
             "ContinueWith",
             "Status",
             "IsCompleted",
@@ -303,6 +308,12 @@ class SourceContractTests(unittest.TestCase):
             "Token",
             "Cancel",
             "IsCancellationRequested",
+            "Register",
+            "Dispose",
+            "InnerExceptions",
+            "Flatten",
+            "Handle",
+            "ExceptionType",
             "DataTable",
             "DataColumn",
             "DataSet",
@@ -347,6 +358,15 @@ class SourceContractTests(unittest.TestCase):
             "WithParameter",
             "WithTimeout",
             "FromColumn",
+            "DBNull",
+            "AsPrimaryKey",
+            "Row",
+            "Using",
+            "SupportsNativeAsync",
+            "AsyncMode",
+            "UseTransaction",
+            "ContinueUpdateOnError",
+            "LastUpdateErrors",
         )
         for member in required_members:
             pattern = (
@@ -363,6 +383,15 @@ class SourceContractTests(unittest.TestCase):
             "ROLE_DB_CONNECTION",
         ):
             self.assertIn(role_name, self.source)
+
+        self.assertRegex(
+            self.source,
+            re.compile(r"Public\s+Function\s+WhenAll\s*\(ParamArray", re.IGNORECASE),
+        )
+        self.assertRegex(
+            self.source,
+            re.compile(r"Public\s+Function\s+WhenAny\s*\(ParamArray", re.IGNORECASE),
+        )
 
     def test_complete_linq_materialization_contract_is_present(self) -> None:
         members = (

@@ -51,6 +51,23 @@ Debug.Print customers.GenericTypeName
 
 ROneCOne enforces the list's element type before a mutation changes the list.
 
+## Use indexed dictionaries and sets
+
+```vba
+Dim reserved As Long
+Dim scoresById As ROneCOne
+
+Set scoresById = ROneCOne.DictionaryOf(vbLong, vbLong)
+reserved = scoresById.EnsureCapacity(10000&)
+scoresById.Add 101&, 95&
+
+Debug.Print scoresById.Item(101&)
+```
+
+Default-equality dictionaries and hash sets use indexed lookup. `EnsureCapacity` is useful before
+a bulk load; `Capacity` reports the current reservation and `TrimExcess` compacts it afterward.
+Custom equality comparers retain their exact delegated semantics through a deliberate linear path.
+
 ## Filter by an object property
 
 The member name begins a condition, and the comparison completes the query:
