@@ -655,14 +655,14 @@ Attribute RemoveAt.VB_Description = "Removes the item at a zero-based list index
     mVersion = mVersion + 1
 End Sub
 
-Public Property Get It() As ROneCOne
-Attribute It.VB_Description = "Gets a typed implicit parameter for this sequence."
+Public Property Get Element() As ROneCOne
+Attribute Element.VB_Description = "Gets a typed parameter representing each sequence element."
     Dim parameterValue As ROneCOne
 
-    RequireSequence Me, "It"
+    RequireSequence Me, "Element"
     Set parameterValue = New ROneCOne
     parameterValue.ConfigureParameter mElementType, mElementObjectType
-    Set It = parameterValue
+    Set Element = parameterValue
 End Property
 
 Public Function Where(ByVal predicate As ROneCOne) As ROneCOne
@@ -738,12 +738,12 @@ End Function
 
 Public Function Sorted() As ROneCOne
 Attribute Sorted.VB_Description = "Orders a sequence ascending by each element itself."
-    Set Sorted = OrderBy(It)
+    Set Sorted = OrderBy(Element)
 End Function
 
 Public Function SortedDescending() As ROneCOne
 Attribute SortedDescending.VB_Description = "Orders a sequence descending by each element itself."
-    Set SortedDescending = OrderByDescending(It)
+    Set SortedDescending = OrderByDescending(Element)
 End Function
 
 Public Function Append(ByVal element As Variant) As ROneCOne

@@ -124,7 +124,7 @@ class SourceContractTests(unittest.TestCase):
             "Range",
             "Repeat",
             "GenericTypeName",
-            "It",
+            "Element",
             "Member",
             "Map",
             "Exists",

@@ -80,7 +80,7 @@ Set numbers = ROneCOne.ListOf(vbLong)
 numbers.Add CLng(5)
 numbers.Add CLng(20)
 
-Set x = numbers.It
+Set x = numbers.Element
 Set filtered = numbers.Where(x.GreaterThan(CLng(10)))
 
 numbers.Add CLng(30)
@@ -114,12 +114,12 @@ contract. The canonical members remain public for explicit construction, teachin
 
 | Concise form | Canonical expansion | Meaning |
 |---|---|---|
-| `Set x = values.It` | `Set x = ROneCOne.Parameter(vbLong)` | Parameter typed from the sequence |
+| `Set element = values.Element` | `Set element = ROneCOne.Parameter(vbLong)` | Parameter typed from the sequence |
 | `values.Where(x.AtLeast(10))` | `values.Where(ROneCOne.Lambda(x.GreaterThanOrEqual(10), x))` | Inferred unary predicate |
 | `values.Map(x.Multiply(2), vbLong)` | `values.SelectItems(ROneCOne.Lambda(x.Multiply(2), x), vbLong)` | Typed projection |
 | `values.Exists(predicate)` | `values.AnyItem(predicate)` | Predicate-based existence test |
-| `values.Sorted` | `values.OrderBy(values.It)` | Identity-key ascending order |
-| `values.SortedDescending` | `values.OrderByDescending(values.It)` | Identity-key descending order |
+| `values.Sorted` | `values.OrderBy(values.Element)` | Identity-key ascending order |
+| `values.SortedDescending` | `values.OrderByDescending(values.Element)` | Identity-key descending order |
 
 `Where`, `Map`, ordering, quantifiers, element terminals, and selector-based numeric terminals all
 accept either a unary delegate or an expression containing exactly one parameter. The runtime
@@ -128,8 +128,8 @@ infers that parameter once when the query is built, not once per element.
 ## LINQ over user-defined classes
 
 The collections demo includes a normal `DemoCustomer` class with `CustomerName`, `Age`, and `City`
-properties. No predicate adapter class is required. `It` creates the typed customer parameter, and
-the parameter's default member turns `customer("Age")` into a scalar property-access expression.
+properties. No predicate adapter class is required. `Element` creates the typed customer
+parameter, and its default member turns `customer("Age")` into a scalar property-access expression.
 
 ```vba
 Dim customer As ROneCOne
@@ -141,7 +141,7 @@ Dim prototype As DemoCustomer
 
 Set prototype = New DemoCustomer
 Set customers = ROneCOne.ListOf(prototype)
-Set customer = customers.It
+Set customer = customers.Element
 
 Set experienced = customers.Where(customer("Age").AtLeast(CLng(40)))
 Set names = experienced _
@@ -180,15 +180,15 @@ filtering after source mutation, projection to `List<String>`, ordering while pr
 customer type, `Exists`/`All` predicates, and an average over a projected `List<Long>`. The customer
 model is demo application code; the deployed runtime remains the single `ROneCOne.cls` file.
 
-## VBA-compatible API names
+## VBA-constrained API names
 
 VBA reserves `Select` and `Any`, and the VBE rejects those words as class member declarations.
-ROneCOne therefore uses `Map` and `Exists` as its concise names and retains `SelectItems` and
-`AnyItem` as the canonical compatibility members. `AtLeast`, `AtMost`, `Sorted`, and
+ROneCOne therefore uses `Map` and `Exists` as its concise names and exposes `SelectItems` and
+`AnyItem` as the explicit core members. `AtLeast`, `AtMost`, `Sorted`, and
 `SortedDescending` similarly expand to the longer comparison and ordering primitives without
 changing their behavior.
 
-The compatibility roadmap covers the standard LINQ and generic-collection surface. Operators that
+The feature roadmap covers the standard LINQ and generic-collection surface. Operators that
 need new result abstractions, including dictionaries, lookups, groupings, joins, sets, queues, and
 stacks, enter the supported surface as independently tested release slices so `List<T>` contracts
 remain stable.

@@ -267,7 +267,7 @@ tableHeader(architecture.getRange("A12:D12"));
 architecture.getRange("A13:D18").values = [
   [1, "Delegates + expression lambdas", "AVAILABLE (v0.1.0)", "Tagged object kernel"],
   [2, "Runtime-generic List<T> + LINQ", "AVAILABLE (v0.2.0)", "Delegates"],
-  [3, "Inferred Func + LINQ syntax sugar", "AVAILABLE (v0.3.0)", "Delegates + collections"],
+  [3, "Inferred Func + clear LINQ syntax", "AVAILABLE (v0.4.0)", "Delegates + collections"],
   [4, "Try / Catch / Finally", "SCHEDULED", "Delegates"],
   [5, "Tasks / async / await / cancellation", "SCHEDULED", "Exceptions + delegates"],
   [6, "Events / disposables / native-safe parallelism", "SCHEDULED", "Tasks + collections"],

@@ -62,15 +62,60 @@ function Find-RendererExcelProcesses {
         return @()
     }
 
-    $candidates = @(
+    $newExcelProcesses = @(
+        Get-Process EXCEL -ErrorAction SilentlyContinue |
+            Where-Object { $beforeExcelIds -notcontains $_.Id }
+    )
+    if ($newExcelProcesses.Count -eq 0) {
+        return @()
+    }
+
+    $parentMatchedIds = @(
         Get-CimInstance Win32_Process -Filter "Name='EXCEL.EXE'" -ErrorAction SilentlyContinue |
             Where-Object {
                 $beforeExcelIds -notcontains [int]$_.ProcessId -and
-                ([int]$_.ParentProcessId -eq $nodeProcess.Id -or
-                    (Test-Path -LiteralPath $workbookLock))
-            }
+                [int]$_.ParentProcessId -eq $nodeProcess.Id
+            } |
+            ForEach-Object { [int]$_.ProcessId }
     )
-    return $candidates
+    if ($parentMatchedIds.Count -gt 0) {
+        return @(
+            $parentMatchedIds | ForEach-Object {
+                [pscustomobject]@{
+                    ProcessId = $_
+                    OwnershipBasis = "renderer child process"
+                }
+            }
+        )
+    }
+
+    if (-not (Test-Path -LiteralPath $workbookLock)) {
+        return @()
+    }
+
+    $lockCreated = (Get-Item -LiteralPath $workbookLock).CreationTimeUtc
+    $lockMatchedProcesses = @(
+        $newExcelProcesses | Where-Object {
+            try {
+                [Math]::Abs(
+                    ($_.StartTime.ToUniversalTime() - $lockCreated).TotalSeconds
+                ) -le 3
+            }
+            catch {
+                $false
+            }
+        }
+    )
+    if ($lockMatchedProcesses.Count -ne 1) {
+        return @()
+    }
+
+    return @(
+        [pscustomobject]@{
+            ProcessId = [int]$lockMatchedProcesses[0].Id
+            OwnershipBasis = "lock-matched Excel process"
+        }
+    )
 }
 
 [System.IO.Directory]::CreateDirectory($workingDirectory) | Out-Null

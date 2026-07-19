@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.0 - 2026-07-18
+
+### Added
+
+- `Element` as the clear, LINQ-aligned name for the typed sequence expression parameter.
+
+### Changed
+
+- Updated the collections demo, workbook examples, quick start, and deep documentation to lead
+  with `Element` rather than the less familiar `It` terminology.
+- Made `Element` the canonical implementation used by identity sorting.
+- Removed the less familiar `It` sequence-parameter name under the current pre-stability API policy.
+
+The pre-stability API intentionally prefers the clearer public surface over compatibility aliases.
+
 ## 0.3.0 - 2026-07-18
 
 ### Added

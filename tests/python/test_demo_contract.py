@@ -11,6 +11,7 @@ DELEGATES_DEMO = DEMO_VBA / "DemoUsage.bas"
 CUSTOMER = DEMO_VBA / "DemoCustomer.cls"
 COLLECTIONS_BUILDER = ROOT / "tools" / "build_collections_demo_workbook.cjs"
 PACKAGER = ROOT / "tools" / "package_demo_workbook.py"
+RENDERER = ROOT / "tools" / "render_demo_workbook.ps1"
 README = ROOT / "README.md"
 
 
@@ -41,7 +42,7 @@ class DemoContractTests(unittest.TestCase):
         source = COLLECTIONS_DEMO.read_text(encoding="utf-8")
 
         required_syntax = (
-            "Set customer = customers.It",
+            "Set customer = customers.Element",
             'customers.Where(customer("Age").AtLeast(CLng(40)))',
             '.Map(customer("CustomerName"), vbString)',
             ".Sorted",
@@ -60,7 +61,7 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("Object ordering", source)
         self.assertIn("Quantifiers", source)
         self.assertIn("Aggregate projection", source)
-        self.assertIn("customers.It", source)
+        self.assertIn("customers.Element", source)
         self.assertIn('.Where(customer("Age").AtLeast(40))', source)
         self.assertIn('.Map(customer("CustomerName"), vbString)', source)
 
@@ -69,6 +70,13 @@ class DemoContractTests(unittest.TestCase):
 
         self.assertIn('"DemoCustomerQuery"', source)
         self.assertNotIn("query_source", source)
+
+    def test_renderer_has_a_non_cim_excel_ownership_fallback(self) -> None:
+        source = RENDERER.read_text(encoding="utf-8")
+
+        self.assertIn("Get-Process EXCEL", source)
+        self.assertIn("CreationTimeUtc", source)
+        self.assertIn("lock-matched Excel process", source)
 
     def test_demo_modules_are_ascii_explicit_and_readable(self) -> None:
         for path in (COLLECTIONS_DEMO, DELEGATES_DEMO, CUSTOMER):

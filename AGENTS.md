@@ -25,8 +25,7 @@ The central operating law is:
 
 > Drive ROneCOne toward maximal safe syntax sugar across all development: prove each core
 > capability first, then systematically minimize end-user VBA ceremony while preserving
-> correctness, discoverability, performance, privacy, backward compatibility, and the one-file
-> runtime contract.
+> correctness, discoverability, performance, privacy, and the one-file runtime contract.
 
 Treat the frictionless form as the primary demo and onboarding surface. In deeper documentation,
 show both the concise syntax and the canonical core functionality it represents so behavior stays
@@ -35,8 +34,18 @@ transparent, teachable, and debuggable.
 After proving each new abstraction, perform a backward ripple review across prior runtime APIs,
 demos, tests, documentation, and benchmarks. Stronger capabilities such as generics, exceptions,
 tasks, or events may justify safer and more expressive forms for earlier features. Preserve
-working code through backward-compatible primitives while allowing the preferred developer
-experience to improve.
+the strongest proven primitives while allowing the preferred developer experience to improve.
+
+Assume the API is not compatibility-stable until the user explicitly changes this heuristic.
+Backward compatibility is not a gate: do not retain inferior aliases or APIs solely for
+compatibility when a clearer, safer, more C#-aligned design is proven. Keep demos, tests, and
+documentation synchronized with the current API in the same change. GitHub releases, tags, and
+assets may still be published when authorized; they do not establish API compatibility by
+themselves.
+
+When multiple safe API designs are otherwise comparable, prefer the naming, semantics, and fluent
+shape used by C# and the .NET Base Class Library. Depart only when VBA syntax, reserved words, COM,
+or Excel host behavior imposes a demonstrated constraint, and document that boundary.
 
 RIDM guides internal reasoning and action. Keep it mostly invisible in user-facing wording unless
 the user asks about the framework or its distinctions are material to the task.

@@ -87,7 +87,7 @@ Private Sub TestSyntaxSugar()
     customers.Add grace
     customers.Add katherine
 
-    Set customer = customers.It
+    Set customer = customers.Element
     Set experienced = customers.Where(customer("Age").AtLeast(CLng(40)))
     Set names = experienced _
         .Map(customer("CustomerName"), vbString) _
@@ -107,7 +107,7 @@ Private Sub TestSyntaxSugar()
         experienced.Map(customer("Age"), vbLong).Average)
 
     Set numbers = ROneCOne.Range(CLng(1), CLng(4))
-    Set value = numbers.It
+    Set value = numbers.Element
     Set result = numbers _
         .Where(value.AtLeast(CLng(2))) _
         .Map(value.Multiply(CLng(2)), vbLong) _

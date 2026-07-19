@@ -1,9 +1,9 @@
 # ROneCOne
 
 ROneCOne is a one-file VBA runtime that makes ordinary Excel VBA feel more like modern C#.
-Version 0.3.0 adds inferred `Func` expressions and concise LINQ over primitive and user-defined
-class collections, with no runtime install, add-in, network access, external library, or trusted
-VBIDE access.
+Version 0.4.0 uses `Element` as the clear, LINQ-aligned sequence-parameter name. Inferred
+`Func` expressions and concise LINQ remain dependency-free,
+with no runtime install, add-in, network access, external library, or trusted VBIDE access.
 
 ## Quick start
 
@@ -38,7 +38,7 @@ Dim x As ROneCOne
 Set numbers = ROneCOne.ListOf(vbLong)
 numbers.Add CLng(5)
 numbers.Add CLng(20)
-Set x = numbers.It
+Set x = numbers.Element
 
 Set numbers = numbers _
     .Where(x.GreaterThan(CLng(10))) _
@@ -56,7 +56,7 @@ Dim prototype As Customer
 
 Set prototype = New Customer
 Set customers = ROneCOne.ListOf(prototype)
-Set customer = customers.It
+Set customer = customers.Element
 Set names = customers _
     .Where(customer("Age").AtLeast(CLng(40))) _
     .Map(customer("CustomerName"), vbString) _
@@ -64,7 +64,7 @@ Set names = customers _
     .ToList
 ```
 
-## Version 0.3.0
+## Version 0.4.0
 
 - immutable expression trees and string-free anonymous lambdas
 - `Var` and `VarLike` typed argument sugar
@@ -79,7 +79,7 @@ Set names = customers _
 - strict primitive and exact user-defined class `List<T>` values
 - zero-based default and explicit indexers, mutation, and nested `For Each`
 - deferred `Where`, `SelectItems`, ordering, slicing, distinct, append/prepend, and reverse
-- implicit sequence expressions through `It`, with scalar property access such as `c("Age")`
+- LINQ-aligned sequence expressions through `Element`
 - concise `Map`, `Exists`, `Sorted`, `SortedDescending`, `AtLeast`, and `AtMost` forms
 - immediate query terminals, materialization, `Range`, and `Repeat`
 - IntelliSense descriptions embedded in the exported class
@@ -134,7 +134,7 @@ break mode, and enforces a hard deadline so a hidden Excel instance cannot hang 
 [`docs/development.md`](docs/development.md).
 
 The real `%USERPROFILE%\.ronecone.env` is private and optional. The committed
-`.ronecone.env.example` defines the reserved local-only diagnostics schema. Version 0.3.0 does not
+`.ronecone.env.example` defines the reserved local-only diagnostics schema. Version 0.4.0 does not
 read this file or emit runtime logs.
 
 ## Release roadmap

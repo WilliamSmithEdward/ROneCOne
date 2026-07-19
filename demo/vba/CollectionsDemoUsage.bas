@@ -71,7 +71,7 @@ Private Sub WritePrimitiveCollectionExamples()
     Set numbers = ROneCOne.ListOf(vbLong)
     numbers.Add CLng(5)
     numbers.Add CLng(20)
-    Set x = numbers.It
+    Set x = numbers.Element
     Set filtered = numbers.Where(x.GreaterThan(CLng(10)))
     numbers.Add CLng(30)
     Set filtered = filtered.ToList
@@ -139,9 +139,9 @@ Private Sub WriteUserClassLinqExamples()
     customers.Add CreateCustomer("Grace", CLng(40), "Arlington")
     customers.Add CreateCustomer("Katherine", CLng(49), "Cleveland")
 
-    ' It provides a typed implicit parameter. Its default member selects a
+    ' Element represents one typed customer. Its default member selects a
     ' scalar property, so customer("Age") is the VBA equivalent of c.Age.
-    Set customer = customers.It
+    Set customer = customers.Element
 
     ' Build the query first, then mutate its source to prove it remains deferred.
     Set experienced = customers.Where(customer("Age").AtLeast(CLng(40)))
@@ -188,7 +188,7 @@ Private Sub RunCollectionBenchmark()
 
     started = Timer
     Set numbers = ROneCOne.Range(CLng(1), BENCHMARK_ELEMENT_COUNT)
-    Set x = numbers.It
+    Set x = numbers.Element
     Set filtered = numbers _
         .Where(x.Modulo(CLng(2)).EqualTo(CLng(0))) _
         .ToList

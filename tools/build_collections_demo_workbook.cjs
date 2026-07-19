@@ -162,7 +162,7 @@ async function main() {
     ["Primitive list", "List<long>", "Set values = ROneCOne.ListOf(vbLong)", "List<Long>"],
     ["Strict T", "Compile-time element type", "values.Add \"not a Long\"", true],
     ["User class", "List<DemoCustomer>", "ROneCOne.ListOf(customerPrototype)", "List<DemoCustomer>:Grace"],
-    ["Deferred Where", "query observes later mutation", "Set x = values.It\nSet query = values.Where(x.AtLeast(10))\nvalues.Add 30", "2|30"],
+    ["Deferred Where", "query observes later mutation", "Set element = values.Element\nSet query = values.Where(element.AtLeast(10))\nvalues.Add 30", "2|30"],
     ["LINQ pipeline", "Where.Select.OrderBy.Take", ".Where(...).Map(...).SortedDescending.Take(2)", "60,40"],
     ["Sequence ops", "Distinct.Prepend.Append.Reverse.Skip", "values.Distinct.Prepend(1).Append(4).Reverse.Skip(1)", "3,2,1"],
     ["Terminals", "Sum/Average/Min/Max", "Range(1, 5).Sum / Average / Min / Max", "15|3|1|5"],
@@ -224,7 +224,7 @@ async function main() {
     [
       "Deferred class Where",
       "customers.Where(c => c.Age >= 40)",
-      'Set customer = customers.It\n' +
+      'Set customer = customers.Element\n' +
         'Set experienced = customers.Where(customer("Age").AtLeast(40))\n' +
         "customers.Add margaret",
       "3|Margaret",

@@ -16,7 +16,7 @@ additional shipped class modules.
 
 Each capability is proven through canonical behavioral and live-host tests before syntax sugar is
 added. The next pass then removes avoidable ceremony without weakening correctness,
-discoverability, performance, privacy, backward compatibility, or the one-file runtime contract.
+discoverability, performance, privacy, or the one-file runtime contract.
 Living demos lead with the shortest clear form; deeper documentation pairs it with the canonical
 primitive it represents.
 
