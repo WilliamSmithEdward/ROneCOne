@@ -4,7 +4,7 @@ const { SpreadsheetFile, Workbook } = require("@oai/artifact-tool");
 
 const root = path.resolve(__dirname, "..");
 const outputDir = path.join(root, "demo", ".working");
-const outputPath = path.join(outputDir, "ROneCOne_Demo.xlsx");
+const outputPath = path.join(outputDir, "ROneCOne_Delegates_Demo.xlsx");
 
 const colors = {
   navy: "#152238",
@@ -63,7 +63,7 @@ function tableHeader(range) {
 
 titleBand(
   start,
-  "ROneCOne",
+  "ROneCOne Delegates",
   "A one-file, dependency-free experiment in C#-style programming for Excel VBA",
   "H",
 );
@@ -96,8 +96,8 @@ start.getRange("F6:G10").values = [
   ["Runtime files", 1],
   ["Runtime dependencies", 0],
 ];
-start.getRange("G6").formulas = [["=COUNTIF(Examples!F6:F11,\"PASS\")"]];
-start.getRange("G7").formulas = [["=COUNTA(Examples!A6:A11)"]];
+start.getRange("G6").formulas = [["=COUNTIF('Examples'!F6:F11,\"PASS\")"]];
+start.getRange("G7").formulas = [["=COUNTA('Examples'!A6:A11)"]];
 start.getRange("F6:G10").format = {
   borders: { preset: "all", style: "thin", color: colors.line },
 };
@@ -260,8 +260,8 @@ architecture.getRange("A12:D12").values = [["Milestone", "Capability", "State", 
 tableHeader(architecture.getRange("A12:D12"));
 architecture.getRange("A13:D17").values = [
   [1, "Delegates + expression lambdas", "SHIPPED IN v0.1.0", "Tagged object kernel"],
-  [2, "Try / Catch / Finally", "NEXT", "Delegates"],
-  [3, "Runtime-generic collections + query", "PLANNED", "Delegates"],
+  [2, "Runtime-generic List<T> + LINQ", "SHIPPED IN v0.2.0", "Delegates"],
+  [3, "Try / Catch / Finally", "NEXT", "Delegates"],
   [4, "Tasks / async / await / cancellation", "PLANNED", "Exceptions + delegates"],
   [5, "Events / disposables / native-safe parallelism", "PLANNED", "Tasks + collections"],
 ];
@@ -279,13 +279,26 @@ architecture.freezePanes.freezeRows(5);
 
 await fs.mkdir(outputDir, { recursive: true });
 const inspect = await workbook.inspect({
-  kind: "sheet,formula",
+  kind: "table,formula",
+  sheetId: "Examples",
+  range: "A1:F11",
   maxChars: 4000,
-  options: { maxResults: 50 },
+  tableMaxRows: 12,
+  tableMaxCols: 6,
 });
-await fs.writeFile(path.join(outputDir, "inspect.ndjson"), inspect.ndjson, "utf8");
+const errors = await workbook.inspect({
+  kind: "match",
+  searchTerm: "#REF!|#DIV/0!|#VALUE!|#NAME\\?|#N/A",
+  options: { useRegex: true, maxResults: 100 },
+  summary: "final formula error scan",
+});
+await fs.writeFile(
+  path.join(outputDir, "delegates-inspect.ndjson"),
+  `${inspect.ndjson}\n${errors.ndjson}`,
+  "utf8",
+);
 
-for (const sheetName of ["Start Here", "Examples"]) {
+for (const sheetName of ["Start Here", "Examples", "Benchmarks", "Architecture"]) {
   const preview = await workbook.render({
     sheetName,
     autoCrop: "all",
@@ -294,7 +307,7 @@ for (const sheetName of ["Start Here", "Examples"]) {
   });
   const safeName = sheetName.toLowerCase().replaceAll(" ", "-");
   await fs.writeFile(
-    path.join(outputDir, `${safeName}.png`),
+      path.join(outputDir, `delegates-${safeName}.png`),
     new Uint8Array(await preview.arrayBuffer()),
   );
 }

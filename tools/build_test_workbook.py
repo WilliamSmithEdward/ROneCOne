@@ -33,7 +33,9 @@ def build(output: Path) -> None:
 
     runtime_source = prepare_class_source(ROOT / "src" / "ROneCOne.cls")
     fixture_source = prepare_class_source(ROOT / "tests" / "vba" / "DelegateFixture.cls")
+    customer_source = prepare_class_source(ROOT / "tests" / "vba" / "GenericCustomer.cls")
     test_source = read_vba(ROOT / "tests" / "vba" / "TestDelegates.bas")
+    collection_test_source = read_vba(ROOT / "tests" / "vba" / "TestCollections.bas")
 
     with ExcelFile.create_new(output) as workbook:
         project = workbook.vba_project()
@@ -41,11 +43,23 @@ def build(output: Path) -> None:
             project.delete_module("Module1")
         project.add_module("ROneCOne", runtime_source, kind=VBAModuleKind.other)
         project.add_module("DelegateFixture", fixture_source, kind=VBAModuleKind.other)
+        project.add_module("GenericCustomer", customer_source, kind=VBAModuleKind.other)
         project.add_module("TestDelegates", test_source, kind=VBAModuleKind.standard)
+        project.add_module(
+            "TestCollections",
+            collection_test_source,
+            kind=VBAModuleKind.standard,
+        )
         workbook.save()
 
     with ExcelFile(output) as verification:
-        expected = {"ROneCOne", "DelegateFixture", "TestDelegates"}
+        expected = {
+            "ROneCOne",
+            "DelegateFixture",
+            "GenericCustomer",
+            "TestDelegates",
+            "TestCollections",
+        }
         actual = set(verification.module_names())
         missing = expected - actual
         if missing:

@@ -9,15 +9,23 @@ ROneCOne uses four independent gates:
 2. pyVBAanalysis checks the runtime and all VBA fixtures as one project.
 3. pyOpenVBA builds test and demo workbooks and verifies byte-for-byte module round trips.
 4. Microsoft Excel compiles and executes the VBA suite, records worksheet-observed assertions,
-   and runs the invocation benchmark.
+   and runs delegate and collection benchmarks.
 
 The live suite currently exercises lambda creation, unary and binary calls, explicit and default
 invocation, comparisons, short-circuit behavior, typed failures, method/action delegates, object
 returns, composition, and unbound-parameter rejection.
 
+The collection suite adds strict primitive/user-class lists, atomic mutation failures, zero-based
+indexing, deferred source mutation, query chaining, numeric terminals, nested enumeration, and
+enumerator refresh after mutation. The current live totals are 13 delegate and 41 collection
+assertions.
+
 The invocation benchmark has a configurable release ceiling (`-MaxBenchmarkSeconds`, default
 `0.5` for 10,000 calls). The v0.1.0 measurements are stored in
 `benchmarks/v0.1.0-baseline.json`.
+
+The v0.2.0 collection gate requires a 10,000-element `Range.Where.ToList` pipeline to complete in
+at most `0.75` seconds. Measurements are stored in `benchmarks/v0.2.0-baseline.json`.
 
 ## Popup-adaptive Excel harness
 
@@ -50,12 +58,23 @@ pyOpenVBA.
 ```powershell
 $env:NODE_PATH = "C:\Users\William\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\node_modules"
 node tools\build_demo_workbook.cjs
+node tools\build_collections_demo_workbook.cjs
 powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1
+powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
+    -InputPath demo\.working\ROneCOne_Collections_Demo.xlsx `
+    -OutputPath demo\ROneCOne_Collections_Demo.xlsm
 .venv\Scripts\python.exe tools\package_demo_workbook.py
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1
+powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Collections_Demo.xlsm `
+    -MacroName RunROneCOneCollectionsDemo
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1
+powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Collections_Demo.xlsm `
+    -OutputPrefix collections
 ```
 
-Development-only VBIDE trust is used once during conversion to seed an otherwise empty
-`vbaProject.bin`. pyOpenVBA replaces that seed. Neither the final workbook nor the runtime uses
-VBIDE automation.
+Development-only VBIDE trust is used once during each conversion to seed an otherwise empty
+`vbaProject.bin`. pyOpenVBA replaces that seed. Neither final workbook nor the runtime uses VBIDE
+automation. Every core capability gets a separate workbook with its own macro, examples,
+benchmark, live execution gate, and all-sheet render pass.

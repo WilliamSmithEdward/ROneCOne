@@ -1,6 +1,6 @@
 param(
-    [string]$InputPath = "demo\.working\ROneCOne_Demo.xlsx",
-    [string]$OutputPath = "demo\ROneCOne_Demo.xlsm",
+    [string]$InputPath = "demo\.working\ROneCOne_Delegates_Demo.xlsx",
+    [string]$OutputPath = "demo\ROneCOne_Delegates_Demo.xlsm",
     [ValidateRange(5, 120)]
     [int]$TimeoutSeconds = 30,
     [switch]$Worker,

@@ -7,7 +7,11 @@ param(
 
     [Parameter(Mandatory = $true)]
     [ValidateRange(0.01, 60)]
-    [double]$MaxBenchmarkSeconds
+    [double]$MaxBenchmarkSeconds,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(0.01, 60)]
+    [double]$MaxCollectionBenchmarkSeconds
 )
 
 $ErrorActionPreference = "Stop"
@@ -96,6 +100,24 @@ public static class ROneCOneExcelProcess
         $benchmarkSheet.Name = "Benchmarks"
     }
 
+    $collectionSheet = $null
+    try {
+        $collectionSheet = $workbook.Worksheets.Item("Collection Results")
+    }
+    catch {
+        $collectionSheet = $workbook.Worksheets.Add()
+        $collectionSheet.Name = "Collection Results"
+    }
+
+    $collectionBenchmarkSheet = $null
+    try {
+        $collectionBenchmarkSheet = $workbook.Worksheets.Item("Collection Benchmarks")
+    }
+    catch {
+        $collectionBenchmarkSheet = $workbook.Worksheets.Add()
+        $collectionBenchmarkSheet.Name = "Collection Benchmarks"
+    }
+
     $testSheet.Range("A1:B4").ClearContents()
     $testSheet.Range("A1").Value2 = "ROneCOne delegate test suite"
     $testSheet.Range("A2").Value2 = "Passed"
@@ -106,11 +128,26 @@ public static class ROneCOneExcelProcess
     $benchmarkSheet.Range("A2").Value2 = "Invocations"
     $benchmarkSheet.Range("A3").Value2 = "Seconds"
     $benchmarkSheet.Range("A4").Value2 = "Last result"
+    $collectionSheet.Range("A1:B5").ClearContents()
+    $collectionSheet.Range("A1").Value2 = "ROneCOne generic collection test suite"
+    $collectionSheet.Range("A2").Value2 = "Passed"
+    $collectionSheet.Range("A3").Value2 = "Failed"
+    $collectionSheet.Range("A4").Value2 = "Status"
+    $collectionSheet.Range("A5").Value2 = "Error"
+    $collectionBenchmarkSheet.Range("A1:B4").ClearContents()
+    $collectionBenchmarkSheet.Range("A1").Value2 = "ROneCOne collection benchmark"
+    $collectionBenchmarkSheet.Range("A2").Value2 = "Source elements"
+    $collectionBenchmarkSheet.Range("A3").Value2 = "Seconds"
+    $collectionBenchmarkSheet.Range("A4").Value2 = "Filtered elements"
     $macroPrefix = "'" + $workbook.Name.Replace("'", "''") + "'!"
     $stage = "run delegate tests"
     $excel.Run($macroPrefix + "RunROneCOneTests") | Out-Null
+    $stage = "run generic collection tests"
+    $excel.Run($macroPrefix + "RunROneCOneCollectionTests") | Out-Null
     $stage = "run delegate benchmark"
     $excel.Run($macroPrefix + "RunROneCOneBenchmark") | Out-Null
+    $stage = "run generic collection benchmark"
+    $excel.Run($macroPrefix + "RunROneCOneCollectionBenchmark") | Out-Null
     $stage = "read observed results"
     if (Test-Path -LiteralPath $watcherLog) {
         $dialogRecords = @(Get-Content -LiteralPath $watcherLog | ConvertFrom-Json)
@@ -125,15 +162,38 @@ public static class ROneCOneExcelProcess
     $status = [string]$testSheet.Range("B4").Value2
     $passed = [int]$testSheet.Range("B2").Value2
     $failed = [int]$testSheet.Range("B3").Value2
+    $collectionStatus = [string]$collectionSheet.Range("B4").Value2
+    $collectionPassed = [int]$collectionSheet.Range("B2").Value2
+    $collectionFailed = [int]$collectionSheet.Range("B3").Value2
     $seconds = [double]$benchmarkSheet.Range("B3").Value2
+    $collectionSeconds = [double]$collectionBenchmarkSheet.Range("B3").Value2
 
     $stage = "validate observed results"
     if ($status -ne "PASS" -or $failed -ne 0) {
         $errorDetail = [string]$testSheet.Range("B5").Value2
         throw "Live Excel tests failed: status=$status passed=$passed failed=$failed detail=$errorDetail"
     }
+    if ($collectionStatus -ne "PASS" -or $collectionFailed -ne 0) {
+        $errorDetail = [string]$collectionSheet.Range("B5").Value2
+        if ([string]::IsNullOrWhiteSpace($errorDetail)) {
+            $failedAssertions = @()
+            for ($row = 6; $row -le 300; $row++) {
+                if ([string]$collectionSheet.Cells.Item($row, 2).Value2 -eq "FAIL") {
+                    $failedAssertions += "{0}: {1}" -f `
+                        [string]$collectionSheet.Cells.Item($row, 1).Value2,
+                        [string]$collectionSheet.Cells.Item($row, 3).Value2
+                }
+            }
+            $errorDetail = $failedAssertions -join "; "
+        }
+        throw "Collection tests failed: status=$collectionStatus passed=$collectionPassed failed=$collectionFailed detail=$errorDetail"
+    }
     if ($seconds -le 0 -or $seconds -gt $MaxBenchmarkSeconds) {
         throw "Delegate benchmark missed gate: seconds=$seconds maximum=$MaxBenchmarkSeconds"
+    }
+    if ($collectionSeconds -le 0 -or `
+        $collectionSeconds -gt $MaxCollectionBenchmarkSeconds) {
+        throw "Collection benchmark missed gate: seconds=$collectionSeconds maximum=$MaxCollectionBenchmarkSeconds"
     }
 
     [pscustomobject]@{
@@ -141,9 +201,15 @@ public static class ROneCOneExcelProcess
         status = $status
         passed = $passed
         failed = $failed
+        collection_status = $collectionStatus
+        collection_passed = $collectionPassed
+        collection_failed = $collectionFailed
         benchmark_invocations = [int]$benchmarkSheet.Range("B2").Value2
         benchmark_seconds = $seconds
         benchmark_gate_seconds = $MaxBenchmarkSeconds
+        collection_benchmark_elements = [int]$collectionBenchmarkSheet.Range("B2").Value2
+        collection_benchmark_seconds = $collectionSeconds
+        collection_benchmark_gate_seconds = $MaxCollectionBenchmarkSeconds
     } | ConvertTo-Json -Compress
 }
 catch {
