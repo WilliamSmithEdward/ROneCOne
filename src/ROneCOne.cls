@@ -60,6 +60,8 @@ Private Const OP_GREATER_THAN_OR_EQUAL As Long = 13
 Private Const OP_AND_ALSO As Long = 14
 Private Const OP_OR_ELSE As Long = 15
 Private Const OP_NOT As Long = 16
+Private Const OP_MEMBER_VALUE As Long = 17
+Private Const OP_MEMBER_OBJECT As Long = 18
 
 Private Const QUERY_WHERE As Long = 1
 Private Const QUERY_SELECT As Long = 2
@@ -78,6 +80,7 @@ Private Const ERROR_ARITY_MISMATCH As Long = vbObjectError + 4102
 Private Const ERROR_TYPE_MISMATCH As Long = vbObjectError + 4103
 Private Const ERROR_UNBOUND_PARAMETER As Long = vbObjectError + 4104
 Private Const ERROR_METHOD_INVOCATION As Long = vbObjectError + 4105
+Private Const ERROR_MEMBER_ACCESS As Long = vbObjectError + 4106
 
 Private mRole As Long
 Private mOperator As Long
@@ -137,6 +140,18 @@ Attribute ParameterLike.VB_Description = "Creates a parameter typed like an exam
         node.ConfigureParameter VarType(example), vbNullString
     End If
     Set ParameterLike = node
+End Function
+
+Public Function Var( _
+    Optional ByVal expectedType As VbVarType = vbVariant _
+) As ROneCOne
+Attribute Var.VB_Description = "Concise C#-style alias for a typed Parameter."
+    Set Var = Parameter(expectedType)
+End Function
+
+Public Function VarLike(ByVal example As Variant) As ROneCOne
+Attribute VarLike.VB_Description = "Creates a concise parameter typed like an example value."
+    Set VarLike = ParameterLike(example)
 End Function
 
 Public Function Value(ByVal capturedValue As Variant) As ROneCOne
@@ -263,11 +278,21 @@ Attribute Lambda.VB_Description = "Builds an immutable expression-tree lambda de
         parameterList.Add parameterValue
     Next rawParameter
 
+    If parameterList.Count = 0 Then
+        CollectExpressionParameters body, parameterList
+    End If
+
     ValidateBindings body, parameterList
 
     Set delegateValue = New ROneCOne
     delegateValue.ConfigureLambda body, parameterList
     Set Lambda = delegateValue
+End Function
+
+Public Function AsFunc() As ROneCOne
+Attribute AsFunc.VB_Description = "Infers parameters and turns this expression into a Func."
+    RequireExpression Me, "AsFunc"
+    Set AsFunc = ROneCOne.Lambda(Me)
 End Function
 
 Public Function FromMethod( _
@@ -298,7 +323,7 @@ Attribute FromMethod.VB_Description = "Creates a delegate for an object method."
 End Function
 
 Public Function Run(ParamArray arguments() As Variant) As Variant
-Attribute Run.VB_Description = "Invokes a delegate or gets a zero-based sequence item."
+Attribute Run.VB_Description = "Invokes, indexes, or selects a member from an expression."
 Attribute Run.VB_UserMemId = 0
     Dim argumentValues As Collection
     Dim rawArgument As Variant
@@ -317,6 +342,20 @@ Attribute Run.VB_UserMemId = 0
         End If
         argumentValues.Add argumentValue
     Next rawArgument
+
+    If mRole = ROLE_VALUE Or mRole = ROLE_PARAMETER Or _
+        mRole = ROLE_EXPRESSION Then
+        If argumentValues.Count = 1 Then
+            Set argumentValue = argumentValues.Item(1)
+            If Not argumentValue.InternalHasObjectValue Then
+                If VarType(argumentValue.InternalScalarValue) = vbString Then
+                    Set result = Member(CStr(argumentValue.InternalScalarValue))
+                    Set Run = result
+                    Exit Function
+                End If
+            End If
+        End If
+    End If
 
     If mRole = ROLE_LIST Or mRole = ROLE_QUERY Then
         If argumentValues.Count <> 1 Then
@@ -437,6 +476,16 @@ Attribute GreaterThanOrEqual.VB_Description = "Creates a greater-than-or-equal e
     Set GreaterThanOrEqual = CreateBinaryExpression(OP_GREATER_THAN_OR_EQUAL, operand)
 End Function
 
+Public Function AtLeast(ByVal operand As Variant) As ROneCOne
+Attribute AtLeast.VB_Description = "Sugar for a greater-than-or-equal expression."
+    Set AtLeast = GreaterThanOrEqual(operand)
+End Function
+
+Public Function AtMost(ByVal operand As Variant) As ROneCOne
+Attribute AtMost.VB_Description = "Sugar for a less-than-or-equal expression."
+    Set AtMost = LessThanOrEqual(operand)
+End Function
+
 Public Function AndAlso(ByVal operand As Variant) As ROneCOne
 Attribute AndAlso.VB_Description = "Creates a short-circuit Boolean AND expression."
     Set AndAlso = CreateBinaryExpression(OP_AND_ALSO, operand)
@@ -450,6 +499,31 @@ End Function
 Public Function NotExpression() As ROneCOne
 Attribute NotExpression.VB_Description = "Creates a Boolean NOT expression."
     Set NotExpression = CreateUnaryExpression(OP_NOT)
+End Function
+
+Public Function Member( _
+    ByVal memberName As String, _
+    Optional ByVal returnsObject As Boolean = False _
+) As ROneCOne
+Attribute Member.VB_Description = "Creates an object property-access expression."
+    Dim expression As ROneCOne
+    Dim memberNameValue As ROneCOne
+    Dim operatorCode As Long
+
+    RequireExpression Me, "Member receiver"
+    memberName = Trim$(memberName)
+    If Len(memberName) = 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "Member", _
+            "The member name cannot be empty."
+    End If
+
+    operatorCode = OP_MEMBER_VALUE
+    If returnsObject Then operatorCode = OP_MEMBER_OBJECT
+    Set memberNameValue = New ROneCOne
+    memberNameValue.ConfigureScalarValue memberName
+    Set expression = New ROneCOne
+    expression.ConfigureExpression operatorCode, Me, memberNameValue
+    Set Member = expression
 End Function
 
 Public Property Get Item(ByVal index As Long) As Variant
@@ -581,10 +655,22 @@ Attribute RemoveAt.VB_Description = "Removes the item at a zero-based list index
     mVersion = mVersion + 1
 End Sub
 
+Public Property Get It() As ROneCOne
+Attribute It.VB_Description = "Gets a typed implicit parameter for this sequence."
+    Dim parameterValue As ROneCOne
+
+    RequireSequence Me, "It"
+    Set parameterValue = New ROneCOne
+    parameterValue.ConfigureParameter mElementType, mElementObjectType
+    Set It = parameterValue
+End Property
+
 Public Function Where(ByVal predicate As ROneCOne) As ROneCOne
 Attribute Where.VB_Description = "Defers filtering until the sequence is consumed."
-    ValidateUnaryDelegate predicate, "Where"
-    Set Where = CreateQuery(QUERY_WHERE, predicate, Nothing, 0, _
+    Dim predicateDelegate As ROneCOne
+
+    Set predicateDelegate = NormalizeUnary(predicate, "Where")
+    Set Where = CreateQuery(QUERY_WHERE, predicateDelegate, Nothing, 0, _
         mElementType, mElementObjectType)
 End Function
 
@@ -594,12 +680,21 @@ Public Function SelectItems( _
 ) As ROneCOne
 Attribute SelectItems.VB_Description = "Defers a strongly typed LINQ Select projection."
     Dim objectType As String
+    Dim selectorDelegate As ROneCOne
     Dim valueType As VbVarType
 
-    ValidateUnaryDelegate selector, "SelectItems"
+    Set selectorDelegate = NormalizeUnary(selector, "SelectItems")
     ResolveTypeDescriptor resultTypeToken, valueType, objectType, "SelectItems"
-    Set SelectItems = CreateQuery(QUERY_SELECT, selector, Nothing, 0, _
+    Set SelectItems = CreateQuery(QUERY_SELECT, selectorDelegate, Nothing, 0, _
         valueType, objectType)
+End Function
+
+Public Function Map( _
+    ByVal selector As ROneCOne, _
+    ByVal resultTypeToken As Variant _
+) As ROneCOne
+Attribute Map.VB_Description = "Concise sugar for a strongly typed SelectItems projection."
+    Set Map = SelectItems(selector, resultTypeToken)
 End Function
 
 Public Function Take(ByVal count As Long) As ROneCOne
@@ -624,17 +719,31 @@ End Function
 
 Public Function OrderBy(ByVal keySelector As ROneCOne) As ROneCOne
 Attribute OrderBy.VB_Description = "Defers stable ascending ordering by a selected key."
-    ValidateUnaryDelegate keySelector, "OrderBy"
-    Set OrderBy = CreateQuery(QUERY_ORDER_BY, keySelector, Nothing, 0, _
+    Dim selectorDelegate As ROneCOne
+
+    Set selectorDelegate = NormalizeUnary(keySelector, "OrderBy")
+    Set OrderBy = CreateQuery(QUERY_ORDER_BY, selectorDelegate, Nothing, 0, _
         mElementType, mElementObjectType)
 End Function
 
 Public Function OrderByDescending(ByVal keySelector As ROneCOne) As ROneCOne
 Attribute OrderByDescending.VB_Description = "Defers stable descending ordering by a selected key."
-    ValidateUnaryDelegate keySelector, "OrderByDescending"
+    Dim selectorDelegate As ROneCOne
+
+    Set selectorDelegate = NormalizeUnary(keySelector, "OrderByDescending")
     Set OrderByDescending = CreateQuery( _
-        QUERY_ORDER_BY_DESCENDING, keySelector, Nothing, 0, _
+        QUERY_ORDER_BY_DESCENDING, selectorDelegate, Nothing, 0, _
         mElementType, mElementObjectType)
+End Function
+
+Public Function Sorted() As ROneCOne
+Attribute Sorted.VB_Description = "Orders a sequence ascending by each element itself."
+    Set Sorted = OrderBy(It)
+End Function
+
+Public Function SortedDescending() As ROneCOne
+Attribute SortedDescending.VB_Description = "Orders a sequence descending by each element itself."
+    Set SortedDescending = OrderByDescending(It)
 End Function
 
 Public Function Append(ByVal element As Variant) As ROneCOne
@@ -674,8 +783,8 @@ Attribute AnyItem.VB_Description = "Tests whether any element exists or matches 
         AnyItem = (values.Count <> 0)
         Exit Function
     End If
-    Set predicateValue = RequireROneCOne(predicate, "Any predicate")
-    ValidateUnaryDelegate predicateValue, "Any"
+    Set predicateValue = NormalizeUnary( _
+        RequireROneCOne(predicate, "Any predicate"), "Any")
     For Each wrapped In values
         If InvokePredicate(predicateValue, wrapped, "Any") Then
             AnyItem = True
@@ -684,16 +793,22 @@ Attribute AnyItem.VB_Description = "Tests whether any element exists or matches 
     Next wrapped
 End Function
 
+Public Function Exists(ByVal predicate As ROneCOne) As Boolean
+Attribute Exists.VB_Description = "Concise sugar for AnyItem with a predicate."
+    Exists = AnyItem(predicate)
+End Function
+
 Public Function All(ByVal predicate As ROneCOne) As Boolean
 Attribute All.VB_Description = "Tests whether every element matches a predicate."
+    Dim predicateDelegate As ROneCOne
     Dim values As Collection
     Dim wrapped As ROneCOne
 
-    ValidateUnaryDelegate predicate, "All"
+    Set predicateDelegate = NormalizeUnary(predicate, "All")
     Set values = MaterializeWrapped
     All = True
     For Each wrapped In values
-        If Not InvokePredicate(predicate, wrapped, "All") Then
+        If Not InvokePredicate(predicateDelegate, wrapped, "All") Then
             All = False
             Exit Function
         End If
@@ -706,8 +821,8 @@ Attribute First.VB_Description = "Returns the first element, optionally matching
     Dim wrapped As ROneCOne
 
     If Not IsMissing(predicate) Then
-        Set predicateValue = RequireROneCOne(predicate, "First predicate")
-        ValidateUnaryDelegate predicateValue, "First"
+        Set predicateValue = NormalizeUnary( _
+            RequireROneCOne(predicate, "First predicate"), "First")
     End If
     Set wrapped = FindTerminalElement(predicateValue, False, "First")
     If wrapped.InternalHasObjectValue Then
@@ -723,8 +838,8 @@ Attribute Last.VB_Description = "Returns the last element, optionally matching a
     Dim wrapped As ROneCOne
 
     If Not IsMissing(predicate) Then
-        Set predicateValue = RequireROneCOne(predicate, "Last predicate")
-        ValidateUnaryDelegate predicateValue, "Last"
+        Set predicateValue = NormalizeUnary( _
+            RequireROneCOne(predicate, "Last predicate"), "Last")
     End If
     Set wrapped = FindTerminalElement(predicateValue, True, "Last")
     If wrapped.InternalHasObjectValue Then
@@ -745,8 +860,8 @@ Attribute Sum.VB_Description = "Sums numeric elements or selected numeric values
     Set values = MaterializeWrapped
     total = 0
     If Not IsMissing(selector) Then
-        Set selectorValue = RequireROneCOne(selector, "Sum selector")
-        ValidateUnaryDelegate selectorValue, "Sum"
+        Set selectorValue = NormalizeUnary( _
+            RequireROneCOne(selector, "Sum selector"), "Sum")
     End If
     For Each wrapped In values
         Set selected = SelectTerminalValue(wrapped, selectorValue)
@@ -766,8 +881,8 @@ Attribute Average.VB_Description = "Averages numeric elements or selected numeri
     Set values = MaterializeWrapped
     If values.Count = 0 Then RaiseEmptySequence "Average"
     If Not IsMissing(selector) Then
-        Set selectorValue = RequireROneCOne(selector, "Average selector")
-        ValidateUnaryDelegate selectorValue, "Average"
+        Set selectorValue = NormalizeUnary( _
+            RequireROneCOne(selector, "Average selector"), "Average")
     End If
     For Each wrapped In values
         Set selected = SelectTerminalValue(wrapped, selectorValue)
@@ -782,8 +897,8 @@ Attribute Min.VB_Description = "Returns the minimum element or selected value."
     Dim wrapped As ROneCOne
 
     If Not IsMissing(selector) Then
-        Set selectorValue = RequireROneCOne(selector, "Min selector")
-        ValidateUnaryDelegate selectorValue, "Min"
+        Set selectorValue = NormalizeUnary( _
+            RequireROneCOne(selector, "Min selector"), "Min")
     End If
     Set wrapped = ExtremeValue(selectorValue, False, "Min")
     If wrapped.InternalHasObjectValue Then
@@ -799,8 +914,8 @@ Attribute Max.VB_Description = "Returns the maximum element or selected value."
     Dim wrapped As ROneCOne
 
     If Not IsMissing(selector) Then
-        Set selectorValue = RequireROneCOne(selector, "Max selector")
-        ValidateUnaryDelegate selectorValue, "Max"
+        Set selectorValue = NormalizeUnary( _
+            RequireROneCOne(selector, "Max selector"), "Max")
     End If
     Set wrapped = ExtremeValue(selectorValue, True, "Max")
     If wrapped.InternalHasObjectValue Then
@@ -885,6 +1000,11 @@ End Property
 Public Property Get UnboundParameterError() As Long
 Attribute UnboundParameterError.VB_Description = "Gets the unbound-parameter error number."
     UnboundParameterError = ERROR_UNBOUND_PARAMETER
+End Property
+
+Public Property Get MemberAccessError() As Long
+Attribute MemberAccessError.VB_Description = "Gets the object-member access error number."
+    MemberAccessError = ERROR_MEMBER_ACCESS
 End Property
 
 Friend Property Get InternalRole() As Long
@@ -1286,16 +1406,68 @@ Private Sub ReplaceItem(ByVal index As Long, ByVal wrapped As ROneCOne)
     mVersion = mVersion + 1
 End Sub
 
-Private Sub ValidateUnaryDelegate( _
-    ByVal delegateValue As ROneCOne, _
+Private Function NormalizeUnary( _
+    ByVal candidate As ROneCOne, _
     ByVal memberName As String _
-)
+) As ROneCOne
+    Dim normalized As ROneCOne
+    Dim parameters As Collection
+
     RequireSequence Me, memberName
-    RequireDelegate delegateValue, memberName & " delegate"
-    If delegateValue.Arity <> 1 And delegateValue.Arity <> -1 Then
-        RaiseContractError ERROR_ARITY_MISMATCH, memberName, _
-            "The delegate must accept exactly one value."
+    If candidate Is Nothing Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "The expression or delegate cannot be Nothing."
     End If
+
+    Select Case candidate.InternalRole
+        Case ROLE_LAMBDA, ROLE_METHOD, ROLE_COMPOSITION
+            If candidate.Arity <> 1 And candidate.Arity <> -1 Then
+                RaiseContractError ERROR_ARITY_MISMATCH, memberName, _
+                    "The delegate must accept exactly one value."
+            End If
+            Set NormalizeUnary = candidate
+
+        Case ROLE_VALUE, ROLE_PARAMETER, ROLE_EXPRESSION
+            Set parameters = New Collection
+            CollectExpressionParameters candidate, parameters
+            If parameters.Count <> 1 Then
+                RaiseContractError ERROR_ARITY_MISMATCH, memberName, _
+                    "The expression must reference exactly one parameter."
+            End If
+            Set normalized = New ROneCOne
+            normalized.ConfigureLambda candidate, parameters
+            Set NormalizeUnary = normalized
+
+        Case Else
+            RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+                "Expected a unary expression or delegate."
+    End Select
+End Function
+
+Private Sub CollectExpressionParameters( _
+    ByVal node As ROneCOne, _
+    ByVal parameters As Collection _
+)
+    Select Case node.InternalRole
+        Case ROLE_VALUE
+            Exit Sub
+
+        Case ROLE_PARAMETER
+            If Not CollectionContainsIdentity(parameters, node) Then
+                parameters.Add node
+            End If
+
+        Case ROLE_EXPRESSION
+            CollectExpressionParameters node.InternalLeft, parameters
+            If Not node.InternalRight Is Nothing Then
+                CollectExpressionParameters node.InternalRight, parameters
+            End If
+
+        Case Else
+            RaiseContractError ERROR_INVALID_OPERATION, _
+                "CollectExpressionParameters", _
+                "The expression contains an unsupported node."
+    End Select
 End Sub
 
 Private Function InvokeUnary( _
@@ -1701,6 +1873,15 @@ Private Function EvaluateNode( _
                 Set rightResult = EvaluateNode(node.InternalRight, parameters, arguments)
             End If
 
+            If operatorCode = OP_MEMBER_VALUE Or _
+                operatorCode = OP_MEMBER_OBJECT Then
+                Set EvaluateNode = ReadMember( _
+                    leftResult, _
+                    CStr(RequireScalar(rightResult, "Member")), _
+                    operatorCode = OP_MEMBER_OBJECT)
+                Exit Function
+            End If
+
             Select Case operatorCode
                 Case OP_ADD
                     scalarResult = RequireScalar(leftResult, "Add") + _
@@ -1960,6 +2141,45 @@ Private Function CreateObjectResult(ByVal objectValue As Object) As ROneCOne
     Set result = New ROneCOne
     result.ConfigureObjectValue objectValue
     Set CreateObjectResult = result
+End Function
+
+Private Function ReadMember( _
+    ByVal targetValue As ROneCOne, _
+    ByVal memberName As String, _
+    ByVal returnsObject As Boolean _
+) As ROneCOne
+    Dim capturedDescription As String
+    Dim returnedObject As Object
+    Dim returnedValue As Variant
+    Dim target As Object
+
+    If Not targetValue.InternalHasObjectValue Then
+        RaiseContractError ERROR_MEMBER_ACCESS, "Member", _
+            "Member access requires an object value."
+    End If
+    Set target = targetValue.InternalObjectValue
+    If target Is Nothing Then
+        RaiseContractError ERROR_MEMBER_ACCESS, "Member", _
+            "Cannot access '" & memberName & "' on Nothing."
+    End If
+
+    On Error GoTo AccessFailed
+    If returnsObject Then
+        Set returnedObject = CallByName(target, memberName, VbGet)
+        Set ReadMember = CreateObjectResult(returnedObject)
+    Else
+        returnedValue = CallByName(target, memberName, VbGet)
+        Set ReadMember = CreateScalarResult(returnedValue)
+    End If
+    On Error GoTo 0
+    Exit Function
+
+AccessFailed:
+    capturedDescription = Err.Description
+    On Error GoTo 0
+    RaiseContractError ERROR_MEMBER_ACCESS, "Member", _
+        "Cannot read '" & memberName & "' from " & TypeName(target) & _
+        ". " & capturedDescription
 End Function
 
 Private Function RequireScalar( _

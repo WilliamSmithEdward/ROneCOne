@@ -71,16 +71,15 @@ Private Sub WritePrimitiveCollectionExamples()
     Set numbers = ROneCOne.ListOf(vbLong)
     numbers.Add CLng(5)
     numbers.Add CLng(20)
-    Set x = ROneCOne.Parameter(vbLong)
-    Set filtered = numbers.Where( _
-        ROneCOne.Lambda(x.GreaterThan(CLng(10)), x))
+    Set x = numbers.It
+    Set filtered = numbers.Where(x.GreaterThan(CLng(10)))
     numbers.Add CLng(30)
     Set filtered = filtered.ToList
 
     Set projected = ROneCOne.Range(CLng(1), CLng(6)) _
-        .Where(ROneCOne.Lambda(x.Modulo(CLng(2)).EqualTo(CLng(0)), x)) _
-        .SelectItems(ROneCOne.Lambda(x.Multiply(CLng(10)), x), vbLong) _
-        .OrderByDescending(ROneCOne.Lambda(x, x)) _
+        .Where(x.Modulo(CLng(2)).EqualTo(CLng(0))) _
+        .Map(x.Multiply(CLng(10)), vbLong) _
+        .SortedDescending _
         .Take(CLng(2)) _
         .ToList
 
@@ -121,21 +120,16 @@ End Sub
 ' -----------------------------------------------------------------------------
 
 Private Sub WriteUserClassLinqExamples()
-    Dim ageSelector As ROneCOne
     Dim allExperienced As Boolean
     Dim anyLondon As Boolean
-    Dim cityPredicate As ROneCOne
+    Dim customer As ROneCOne
     Dim customerPrototype As DemoCustomer
     Dim customers As ROneCOne
     Dim experienced As ROneCOne
     Dim firstCustomer As DemoCustomer
     Dim lastCustomer As DemoCustomer
-    Dim minimumAgePredicate As ROneCOne
-    Dim nameParameter As ROneCOne
     Dim names As ROneCOne
-    Dim nameSelector As ROneCOne
     Dim orderedCustomers As ROneCOne
-    Dim query As DemoCustomerQuery
 
     Set customerPrototype = New DemoCustomer
     Set customers = ROneCOne.ListOf(customerPrototype)
@@ -145,33 +139,29 @@ Private Sub WriteUserClassLinqExamples()
     customers.Add CreateCustomer("Grace", CLng(40), "Arlington")
     customers.Add CreateCustomer("Katherine", CLng(49), "Cleveland")
 
-    Set query = New DemoCustomerQuery
-    query.MinimumAge = 40
-    query.RequiredCity = "London"
-    Set minimumAgePredicate = ROneCOne.FromMethod( _
-        query, "MeetsMinimumAge", 1)
-    Set cityPredicate = ROneCOne.FromMethod(query, "IsInRequiredCity", 1)
-    Set nameSelector = ROneCOne.FromMethod(query, "SelectName", 1)
-    Set ageSelector = ROneCOne.FromMethod(query, "SelectAge", 1)
+    ' It provides a typed implicit parameter. Its default member selects a
+    ' scalar property, so customer("Age") is the VBA equivalent of c.Age.
+    Set customer = customers.It
 
     ' Build the query first, then mutate its source to prove it remains deferred.
-    Set experienced = customers.Where(minimumAgePredicate)
+    Set experienced = customers.Where(customer("Age").AtLeast(CLng(40)))
     customers.Add CreateCustomer("Margaret", CLng(45), "New York")
     Set lastCustomer = experienced.Last
 
-    ' Select the customer names and order the resulting List<String>.
-    Set nameParameter = ROneCOne.Parameter(vbString)
+    ' Map projects the names; Sorted orders each projected value directly.
     Set names = experienced _
-        .SelectItems(nameSelector, vbString) _
-        .OrderBy(ROneCOne.Lambda(nameParameter, nameParameter)) _
+        .Map(customer("CustomerName"), vbString) _
+        .Sorted _
         .ToList
 
     ' Ordering objects preserves T, so First returns a DemoCustomer instance.
-    Set orderedCustomers = customers.OrderByDescending(ageSelector).ToList
+    Set orderedCustomers = customers _
+        .OrderByDescending(customer("Age")) _
+        .ToList
     Set firstCustomer = orderedCustomers.First
 
-    anyLondon = customers.AnyItem(cityPredicate)
-    allExperienced = customers.All(minimumAgePredicate)
+    anyLondon = customers.Exists(customer("City").EqualTo("London"))
+    allExperienced = customers.All(customer("Age").AtLeast(CLng(40)))
 
     With ThisWorkbook.Worksheets(USER_CLASS_SHEET)
         .Range("E6").Value2 = customers.GenericTypeName & ":" & customers.Count
@@ -182,7 +172,7 @@ Private Sub WriteUserClassLinqExamples()
             CStr(firstCustomer.Age)
         .Range("E10").Value2 = CStr(anyLondon) & "|" & CStr(allExperienced)
         .Range("E11").Value2 = Round(CDbl( _
-            experienced.SelectItems(ageSelector, vbLong).Average), 1)
+            experienced.Map(customer("Age"), vbLong).Average), 1)
     End With
 End Sub
 
@@ -196,11 +186,11 @@ Private Sub RunCollectionBenchmark()
     Dim started As Double
     Dim x As ROneCOne
 
-    Set x = ROneCOne.Parameter(vbLong)
     started = Timer
     Set numbers = ROneCOne.Range(CLng(1), BENCHMARK_ELEMENT_COUNT)
+    Set x = numbers.It
     Set filtered = numbers _
-        .Where(ROneCOne.Lambda(x.Modulo(CLng(2)).EqualTo(CLng(0)), x)) _
+        .Where(x.Modulo(CLng(2)).EqualTo(CLng(0))) _
         .ToList
 
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)

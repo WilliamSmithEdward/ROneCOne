@@ -12,6 +12,14 @@ also a `ROneCOne` instance with an internal role tag. This provides one extensib
 for delegates, expression nodes, collections, tasks, cancellation tokens, and errors without
 additional shipped class modules.
 
+## Developer experience invariant
+
+Each capability is proven through canonical behavioral and live-host tests before syntax sugar is
+added. The next pass then removes avoidable ceremony without weakening correctness,
+discoverability, performance, privacy, backward compatibility, or the one-file runtime contract.
+Living demos lead with the shortest clear form; deeper documentation pairs it with the canonical
+primitive it represents.
+
 ## Delegate and expression slice
 
 The first slice is an immutable expression-tree interpreter:
@@ -20,14 +28,17 @@ The first slice is an immutable expression-tree interpreter:
 Dim x As ROneCOne
 Dim square As ROneCOne
 
-Set x = ROneCOne.Parameter(vbLong)
-Set square = ROneCOne.Lambda(x.Multiply(x), x)
+Set x = ROneCOne.Var(vbLong)
+Set square = x.Multiply(x).AsFunc
 
 Debug.Print square(CLng(9))
 ```
 
 This is ordinary compilable VBA. It does not inject source, require VBIDE trust, or ask developers
-to write a lambda as a string. The expression tree is evaluated only when the delegate is invoked.
+to write a lambda as a string. `Var` aliases the canonical `Parameter`; `AsFunc` traverses the
+immutable expression once and captures unique parameters in left-to-right order. The explicit
+equivalent remains `ROneCOne.Lambda(x.Multiply(x), x)`. The expression tree is evaluated only when
+the delegate is invoked.
 
 Method delegates use VBA's late-bound method-name boundary because the language exposes no general
 first-class procedure value:
@@ -66,6 +77,7 @@ one workbook, and process-global mutable state never couples workbooks.
 |---|---|
 | Available | Delegates and expression-tree lambdas |
 | Available | Runtime-generic `List<T>` and foundational query operators |
+| Available | Inferred `Func` and LINQ syntax sugar |
 | Scheduled | Structured `Try/Catch/Finally` over callable blocks |
 | Scheduled | Tasks, async/await, cancellation, progress, and captured exceptions |
 | Scheduled | Additional generic collections, events, disposables, and native-safe parallelism |

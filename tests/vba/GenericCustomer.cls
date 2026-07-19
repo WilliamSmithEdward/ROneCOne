@@ -14,6 +14,7 @@ Option Explicit
 
 Private mName As String
 Private mAge As Long
+Private mManager As GenericCustomer
 
 Public Property Get CustomerName() As String
     CustomerName = mName
@@ -29,4 +30,12 @@ End Property
 
 Public Property Let Age(ByVal value As Long)
     mAge = value
+End Property
+
+Public Property Get Manager() As GenericCustomer
+    Set Manager = mManager
+End Property
+
+Public Property Set Manager(ByVal value As GenericCustomer)
+    Set mManager = value
 End Property

@@ -11,13 +11,14 @@ ROneCOne uses four independent gates:
 4. Microsoft Excel compiles and executes the VBA suite, records worksheet-observed assertions,
    and runs delegate and collection benchmarks.
 
-The live suite currently exercises lambda creation, unary and binary calls, explicit and default
-invocation, comparisons, short-circuit behavior, typed failures, method/action delegates, object
-returns, composition, and unbound-parameter rejection.
+The live suite currently exercises explicit and inferred lambda creation, `Var`/`VarLike`, unary
+and binary calls, explicit and default invocation, comparisons, short-circuit behavior, typed
+failures, object-member expressions, method/action delegates, object returns, composition, and
+unbound-parameter rejection.
 
 The collection suite adds strict primitive/user-class lists, atomic mutation failures, zero-based
 indexing, deferred source mutation, query chaining, numeric terminals, nested enumeration, and
-enumerator refresh after mutation. The current live totals are 13 delegate and 41 collection
+enumerator refresh after mutation. The current live totals are 19 delegate and 52 collection
 assertions.
 
 The invocation benchmark has a configurable release ceiling (`-MaxBenchmarkSeconds`, default
@@ -26,6 +27,9 @@ The invocation benchmark has a configurable release ceiling (`-MaxBenchmarkSecon
 
 The v0.2.0 collection gate requires a 10,000-element `Range.Where.ToList` pipeline to complete in
 at most `0.75` seconds. Measurements are stored in `benchmarks/v0.2.0-baseline.json`.
+
+The v0.3.0 baseline re-runs both gates through the concise `AsFunc` and implicit `Where` forms.
+Measurements are stored in `benchmarks/v0.3.0-baseline.json`.
 
 ## Popup-adaptive Excel harness
 
@@ -79,8 +83,8 @@ Development-only VBIDE trust is used once during each conversion to seed an othe
 automation. Every core capability gets a separate workbook with its own macro, examples,
 benchmark, live execution gate, and all-sheet render pass.
 
-The collections workbook packages two demo-only classes: `DemoCustomer` is the user model and
-`DemoCustomerQuery` contains named predicates/selectors adapted with `FromMethod`. The public
+The collections workbook packages one demo-only class, `DemoCustomer`, as the user model. Typed
+member expressions remove the need for a predicate/selector adapter class. The public
 `RunROneCOneCollectionsDemo` macro is only an orchestrator; primitive examples, user-class LINQ,
 benchmarking, reporting, and helpers are kept in small commented procedures. The delegates demo
-uses the same organization.
+uses the same organization and leads with inferred `AsFunc` expressions.

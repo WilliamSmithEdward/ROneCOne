@@ -22,6 +22,8 @@ Public Sub RunROneCOneCollectionTests()
     TestUserClassList
     mCurrentTest = "TestUserClassLinq"
     TestUserClassLinq
+    mCurrentTest = "TestSyntaxSugar"
+    TestSyntaxSugar
     mCurrentTest = "TestListMutation"
     TestListMutation
     mCurrentTest = "TestDeferredWhere"
@@ -52,6 +54,74 @@ FatalFailure:
         .Range("B5").Value2 = mCurrentTest & " | " & CStr(capturedNumber) & _
             " | " & capturedSource & " | " & capturedDescription
     End With
+End Sub
+
+Private Sub TestSyntaxSugar()
+    Dim actualError As Long
+    Dim ada As GenericCustomer
+    Dim customer As ROneCOne
+    Dim customers As ROneCOne
+    Dim experienced As ROneCOne
+    Dim grace As GenericCustomer
+    Dim invalid As ROneCOne
+    Dim katherine As GenericCustomer
+    Dim names As ROneCOne
+    Dim numbers As ROneCOne
+    Dim oldest As GenericCustomer
+    Dim prototype As GenericCustomer
+    Dim result As ROneCOne
+    Dim value As ROneCOne
+
+    Set prototype = New GenericCustomer
+    Set customers = ROneCOne.ListOf(prototype)
+    Set ada = New GenericCustomer
+    ada.CustomerName = "Ada"
+    ada.Age = 36
+    Set grace = New GenericCustomer
+    grace.CustomerName = "Grace"
+    grace.Age = 40
+    Set katherine = New GenericCustomer
+    katherine.CustomerName = "Katherine"
+    katherine.Age = 49
+    customers.Add ada
+    customers.Add grace
+    customers.Add katherine
+
+    Set customer = customers.It
+    Set experienced = customers.Where(customer("Age").AtLeast(CLng(40)))
+    Set names = experienced _
+        .Map(customer("CustomerName"), vbString) _
+        .Sorted _
+        .ToList
+    Set oldest = customers.OrderByDescending(customer("Age")).First
+
+    AssertEqual "sugar Where count", CLng(2), experienced.Count
+    AssertEqual "sugar Map count", CLng(2), names.Count
+    AssertEqual "sugar Sorted first", "Grace", names.Item(0)
+    AssertEqual "sugar Sorted last", "Katherine", names.Item(1)
+    AssertEqual "sugar object ordering", "Katherine", oldest.CustomerName
+    AssertTrue "sugar Exists", customers.Exists( _
+        customer("CustomerName").EqualTo("Ada"))
+    AssertTrue "sugar All", customers.All(customer("Age").AtLeast(CLng(30)))
+    AssertEqual "sugar aggregate", CDbl(44.5), CDbl( _
+        experienced.Map(customer("Age"), vbLong).Average)
+
+    Set numbers = ROneCOne.Range(CLng(1), CLng(4))
+    Set value = numbers.It
+    Set result = numbers _
+        .Where(value.AtLeast(CLng(2))) _
+        .Map(value.Multiply(CLng(2)), vbLong) _
+        .SortedDescending _
+        .ToList
+    AssertEqual "sugar primitive first", CLng(8), result.First
+    AssertEqual "sugar primitive last", CLng(4), result.Last
+
+    On Error Resume Next
+    Set invalid = customers.Where(customer("Missing").EqualTo(1)).ToList
+    actualError = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertEqual "sugar missing member", ROneCOne.MemberAccessError, actualError
 End Sub
 
 Private Sub TestUserClassLinq()

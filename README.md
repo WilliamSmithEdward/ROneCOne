@@ -1,9 +1,9 @@
 # ROneCOne
 
 ROneCOne is a one-file VBA runtime that makes ordinary Excel VBA feel more like modern C#.
-Version 0.2.1 adds a complete user-defined-class LINQ tutorial to the runtime-generic
-`List<T>` and deferred query foundation, with no runtime install, add-in, network access, external
-library, or trusted VBIDE access.
+Version 0.3.0 adds inferred `Func` expressions and concise LINQ over primitive and user-defined
+class collections, with no runtime install, add-in, network access, external library, or trusted
+VBIDE access.
 
 ## Quick start
 
@@ -24,8 +24,8 @@ VBE's **File > Import File** command. That one class is the entire deployed runt
 Dim x As ROneCOne
 Dim square As ROneCOne
 
-Set x = ROneCOne.Parameter(vbLong)
-Set square = ROneCOne.Lambda(x.Multiply(x), x)
+Set x = ROneCOne.Var(vbLong)
+Set square = x.Multiply(x).AsFunc
 
 Debug.Print square(CLng(9))      ' 81: default-member delegate call
 Debug.Print square.Run(CLng(9))  ' 81: explicit form
@@ -38,19 +38,37 @@ Dim x As ROneCOne
 Set numbers = ROneCOne.ListOf(vbLong)
 numbers.Add CLng(5)
 numbers.Add CLng(20)
-Set x = ROneCOne.Parameter(vbLong)
+Set x = numbers.It
 
 Set numbers = numbers _
-    .Where(ROneCOne.Lambda(x.GreaterThan(CLng(10)), x)) _
+    .Where(x.GreaterThan(CLng(10))) _
     .ToList
 
 Debug.Print numbers.GenericTypeName  ' List<Long>
 Debug.Print numbers(0)               ' 20
 ```
 
-## Version 0.2.1
+```vba
+Dim customer As ROneCOne
+Dim customers As ROneCOne
+Dim names As ROneCOne
+Dim prototype As Customer
+
+Set prototype = New Customer
+Set customers = ROneCOne.ListOf(prototype)
+Set customer = customers.It
+Set names = customers _
+    .Where(customer("Age").AtLeast(CLng(40))) _
+    .Map(customer("CustomerName"), vbString) _
+    .Sorted _
+    .ToList
+```
+
+## Version 0.3.0
 
 - immutable expression trees and string-free anonymous lambdas
+- `Var` and `VarLike` typed argument sugar
+- automatic parameter inference through `.AsFunc` or `Lambda(body)`
 - runtime-typed parameters and deterministic contract errors
 - unary and binary arithmetic, comparisons, concatenation, and Boolean negation
 - short-circuit `AndAlso` and `OrElse` semantics
@@ -61,6 +79,8 @@ Debug.Print numbers(0)               ' 20
 - strict primitive and exact user-defined class `List<T>` values
 - zero-based default and explicit indexers, mutation, and nested `For Each`
 - deferred `Where`, `SelectItems`, ordering, slicing, distinct, append/prepend, and reverse
+- implicit sequence expressions through `It`, with scalar property access such as `c("Age")`
+- concise `Map`, `Exists`, `Sorted`, `SortedDescending`, `AtLeast`, and `AtMost` forms
 - immediate query terminals, materialization, `Range`, and `Repeat`
 - IntelliSense descriptions embedded in the exported class
 - a living user-defined-class LINQ tutorial with six formula-verified scenarios
@@ -70,8 +90,9 @@ VBA classes cannot declare a public member named `Invoke` because it collides wi
 `IDispatch.Invoke`. ROneCOne uses `Run` as the explicit name and marks it as the default member,
 which enables the more C#-like `square(9)` call form.
 
-VBA reserves `Select` and `Any`, so ROneCOne exposes the VBA-compatible names `SelectItems` and
-`AnyItem`. See [`docs/collections.md`](docs/collections.md) for typed user-class examples,
+VBA reserves `Select` and `Any`. The concise surface uses `Map` and `Exists`; the canonical
+`SelectItems` and `AnyItem` members remain available. See
+[`docs/collections.md`](docs/collections.md) for concise and canonical typed user-class examples,
 semantics, and the supported collection surface.
 
 ## Runtime contract
@@ -113,7 +134,7 @@ break mode, and enforces a hard deadline so a hidden Excel instance cannot hang 
 [`docs/development.md`](docs/development.md).
 
 The real `%USERPROFILE%\.ronecone.env` is private and optional. The committed
-`.ronecone.env.example` defines the reserved local-only diagnostics schema. Version 0.2.1 does not
+`.ronecone.env.example` defines the reserved local-only diagnostics schema. Version 0.3.0 does not
 read this file or emit runtime logs.
 
 ## Release roadmap

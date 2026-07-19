@@ -47,20 +47,22 @@ Private Sub WriteDelegateExamples()
     Dim x As ROneCOne
     Dim y As ROneCOne
 
-    ' Build reusable delegates without strings or runtime code generation.
-    Set x = ROneCOne.Parameter(vbLong)
-    Set y = ROneCOne.Parameter(vbLong)
-    Set square = ROneCOne.Lambda(x.Multiply(x), x)
-    Set addValues = ROneCOne.Lambda(x.Add(y), x, y)
-    Set between = ROneCOne.Lambda( _
-        x.GreaterThan(CLng(10)).AndAlso(x.LessThan(CLng(20))), x)
-    Set safeFalse = ROneCOne.Lambda( _
-        ROneCOne.Value(False).AndAlso(ROneCOne.Value(1).Divide(0)))
+    ' Var creates typed arguments; AsFunc captures them from the expression.
+    Set x = ROneCOne.Var(vbLong)
+    Set y = ROneCOne.Var(vbLong)
+    Set square = x.Multiply(x).AsFunc
+    Set addValues = x.Add(y).AsFunc
+    Set between = x.AtLeast(CLng(10)) _
+        .AndAlso(x.LessThan(CLng(20))) _
+        .AsFunc
+    Set safeFalse = ROneCOne.Value(False) _
+        .AndAlso(ROneCOne.Value(1).Divide(0)) _
+        .AsFunc
 
     ' FromMethod adapts a normal object method into the same delegate contract.
     Set worksheetFunctions = Application.WorksheetFunction
     Set maximum = ROneCOne.FromMethod(worksheetFunctions, "Max", 2)
-    Set doubleValue = ROneCOne.Lambda(x.Add(x), x)
+    Set doubleValue = x.Add(x).AsFunc
     Set pipeline = square.PipeTo(doubleValue)
 
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
@@ -84,8 +86,8 @@ Private Sub RunDelegateBenchmark()
     Dim started As Double
     Dim x As ROneCOne
 
-    Set x = ROneCOne.Parameter(vbLong)
-    Set square = ROneCOne.Lambda(x.Multiply(x), x)
+    Set x = ROneCOne.Var(vbLong)
+    Set square = x.Multiply(x).AsFunc
     started = Timer
     For index = 1 To BENCHMARK_ITERATIONS
         lastResult = square(CLng(index))

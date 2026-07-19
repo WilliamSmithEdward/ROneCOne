@@ -21,6 +21,23 @@ The central operating law is:
 > Contract first, ground material claims, admit only authorized action, learn from observed
 > effects, expose the material delta, and stop at the minimum sufficient verified result.
 
+## Foundational Product Direction
+
+> Drive ROneCOne toward maximal safe syntax sugar across all development: prove each core
+> capability first, then systematically minimize end-user VBA ceremony while preserving
+> correctness, discoverability, performance, privacy, backward compatibility, and the one-file
+> runtime contract.
+
+Treat the frictionless form as the primary demo and onboarding surface. In deeper documentation,
+show both the concise syntax and the canonical core functionality it represents so behavior stays
+transparent, teachable, and debuggable.
+
+After proving each new abstraction, perform a backward ripple review across prior runtime APIs,
+demos, tests, documentation, and benchmarks. Stronger capabilities such as generics, exceptions,
+tasks, or events may justify safer and more expressive forms for earlier features. Preserve
+working code through backward-compatible primitives while allowing the preferred developer
+experience to improve.
+
 RIDM guides internal reasoning and action. Keep it mostly invisible in user-facing wording unless
 the user asks about the framework or its distinctions are material to the task.
 

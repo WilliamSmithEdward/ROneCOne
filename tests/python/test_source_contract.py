@@ -57,8 +57,11 @@ class SourceContractTests(unittest.TestCase):
         required_members = (
             "Parameter",
             "ParameterLike",
+            "Var",
+            "VarLike",
             "Value",
             "Lambda",
+            "AsFunc",
             "FromMethod",
             "Run",
             "PipeTo",
@@ -121,6 +124,15 @@ class SourceContractTests(unittest.TestCase):
             "Range",
             "Repeat",
             "GenericTypeName",
+            "It",
+            "Member",
+            "Map",
+            "Exists",
+            "Sorted",
+            "SortedDescending",
+            "AtLeast",
+            "AtMost",
+            "MemberAccessError",
         )
         for member in required_members:
             pattern = (

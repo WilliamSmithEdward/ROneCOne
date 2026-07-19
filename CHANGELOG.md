@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.3.0 - 2026-07-18
+
+### Added
+
+- `Var` and `VarLike` aliases plus `.AsFunc` for inferred, typed delegate parameters.
+- Automatic left-to-right parameter inference when `Lambda` is called without an explicit
+  parameter list.
+- Sequence-typed `It` parameters and scalar object-member expressions through `value("Member")`
+  or the explicit `Member` API.
+- `Map`, `Exists`, `Sorted`, `SortedDescending`, `AtLeast`, and `AtMost` syntax sugar.
+- Deterministic `MemberAccessError` handling for invalid object-member expressions.
+- Live Excel coverage for concise primitive queries, user-class queries, member failures, inferred
+  unary/binary delegates, and `VarLike` object delegates.
+
+### Changed
+
+- Reworked both living demos to lead with the shortest clear syntax while keeping canonical forms
+  in the deeper documentation.
+- Removed the demo-only `DemoCustomerQuery` adapter; user-defined-class filtering, projection,
+  ordering, quantification, and aggregation now use direct typed member expressions.
+- Expanded the live totals to 19 delegate and 52 collection assertions without changing either
+  performance gate.
+- Recorded maximal safe syntax sugar as a foundational repository product direction.
+
+All existing `Parameter`, `ParameterLike`, explicit `Lambda`, `FromMethod`, `SelectItems`,
+`AnyItem`, and selector APIs remain backward compatible.
+
 ## 0.2.1 - 2026-07-18
 
 ### Added

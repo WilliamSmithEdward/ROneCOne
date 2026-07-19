@@ -18,6 +18,8 @@ Public Sub RunROneCOneTests()
     TestUnaryLambda
     mCurrentTest = "TestBinaryLambda"
     TestBinaryLambda
+    mCurrentTest = "TestDelegateSyntaxSugar"
+    TestDelegateSyntaxSugar
     mCurrentTest = "TestComparisonAndShortCircuit"
     TestComparisonAndShortCircuit
     mCurrentTest = "TestTypedParameterFailure"
@@ -97,6 +99,46 @@ Private Sub TestBinaryLambda()
     Set addValues = ROneCOne.Lambda(leftValue.Add(rightValue), leftValue, rightValue)
 
     AssertEqual "binary lambda", CLng(13), addValues(CLng(6), CLng(7))
+End Sub
+
+Private Sub TestDelegateSyntaxSugar()
+    Dim addValues As ROneCOne
+    Dim customer As ROneCOne
+    Dim customerValue As GenericCustomer
+    Dim inferredLambda As ROneCOne
+    Dim managerValue As GenericCustomer
+    Dim prototype As GenericCustomer
+    Dim readManagerName As ROneCOne
+    Dim readName As ROneCOne
+    Dim square As ROneCOne
+    Dim x As ROneCOne
+    Dim y As ROneCOne
+
+    Set x = ROneCOne.Var(vbLong)
+    Set y = ROneCOne.Var(vbLong)
+    Set square = x.Multiply(x).AsFunc
+    Set addValues = x.Add(y).AsFunc
+    Set inferredLambda = ROneCOne.Lambda(x.Subtract(y))
+
+    Set prototype = New GenericCustomer
+    Set customer = ROneCOne.VarLike(prototype)
+    Set readName = customer("CustomerName").AsFunc
+    Set readManagerName = customer _
+        .Member("Manager", True) _
+        .Member("CustomerName") _
+        .AsFunc
+    Set customerValue = New GenericCustomer
+    customerValue.CustomerName = "Ada"
+    Set managerValue = New GenericCustomer
+    managerValue.CustomerName = "Grace"
+    Set customerValue.Manager = managerValue
+
+    AssertEqual "Var AsFunc unary", CLng(81), square(CLng(9))
+    AssertEqual "AsFunc binary", CLng(13), addValues(CLng(6), CLng(7))
+    AssertEqual "inferred Lambda", CLng(5), inferredLambda(CLng(9), CLng(4))
+    AssertEqual "VarLike member Func", "Ada", readName(customerValue)
+    AssertEqual "object member Func", "Grace", readManagerName(customerValue)
+    AssertEqual "inferred Func arity", CLng(2), addValues.Arity
 End Sub
 
 Private Sub TestComparisonAndShortCircuit()

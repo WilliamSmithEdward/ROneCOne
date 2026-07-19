@@ -64,7 +64,7 @@ async function main() {
   titleBand(
     start,
     "ROneCOne Collections + LINQ",
-    "Runtime-generic List<T>, user-defined class types, and deferred query pipelines",
+    "Frictionless List<T>, user-defined classes, and deferred LINQ-style pipelines",
     "H",
   );
   start.getRange("A5:D5").merge();
@@ -162,8 +162,8 @@ async function main() {
     ["Primitive list", "List<long>", "Set values = ROneCOne.ListOf(vbLong)", "List<Long>"],
     ["Strict T", "Compile-time element type", "values.Add \"not a Long\"", true],
     ["User class", "List<DemoCustomer>", "ROneCOne.ListOf(customerPrototype)", "List<DemoCustomer>:Grace"],
-    ["Deferred Where", "query observes later mutation", "Set query = values.Where(...)\nvalues.Add 30", "2|30"],
-    ["LINQ pipeline", "Where.Select.OrderBy.Take", "Range(...).Where(...).SelectItems(...).Take(2)", "60,40"],
+    ["Deferred Where", "query observes later mutation", "Set x = values.It\nSet query = values.Where(x.AtLeast(10))\nvalues.Add 30", "2|30"],
+    ["LINQ pipeline", "Where.Select.OrderBy.Take", ".Where(...).Map(...).SortedDescending.Take(2)", "60,40"],
     ["Sequence ops", "Distinct.Prepend.Append.Reverse.Skip", "values.Distinct.Prepend(1).Append(4).Reverse.Skip(1)", "3,2,1"],
     ["Terminals", "Sum/Average/Min/Max", "Range(1, 5).Sum / Average / Min / Max", "15|3|1|5"],
     ["Enumeration", "foreach (var x in values)", "For Each value In values", 10],
@@ -194,7 +194,7 @@ async function main() {
   examples.getRange("B:B").format.columnWidth = 27;
   examples.getRange("C:C").format.columnWidth = 54;
   examples.getRange("D:D").format.columnWidth = 25;
-  examples.getRange("E:E").format.columnWidth = 20;
+  examples.getRange("E:E").format.columnWidth = 26;
   examples.getRange("F:F").format.columnWidth = 16;
   examples.getRange("6:13").format.rowHeight = 54;
   examples.freezePanes.freezeRows(5);
@@ -202,7 +202,7 @@ async function main() {
   titleBand(
     userClassLinq,
     "User-defined class LINQ",
-    "DemoCustomer objects flow through deferred filters, projections, ordering, and terminals.",
+    "Typed object queries with implicit lambdas: no adapter class or callback scaffolding.",
     "F",
   );
   userClassLinq.getRange("A5:F5").values = [[
@@ -224,32 +224,33 @@ async function main() {
     [
       "Deferred class Where",
       "customers.Where(c => c.Age >= 40)",
-      "Set experienced = customers.Where(minimumAgePredicate)\n" +
+      'Set customer = customers.It\n' +
+        'Set experienced = customers.Where(customer("Age").AtLeast(40))\n' +
         "customers.Add margaret",
       "3|Margaret",
     ],
     [
       "Projection + ordering",
       ".Select(c => c.Name).OrderBy(name => name)",
-      ".SelectItems(nameSelector, vbString).OrderBy(identity)",
+      'Set names = experienced.Map(customer("CustomerName"), vbString).Sorted.ToList',
       "Grace|Katherine|Margaret",
     ],
     [
       "Object ordering",
       ".OrderByDescending(c => c.Age).First()",
-      "Set oldest = customers.OrderByDescending(ageSelector).First",
+      'Set oldest = customers.OrderByDescending(customer("Age")).First',
       "Katherine|49",
     ],
     [
       "Quantifiers",
       ".Any(city) / .All(age)",
-      "customers.AnyItem(cityPredicate) / customers.All(agePredicate)",
+      'anyLondon = customers.Exists(customer("City").EqualTo("London"))',
       "True|False",
     ],
     [
       "Aggregate projection",
       ".Where(age).Select(c => c.Age).Average()",
-      "experienced.SelectItems(ageSelector, vbLong).Average",
+      'averageAge = experienced.Map(customer("Age"), vbLong).Average',
       44.7,
     ],
   ];
@@ -335,20 +336,21 @@ async function main() {
     "Dependencies",
   ]];
   tableHeader(architecture.getRange("A5:F5"));
-  architecture.getRange("A6:F11").values = [
+  architecture.getRange("A6:F12").values = [
     ["Concrete T", "VarType or exact class name", "Reject before mutation", "ENFORCED", 1, 0],
     ["User classes", "Prototype type token", "Prototype is not retained", "ENFORCED", 1, 0],
     ["Deferred LINQ", "Immutable query nodes", "Evaluate on consumption", "ENFORCED", 1, 0],
+    ["Syntax sugar", "Implicit unary expressions", "Canonical API remains available", "ENFORCED", 1, 0],
     ["Enumeration", "Persistent list mirror", "Nested For Each works", "ENFORCED", 1, 0],
     ["One process", "In-process execution", "Never launches Excel", "ENFORCED", 1, 0],
     ["Privacy", "No transmission", "Workbook data stays local", "ENFORCED", 1, 0],
   ];
-  architecture.getRange("A6:F11").format = {
+  architecture.getRange("A6:F12").format = {
     borders: { preset: "all", style: "thin", color: colors.line },
     wrapText: true,
     verticalAlignment: "top",
   };
-  architecture.getRange("D6:D11").format = {
+  architecture.getRange("D6:D12").format = {
     fill: colors.pale,
     font: { bold: true, color: colors.green },
   };
@@ -357,7 +359,7 @@ async function main() {
   architecture.getRange("C:C").format.columnWidth = 30;
   architecture.getRange("D:D").format.columnWidth = 18;
   architecture.getRange("E:F").format.columnWidth = 16;
-  architecture.getRange("6:11").format.rowHeight = 40;
+  architecture.getRange("6:12").format.rowHeight = 40;
   architecture.freezePanes.freezeRows(5);
 
   await fs.mkdir(outputDir, { recursive: true });

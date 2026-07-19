@@ -40,9 +40,6 @@ def package_delegates(workbook_path: Path = DELEGATES_WORKBOOK) -> None:
 def package_collections(workbook_path: Path = COLLECTIONS_WORKBOOK) -> None:
     runtime_source = prepare_class_source(ROOT / "src" / "ROneCOne.cls")
     customer_source = prepare_class_source(ROOT / "demo" / "vba" / "DemoCustomer.cls")
-    query_source = prepare_class_source(
-        ROOT / "demo" / "vba" / "DemoCustomerQuery.cls"
-    )
     demo_source = read_vba(ROOT / "demo" / "vba" / "CollectionsDemoUsage.bas")
 
     with ExcelFile(workbook_path) as workbook:
@@ -61,9 +58,6 @@ def package_collections(workbook_path: Path = COLLECTIONS_WORKBOOK) -> None:
         project.add_module("ROneCOne", runtime_source, kind=VBAModuleKind.other)
         project.add_module("DemoCustomer", customer_source, kind=VBAModuleKind.other)
         project.add_module(
-            "DemoCustomerQuery", query_source, kind=VBAModuleKind.other
-        )
-        project.add_module(
             "CollectionsDemoUsage", demo_source, kind=VBAModuleKind.standard
         )
         workbook.save()
@@ -72,7 +66,6 @@ def package_collections(workbook_path: Path = COLLECTIONS_WORKBOOK) -> None:
         expected = {
             "ROneCOne",
             "DemoCustomer",
-            "DemoCustomerQuery",
             "CollectionsDemoUsage",
         }
         actual = set(verification.module_names())
@@ -83,8 +76,6 @@ def package_collections(workbook_path: Path = COLLECTIONS_WORKBOOK) -> None:
             raise RuntimeError("Collections ROneCOne source did not round-trip")
         if verification.get_module("DemoCustomer") != customer_source:
             raise RuntimeError("Collections DemoCustomer source did not round-trip")
-        if verification.get_module("DemoCustomerQuery") != query_source:
-            raise RuntimeError("Collections DemoCustomerQuery source did not round-trip")
 
 
 def parse_args() -> argparse.Namespace:

@@ -64,7 +64,7 @@ function tableHeader(range) {
 titleBand(
   start,
   "ROneCOne Delegates",
-  "A one-file, dependency-free C#-style runtime for Excel VBA",
+  "Frictionless C#-style Func expressions in one dependency-free VBA file",
   "H",
 );
 start.getRange("A5:D5").merge();
@@ -155,10 +155,10 @@ examples.getRange("A5:F5").values = [[
 ]];
 tableHeader(examples.getRange("A5:F5"));
 examples.getRange("A6:D11").values = [
-  ["Unary lambda", "x => x * x", "Set square = ROneCOne.Lambda(x.Multiply(x), x)\nsquare(9)", 81],
-  ["Binary lambda", "(x, y) => x + y", "Set addValues = ROneCOne.Lambda(x.Add(y), x, y)\naddValues(6, 7)", 13],
-  ["Boolean expression", "x > 10 && x < 20", "x.GreaterThan(10).AndAlso(x.LessThan(20))", true],
-  ["Short circuit", "false && (1 / 0)", "ROneCOne.Value(False).AndAlso(...)", false],
+  ["Unary lambda", "x => x * x", "Set x = ROneCOne.Var(vbLong)\nSet square = x.Multiply(x).AsFunc\nsquare(9)", 81],
+  ["Binary lambda", "(x, y) => x + y", "Set addValues = x.Add(y).AsFunc\naddValues(6, 7)", 13],
+  ["Boolean expression", "x >= 10 && x < 20", "x.AtLeast(10).AndAlso(x.LessThan(20)).AsFunc", true],
+  ["Short circuit", "false && (1 / 0)", "ROneCOne.Value(False).AndAlso(...).AsFunc", false],
   ["Method delegate", "new Func<int,int,int>(Max)", "ROneCOne.FromMethod(WorksheetFunction, \"Max\", 2)", 7],
   ["Composition", "square.Then(double)", "square.PipeTo(doubleValue)(3)", 18],
 ];
@@ -203,7 +203,7 @@ benchmarks.getRange("A5:E5").values = [[
   "Invocations / second",
 ]];
 tableHeader(benchmarks.getRange("A5:E5"));
-benchmarks.getRange("A6").values = [["square(x) expression delegate"]];
+benchmarks.getRange("A6").values = [["square(x) inferred AsFunc delegate"]];
 benchmarks.getRange("E6").formulas = [["=IF(C6=0,0,B6/C6)"]];
 benchmarks.getRange("A6:E6").format = {
   borders: { preset: "all", style: "thin", color: colors.line },
@@ -240,19 +240,20 @@ architecture.getRange("A5:F5").values = [[
   "Runtime installs",
 ]];
 tableHeader(architecture.getRange("A5:F5"));
-architecture.getRange("A6:F10").values = [
+architecture.getRange("A6:F11").values = [
   ["Single-file core", "ROneCOne.cls", "One import operation", "ENFORCED", 1, 0],
   ["No runtime VBIDE", "Expression trees", "Works without trusted project access", "ENFORCED", 1, 0],
+  ["Syntax sugar", "Inferred typed Func parameters", "Minimal developer ceremony", "ENFORCED", 1, 0],
   ["One Excel process", "Single-process execution contract", "No multi-instance parallelism", "ENFORCED", 1, 0],
   ["Privacy", "Local-only opt-in logs", "Never transmits workbook data", "ENFORCED", 1, 0],
   ["Workbook formats", ".xlsm / .xlsb / .xlam", "Normal VBA remains unchanged", "SUPPORTED CONTRACT", 1, 0],
 ];
-architecture.getRange("A6:F10").format = {
+architecture.getRange("A6:F11").format = {
   borders: { preset: "all", style: "thin", color: colors.line },
   wrapText: true,
   verticalAlignment: "top",
 };
-architecture.getRange("D6:D10").format = {
+architecture.getRange("D6:D11").format = {
   fill: colors.pale,
   font: { bold: true, color: colors.green },
 };
@@ -263,14 +264,15 @@ architecture.getRange("A12:D12").values = [[
   "Depends on",
 ]];
 tableHeader(architecture.getRange("A12:D12"));
-architecture.getRange("A13:D17").values = [
+architecture.getRange("A13:D18").values = [
   [1, "Delegates + expression lambdas", "AVAILABLE (v0.1.0)", "Tagged object kernel"],
   [2, "Runtime-generic List<T> + LINQ", "AVAILABLE (v0.2.0)", "Delegates"],
-  [3, "Try / Catch / Finally", "SCHEDULED", "Delegates"],
-  [4, "Tasks / async / await / cancellation", "SCHEDULED", "Exceptions + delegates"],
-  [5, "Events / disposables / native-safe parallelism", "SCHEDULED", "Tasks + collections"],
+  [3, "Inferred Func + LINQ syntax sugar", "AVAILABLE (v0.3.0)", "Delegates + collections"],
+  [4, "Try / Catch / Finally", "SCHEDULED", "Delegates"],
+  [5, "Tasks / async / await / cancellation", "SCHEDULED", "Exceptions + delegates"],
+  [6, "Events / disposables / native-safe parallelism", "SCHEDULED", "Tasks + collections"],
 ];
-architecture.getRange("A13:D17").format = {
+architecture.getRange("A13:D18").format = {
   borders: { preset: "all", style: "thin", color: colors.line },
   wrapText: true,
 };
@@ -279,7 +281,7 @@ architecture.getRange("B:B").format.columnWidth = 40;
 architecture.getRange("C:C").format.columnWidth = 24;
 architecture.getRange("D:D").format.columnWidth = 32;
 architecture.getRange("E:F").format.columnWidth = 16;
-architecture.getRange("6:10").format.rowHeight = 42;
+architecture.getRange("6:11").format.rowHeight = 42;
 architecture.freezePanes.freezeRows(5);
 
 await fs.mkdir(outputDir, { recursive: true });

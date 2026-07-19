@@ -1,0 +1,32 @@
+{
+  "schema_version": 2,
+  "ronecone_version": "0.3.0",
+  "captured_on": "2026-07-18",
+  "environment": {
+    "platform": "Windows x64",
+    "excel": "Microsoft 365 16.0.20131.20154 x64",
+    "process_model": "one fresh Excel process per sample"
+  },
+  "scenarios": [
+    {
+      "name": "square(x) inferred AsFunc delegate",
+      "operations_per_sample": 10000,
+      "seconds": [0.0625, 0.0625, 0.078125],
+      "minimum_seconds": 0.0625,
+      "median_seconds": 0.0625,
+      "mean_seconds": 0.0677083333,
+      "maximum_seconds": 0.078125,
+      "release_gate_seconds": 0.5
+    },
+    {
+      "name": "Range.Where.ToList implicit expression sequence",
+      "operations_per_sample": 10000,
+      "seconds": [0.125, 0.1171875, 0.15625],
+      "minimum_seconds": 0.1171875,
+      "median_seconds": 0.125,
+      "mean_seconds": 0.1328125,
+      "maximum_seconds": 0.15625,
+      "release_gate_seconds": 0.75
+    }
+  ]
+}

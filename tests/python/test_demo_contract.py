@@ -9,7 +9,6 @@ DEMO_VBA = ROOT / "demo" / "vba"
 COLLECTIONS_DEMO = DEMO_VBA / "CollectionsDemoUsage.bas"
 DELEGATES_DEMO = DEMO_VBA / "DemoUsage.bas"
 CUSTOMER = DEMO_VBA / "DemoCustomer.cls"
-CUSTOMER_QUERY = DEMO_VBA / "DemoCustomerQuery.cls"
 COLLECTIONS_BUILDER = ROOT / "tools" / "build_collections_demo_workbook.cjs"
 PACKAGER = ROOT / "tools" / "package_demo_workbook.py"
 README = ROOT / "README.md"
@@ -24,6 +23,13 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("Private Sub RunCollectionBenchmark()", source)
         self.assertIn('Private Const USER_CLASS_SHEET As String = "User Class LINQ"', source)
 
+    def test_delegate_demo_leads_with_inferred_func_syntax(self) -> None:
+        source = DELEGATES_DEMO.read_text(encoding="utf-8")
+
+        self.assertIn("Set x = ROneCOne.Var(vbLong)", source)
+        self.assertIn("Set square = x.Multiply(x).AsFunc", source)
+        self.assertIn("Set addValues = x.Add(y).AsFunc", source)
+
     def test_user_class_model_exposes_demo_fields(self) -> None:
         source = CUSTOMER.read_text(encoding="utf-8")
 
@@ -31,17 +37,20 @@ class DemoContractTests(unittest.TestCase):
             self.assertIn(f"Public Property Get {property_name}", source)
             self.assertIn(f"Public Property Let {property_name}", source)
 
-    def test_user_class_query_exposes_predicates_and_selectors(self) -> None:
-        self.assertTrue(CUSTOMER_QUERY.is_file())
-        source = CUSTOMER_QUERY.read_text(encoding="utf-8")
+    def test_user_class_demo_uses_runtime_syntax_sugar(self) -> None:
+        source = COLLECTIONS_DEMO.read_text(encoding="utf-8")
 
-        for member in (
-            "MeetsMinimumAge",
-            "IsInRequiredCity",
-            "SelectName",
-            "SelectAge",
-        ):
-            self.assertIn(f"Public Function {member}", source)
+        required_syntax = (
+            "Set customer = customers.It",
+            'customers.Where(customer("Age").AtLeast(CLng(40)))',
+            '.Map(customer("CustomerName"), vbString)',
+            ".Sorted",
+            'customers.Exists(customer("City").EqualTo("London"))',
+        )
+        for syntax in required_syntax:
+            self.assertIn(syntax, source)
+        self.assertNotIn("DemoCustomerQuery", source)
+        self.assertNotIn("FromMethod", source)
 
     def test_collections_workbook_includes_user_class_linq_sheet(self) -> None:
         source = COLLECTIONS_BUILDER.read_text(encoding="utf-8")
@@ -51,15 +60,18 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("Object ordering", source)
         self.assertIn("Quantifiers", source)
         self.assertIn("Aggregate projection", source)
+        self.assertIn("customers.It", source)
+        self.assertIn('.Where(customer("Age").AtLeast(40))', source)
+        self.assertIn('.Map(customer("CustomerName"), vbString)', source)
 
-    def test_collections_packager_embeds_query_helper(self) -> None:
+    def test_collections_packager_removes_obsolete_query_helper(self) -> None:
         source = PACKAGER.read_text(encoding="utf-8")
 
-        self.assertIn('"DemoCustomerQuery.cls"', source)
         self.assertIn('"DemoCustomerQuery"', source)
+        self.assertNotIn("query_source", source)
 
     def test_demo_modules_are_ascii_explicit_and_readable(self) -> None:
-        for path in (COLLECTIONS_DEMO, DELEGATES_DEMO, CUSTOMER, CUSTOMER_QUERY):
+        for path in (COLLECTIONS_DEMO, DELEGATES_DEMO, CUSTOMER):
             with self.subTest(path=path.name):
                 source = path.read_text(encoding="utf-8")
                 source.encode("ascii")
