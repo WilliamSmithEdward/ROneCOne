@@ -113,18 +113,25 @@ Private Sub WriteUserClassLinqExamples()
     Dim allExperienced As Boolean
     Dim anyLondon As Boolean
     Dim ada As DemoCustomer
+    Dim allowedCities As ROneCOne
+    Dim comparer As ROneCOne
     Dim customers As ROneCOne
     Dim distinctCities As ROneCOne
     Dim experienced As ROneCOne
+    Dim equalityComparer As ROneCOne
     Dim firstCustomer As DemoCustomer
     Dim grace As DemoCustomer
     Dim katherine As DemoCustomer
     Dim lastCustomer As DemoCustomer
     Dim managed As ROneCOne
     Dim margaret As DemoCustomer
+    Dim membershipMatches As ROneCOne
     Dim names As ROneCOne
     Dim orderedCustomers As ROneCOne
     Dim procedureFiltered As ROneCOne
+    Dim reportPredicate As ROneCOne
+    Dim singleCustomer As DemoCustomer
+    Dim strings As ROneCOne
     Dim stringMatches As ROneCOne
 
     Set ada = CreateCustomer("Ada", CLng(36), "London")
@@ -168,11 +175,27 @@ Private Sub WriteUserClassLinqExamples()
         .ToList
     Set distinctCities = customers.DistinctBy("City").ToList
 
-    ' Dotted paths compose object access; the first Where guards Nothing.
-    Set managed = customers _
-        .Where("Manager").IsNotNothing _
-        .Where("Manager.Age").AtLeast(CLng(40)) _
-        .ToList
+    ' C#-style ?. safely propagates Null when an intermediate object is Nothing.
+    Set managed = customers.Where("Manager?.Age").AtLeast(CLng(40)).ToList
+
+    Set allowedCities = ROneCOne.ListOf( _
+        vbString, "London", "Cleveland")
+    Set equalityComparer = ROneCOne.EqualityComparer( _
+        "CollectionsDemoUsage.DemoTextEqualsIgnoreCase")
+    Set comparer = ROneCOne.Comparer( _
+        "CollectionsDemoUsage.DemoCompareTextIgnoreCase")
+    Set strings = ROneCOne.ListOf( _
+        vbString, "Ada", "ADA", "grace")
+    Set singleCustomer = customers.SingleItem( _
+        customers.Match("CustomerName", "Grace"))
+
+    Set ada.Reports = ROneCOne.ListFrom(grace, katherine)
+    Set grace.Reports = ROneCOne.ListFrom(ada)
+    Set katherine.Reports = ROneCOne.ListLike(ada)
+    Set margaret.Reports = ROneCOne.ListFrom(grace)
+    Set reportPredicate = ada.Reports.Condition("Age").AtLeast(CLng(40))
+    '@pyvba-ignore-next-line: undeclared-variable -- City is a bang identifier.
+    Set membershipMatches = customers.Where(allowedCities.Contains(customers!City))
 
     With ThisWorkbook.Worksheets(USER_CLASS_SHEET)
         .Range("E6").Value2 = customers.GenericTypeName & ":" & customers.Count
@@ -200,6 +223,31 @@ Private Sub WriteUserClassLinqExamples()
         .Range("E15").Value2 = names.JoinText("|")
         .Range("E16").Value2 = customers.Where("Manager").IsNothing.Count & _
             "|" & managed.Count
+        .Range("E17").Value2 = customers.Where("City").IsIn( _
+            allowedCities).Count & "|" & _
+            membershipMatches.Count
+        .Range("E18").Value2 = customers.Where("City") _
+            .EqualToIgnoreCase("LONDON").Count & "|" & _
+            customers.Where("CustomerName") _
+                .ContainsIgnoreCase("THER").Count
+        .Range("E19").Value2 = customers.Count( _
+            customers.Condition("Age").AtLeast(CLng(40))) & "|" & _
+            singleCustomer.CustomerName & "|" & _
+            customers.None(customers.Match("Age", CLng(100)))
+        .Range("E20").Value2 = customers.WhereAny( _
+            "Reports", reportPredicate).Count & "|" & _
+            customers.WhereAll("Reports", ada.Reports.Condition("Age") _
+                .AtLeast(CLng(36))).Count & "|" & _
+            customers.WhereNone("Reports", reportPredicate).Count
+        .Range("E21").Value2 = strings.Distinct( _
+            equalityComparer).Count & "|" & _
+            strings.Contains("ada", equalityComparer) & "|" & _
+            strings.Sorted(comparer).First
+        .Range("E22").Value2 = customers.Where( _
+            customers.Condition("Age").AtLeast(CLng(40)).Both( _
+                customers.Match("City", "Arlington"))).Count & "|" & _
+            customers.Where(customers.Match("City", "London").Either( _
+                customers.Match("City", "Cleveland"))).Count
     End With
 End Sub
 
@@ -208,6 +256,8 @@ End Sub
 ' -----------------------------------------------------------------------------
 
 Private Sub RunCollectionBenchmark()
+    Dim customer As DemoCustomer
+    Dim customers As ROneCOne
     Dim filtered As ROneCOne
     Dim numbers As ROneCOne
     Dim started As Double
@@ -224,6 +274,16 @@ Private Sub RunCollectionBenchmark()
         .Range("B6").Value2 = BENCHMARK_ELEMENT_COUNT
         .Range("C6").Value2 = ElapsedSeconds(started)
         .Range("D6").Value2 = filtered.Count
+    End With
+
+    Set customer = CreateCustomer("Benchmark", CLng(50), "Local")
+    Set customers = ROneCOne.Repeat(customer, BENCHMARK_ELEMENT_COUNT)
+    started = Timer
+    Set filtered = customers.Where("Age").AtLeast(CLng(40)).ToList
+    With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
+        .Range("B7").Value2 = BENCHMARK_ELEMENT_COUNT
+        .Range("C7").Value2 = ElapsedSeconds(started)
+        .Range("D7").Value2 = filtered.Count
     End With
 End Sub
 
@@ -267,6 +327,22 @@ End Sub
 
 Public Function IsExperiencedCustomer(ByVal value As Variant) As Variant
     IsExperiencedCustomer = (CLng(value.Age) >= 40)
+End Function
+
+Public Function DemoTextEqualsIgnoreCase( _
+    ByVal leftValue As Variant, _
+    ByVal rightValue As Variant _
+) As Variant
+    DemoTextEqualsIgnoreCase = (StrComp( _
+        CStr(leftValue), CStr(rightValue), vbTextCompare) = 0)
+End Function
+
+Public Function DemoCompareTextIgnoreCase( _
+    ByVal leftValue As Variant, _
+    ByVal rightValue As Variant _
+) As Variant
+    DemoCompareTextIgnoreCase = CLng(Sgn(StrComp( _
+        CStr(leftValue), CStr(rightValue), vbTextCompare)))
 End Function
 
 Private Function RaisesExpectedTypeMismatch(ByVal values As ROneCOne) As Boolean

@@ -98,10 +98,10 @@ async function main() {
   ];
   start.getRange("G6").formulas = [[
     "=COUNTIF('Examples'!F6:F13,\"PASS\")+" +
-      "COUNTIF('User Class LINQ'!F6:F16,\"PASS\")",
+      "COUNTIF('User Class LINQ'!F6:F22,\"PASS\")",
   ]];
   start.getRange("G7").formulas = [[
-    "=COUNTA('Examples'!A6:A13)+COUNTA('User Class LINQ'!A6:A16)",
+    "=COUNTA('Examples'!A6:A13)+COUNTA('User Class LINQ'!A6:A22)",
   ]];
   start.getRange("F6:G10").format = {
     borders: { preset: "all", style: "thin", color: colors.line },
@@ -214,7 +214,7 @@ async function main() {
     "Status",
   ]];
   tableHeader(userClassLinq.getRange("A5:F5"));
-  userClassLinq.getRange("A6:D16").values = [
+  userClassLinq.getRange("A6:D22").values = [
     [
       "Typed class list",
       "List<DemoCustomer>",
@@ -279,32 +279,75 @@ async function main() {
     ],
     [
       "Safe object path",
-      "c.Manager != null && c.Manager.Age >= 40",
-      '.Where("Manager").IsNotNothing\n' +
-        '.Where("Manager.Age").AtLeast(40)',
+      "c.Manager?.Age >= 40",
+      '.Where("Manager?.Age").AtLeast(40)',
       "1|2",
+    ],
+    [
+      "Collection membership",
+      "allowedCities.Contains(c.City)",
+      '.Where("City").IsIn(allowedCities)\n' +
+        ".Where(allowedCities.Contains(customers!City))",
+      "2|2",
+    ],
+    [
+      "Ignore case",
+      "StringComparison.OrdinalIgnoreCase",
+      '.Where("City").EqualToIgnoreCase("LONDON")\n' +
+        '.Where("CustomerName").ContainsIgnoreCase("THER")',
+      "1|1",
+    ],
+    [
+      "Predicate terminals",
+      "Count(predicate) / Single() / None()",
+      'customers.Count(agePredicate)\n' +
+        'customers.SingleItem(customers.Match("CustomerName", "Grace"))',
+      "3|Grace|True",
+    ],
+    [
+      "Nested quantifiers",
+      "Reports.Any / All / !Any",
+      'customers.WhereAny("Reports", reportPredicate)\n' +
+        'customers.WhereAll("Reports", allPredicate)\n' +
+        'customers.WhereNone("Reports", reportPredicate)',
+      "2|4|2",
+    ],
+    [
+      "Custom comparers",
+      "IEqualityComparer<T> / IComparer<T>",
+      "strings.Distinct(equalityComparer)\n" +
+        "strings.Contains(\"ada\", equalityComparer)\n" +
+        "strings.Sorted(comparer)",
+      "2|True|Ada",
+    ],
+    [
+      "Boolean algebra",
+      "predicate && predicate / predicate || predicate",
+      "customers.Where(agePredicate.Both(cityPredicate))\n" +
+        "customers.Where(london.Either(cleveland))",
+      "2|2",
     ],
   ];
   userClassLinq.getRange("F6").formulas = [[
     "=IF(E6=\"\",\"NOT RUN\",IF(E6=D6,\"PASS\",\"CHECK\"))",
   ]];
-  userClassLinq.getRange("F6:F16").fillDown();
-  userClassLinq.getRange("A6:F16").format = {
+  userClassLinq.getRange("F6:F22").fillDown();
+  userClassLinq.getRange("A6:F22").format = {
     borders: { preset: "all", style: "thin", color: colors.line },
     wrapText: true,
     verticalAlignment: "top",
   };
-  userClassLinq.getRange("C6:C16").format = {
+  userClassLinq.getRange("C6:C22").format = {
     fill: "#F8FAFC",
     font: { name: "Consolas", color: colors.ink, size: 10 },
     wrapText: true,
   };
   userClassLinq.getRange("D11:E11").format.numberFormat = "0.0";
-  userClassLinq.getRange("F6:F16").conditionalFormats.add("containsText", {
+  userClassLinq.getRange("F6:F22").conditionalFormats.add("containsText", {
     text: "PASS",
     format: { fill: "#DCFCE7", font: { bold: true, color: colors.green } },
   });
-  userClassLinq.getRange("F6:F16").conditionalFormats.add("containsText", {
+  userClassLinq.getRange("F6:F22").conditionalFormats.add("containsText", {
     text: "CHECK",
     format: { fill: "#FEE2E2", font: { bold: true, color: "#B91C1C" } },
   });
@@ -314,7 +357,7 @@ async function main() {
   userClassLinq.getRange("D:D").format.columnWidth = 31;
   userClassLinq.getRange("E:E").format.columnWidth = 25;
   userClassLinq.getRange("F:F").format.columnWidth = 16;
-  userClassLinq.getRange("6:16").format.rowHeight = 62;
+  userClassLinq.getRange("6:22").format.rowHeight = 62;
   userClassLinq.freezePanes.freezeRows(5);
 
   titleBand(
@@ -331,19 +374,23 @@ async function main() {
     "Elements / second",
   ]];
   tableHeader(benchmarks.getRange("A5:E5"));
-  benchmarks.getRange("A6").values = [["Range.Where.ToList"]];
+  benchmarks.getRange("A6:A7").values = [
+    ["Range.Where.ToList"],
+    ["Repeated object member Where"],
+  ];
   benchmarks.getRange("E6").formulas = [["=IF(C6=0,0,B6/C6)"]];
-  benchmarks.getRange("A6:E6").format = {
+  benchmarks.getRange("E6:E7").fillDown();
+  benchmarks.getRange("A6:E7").format = {
     borders: { preset: "all", style: "thin", color: colors.line },
   };
-  benchmarks.getRange("B6:B6").format.numberFormat = "#,##0";
-  benchmarks.getRange("C6").format.numberFormat = "0.000000";
-  benchmarks.getRange("D6:E6").format.numberFormat = "#,##0";
-  benchmarks.getRange("A8:F8").merge();
-  benchmarks.getRange("A8").values = [[
-    "Release gate: 10,000-element Range.Where.ToList must complete within 0.75 seconds.",
+  benchmarks.getRange("B6:B7").format.numberFormat = "#,##0";
+  benchmarks.getRange("C6:C7").format.numberFormat = "0.000000";
+  benchmarks.getRange("D6:E7").format.numberFormat = "#,##0";
+  benchmarks.getRange("A9:F9").merge();
+  benchmarks.getRange("A9").values = [[
+    "Release gate: 10,000-element query pipelines must remain bounded in one Excel process.",
   ]];
-  benchmarks.getRange("A8:F8").format = {
+  benchmarks.getRange("A9:F9").format = {
     fill: "#FFF4E8",
     font: { color: "#9A4A00" },
     wrapText: true,
@@ -367,21 +414,22 @@ async function main() {
     "Dependencies",
   ]];
   tableHeader(architecture.getRange("A5:F5"));
-  architecture.getRange("A6:F12").values = [
+  architecture.getRange("A6:F13").values = [
     ["Concrete T", "VarType or exact class name", "Reject before mutation", "ENFORCED", 1, 0],
     ["User classes", "ListFrom or prototype token", "Exact class identity", "ENFORCED", 1, 0],
     ["Deferred LINQ", "Immutable query nodes", "Evaluate on consumption", "ENFORCED", 1, 0],
     ["Syntax sugar", "Contextual members + native bang", "Canonical API remains available", "ENFORCED", 1, 0],
+    ["Predicate algebra", "Composable immutable nodes", "Membership, null-safe paths, quantifiers", "ENFORCED", 1, 0],
     ["Enumeration", "Persistent list mirror", "Nested For Each works", "ENFORCED", 1, 0],
     ["One process", "In-process execution", "Never launches Excel", "ENFORCED", 1, 0],
     ["Privacy", "No transmission", "Workbook data stays local", "ENFORCED", 1, 0],
   ];
-  architecture.getRange("A6:F12").format = {
+  architecture.getRange("A6:F13").format = {
     borders: { preset: "all", style: "thin", color: colors.line },
     wrapText: true,
     verticalAlignment: "top",
   };
-  architecture.getRange("D6:D12").format = {
+  architecture.getRange("D6:D13").format = {
     fill: colors.pale,
     font: { bold: true, color: colors.green },
   };
@@ -390,7 +438,7 @@ async function main() {
   architecture.getRange("C:C").format.columnWidth = 30;
   architecture.getRange("D:D").format.columnWidth = 18;
   architecture.getRange("E:F").format.columnWidth = 16;
-  architecture.getRange("6:12").format.rowHeight = 40;
+  architecture.getRange("6:13").format.rowHeight = 40;
   architecture.freezePanes.freezeRows(5);
 
   await fs.mkdir(outputDir, { recursive: true });

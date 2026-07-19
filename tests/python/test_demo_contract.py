@@ -83,6 +83,17 @@ class DemoContractTests(unittest.TestCase):
             '.Where("CustomerName").StartsWith("G")',
             '.DistinctBy("City")',
             '"CollectionsDemoUsage.IsExperiencedCustomer").ToList',
+            '.Where("Manager?.Age").AtLeast(CLng(40))',
+            '.Where("City").IsIn(',
+            "allowedCities.Contains(customers!City)",
+            '.ContainsIgnoreCase("THER")',
+            "customers.Count(",
+            "customers.SingleItem(",
+            "customers.WhereAny(",
+            '"Reports", reportPredicate',
+            "strings.Distinct(",
+            ".Both(",
+            ".Either(",
         )
         for syntax in required_syntax:
             self.assertIn(syntax, source)

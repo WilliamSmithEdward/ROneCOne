@@ -2,8 +2,8 @@
 
 ROneCOne is a one-file runtime that brings typed expressions, universal delegates, runtime-generic
 collections, LINQ-style queries, typed events, and structured exceptions to ordinary Excel VBA.
-Version 0.7.0 adds contextual LINQ members, inferred `Func<T, Boolean>` predicates, C#-style
-member selectors and conditions, key-based operators, and native VBA bang-member expressions.
+Version 0.8.0 adds a composable predicate algebra, collection-membership expressions, null-safe
+member paths, predicate-aware terminals, nested quantifiers, and custom comparer support.
 
 The deployed runtime is one [`ROneCOne.cls`](src/ROneCOne.cls) file. It requires no install,
 add-in, runtime code generation, network access, external package, or trusted VBIDE access.
@@ -14,7 +14,7 @@ Each core capability has its own verified workbook:
 
 - [`ROneCOne_Delegates_Demo.xlsm`](demo/ROneCOne_Delegates_Demo.xlsm) runs eleven expression,
   object, procedure, dynamic, multicast, metadata, composition, and true-`ByRef` examples.
-- [`ROneCOne_Collections_Demo.xlsm`](demo/ROneCOne_Collections_Demo.xlsm) runs nineteen `List<T>`
+- [`ROneCOne_Collections_Demo.xlsm`](demo/ROneCOne_Collections_Demo.xlsm) runs twenty-five `List<T>`
   and LINQ examples, including a dedicated **User Class LINQ** tutorial.
 - [`ROneCOne_Events_Demo.xlsm`](demo/ROneCOne_Events_Demo.xlsm) demonstrates typed subscription,
   deterministic emission, removal, and handler metadata.
@@ -72,6 +72,16 @@ Set names = customers _
     .ToList
 ```
 
+Predicates stay declarative across collections and nullable object graphs:
+
+```vba
+Set allowedCities = ROneCOne.ListOf(vbString, "London", "Cleveland")
+
+Set selected = customers.Where(allowedCities.Contains(customers!City))
+Set managed = customers.Where("Manager?.Age").AtLeast(CLng(40))
+Set parents = customers.WhereAny("Reports", reportPredicate)
+```
+
 VBA's native bang syntax can remove even the member-name string when desired:
 
 ```vba
@@ -96,7 +106,22 @@ Set attempt = ROneCOne.Try(work) _
 attempt.Execute
 ```
 
-## Version 0.7.0
+## Version 0.8.0
+
+- collection membership through `value.IsIn(sequence)`, contextual
+  `Where("Member").IsIn(sequenceOrArray)`, and `sequence.Contains(valueExpression)`
+- null-safe paths such as `Where("Manager?.Age").AtLeast(40)`
+- `Both`, `Either`, `Negated`, and `WhereNot` Boolean composition sugar
+- case-insensitive equality, prefix, suffix, containment, and pattern helpers
+- predicate-aware `Count`, `FirstOrDefault`, `LastOrDefault`, `SingleItem`,
+  `SingleOrDefault`, and `None`
+- nested `AnyMatch`, `AllMatch`, `NoneMatch`, `WhereAny`, `WhereAll`, and `WhereNone`
+- reusable `Always`, `Never`, `Match`, and `NotMatch` predicate factories
+- typed equality and ordering comparer factories across containment, distinctness, sorting,
+  extremes, and `SequenceEqual`
+- cached member-access plans that retain normalized names directly on expression nodes
+
+Previously delivered capabilities include:
 
 - deferred `Where("Member").AtLeast(...)` contextual filters
 - reusable `Condition("Member")` expressions with a stable typed element parameter
@@ -108,8 +133,6 @@ attempt.Execute
 - `Predicate` and `WhereMethod` inference of `Func<T, Boolean>` from the source sequence
 - native `sequence!Member` expression selection through the existing default member
 - the canonical `Element`, `Member`, expression, and universal delegate forms remain available
-
-Previously delivered capabilities include:
 
 - `Execute` for Action calls without dummy return variables
 - typed `EventOf`, `Subscribe`, `Unsubscribe`, `Emit`, and `HandlerCount`
@@ -134,8 +157,9 @@ Previously delivered capabilities include:
 
 VBA classes cannot declare `Invoke` because that name collides with their inherited COM dispatch
 surface. ROneCOne therefore makes `Run` the explicit member and the default member, enabling the
-closer `square(9)` form. VBA also reserves `Select` and `Any`; ROneCOne uses concise `Map` and
-`Exists` names while retaining the explicit `SelectItems` and `AnyItem` primitives.
+closer `square(9)` form. VBA also reserves `Select`, `Any`, `In`, and `Single`; ROneCOne uses
+`Map`, `Exists`, `IsIn`, and `SingleItem` while retaining `SelectItems` and `AnyItem` as explicit
+primitives.
 
 See [`docs/delegates.md`](docs/delegates.md) for the concise and canonical delegate forms, ABI and
 `ByRef` safety boundaries, and complete invocation model. See

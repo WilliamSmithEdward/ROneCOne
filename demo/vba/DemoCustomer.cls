@@ -19,6 +19,7 @@ Private mAge As Long
 Private mCity As String
 Private mCustomerName As String
 Private mManager As DemoCustomer
+Private mReports As ROneCOne
 
 Public Property Get CustomerName() As String
     CustomerName = mCustomerName
@@ -50,4 +51,12 @@ End Property
 
 Public Property Set Manager(ByVal value As DemoCustomer)
     Set mManager = value
+End Property
+
+Public Property Get Reports() As ROneCOne
+    Set Reports = mReports
+End Property
+
+Public Property Set Reports(ByVal value As ROneCOne)
+    Set mReports = value
 End Property

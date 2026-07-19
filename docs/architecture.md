@@ -76,6 +76,11 @@ whose terminal comparison creates the ordinary immutable `Where` query node. Mem
 are normalized into the same unary lambda representation as canonical expressions, so concise and
 explicit forms share evaluation, validation, and performance behavior.
 
+Predicate nodes retain normalized member names directly instead of storing a second captured-value
+node. Repeated evaluation therefore follows a cached member-access plan and performs only the
+unavoidable host property dispatch. Membership and nested-quantifier nodes retain their typed
+sequence or predicate directly, so they compose without source generation or global state.
+
 The sequence default member distinguishes numeric indices from String member names. Numeric values
 retain zero-based indexing; names return `Condition(name)`. This makes VBA's native `sequence!Age`
 syntax an expression selector without code generation, parsing a new language, or accessing VBIDE.
@@ -116,6 +121,7 @@ contexts are keyed to one workbook, and process-global mutable state never coupl
 | Available | Runtime-generic `List<T>` and foundational query operators |
 | Available | Inferred `Func` and LINQ syntax sugar |
 | Available | Contextual member LINQ, bang expressions, and key operators |
+| Available | Predicate algebra, membership, null-safe paths, nested quantifiers, and comparers |
 | Available | Typed events over universal Actions |
 | Available | Structured `Try/Catch/Finally` over callable blocks |
 | Scheduled | Tasks, async/await, cancellation, progress, and captured exceptions |

@@ -24,6 +24,8 @@ Public Sub RunROneCOneCollectionTests()
     TestUserClassLinq
     mCurrentTest = "TestSyntaxSugar"
     TestSyntaxSugar
+    mCurrentTest = "TestPredicateSystem"
+    TestPredicateSystem
     mCurrentTest = "TestCollectionInitializers"
     TestCollectionInitializers
     mCurrentTest = "TestCollectionActions"
@@ -58,6 +60,129 @@ FatalFailure:
         .Range("B5").Value2 = mCurrentTest & " | " & CStr(capturedNumber) & _
             " | " & capturedSource & " | " & capturedDescription
     End With
+End Sub
+
+Private Sub TestPredicateSystem()
+    Dim actualError As Long
+    Dim ada As GenericCustomer
+    Dim allowedCities As ROneCOne
+    Dim comparer As ROneCOne
+    Dim customers As ROneCOne
+    Dim equalityComparer As ROneCOne
+    Dim grace As GenericCustomer
+    Dim katherine As GenericCustomer
+    Dim noCustomer As GenericCustomer
+    Dim reportPredicate As ROneCOne
+    Dim result As ROneCOne
+    Dim strings As ROneCOne
+
+    Set ada = New GenericCustomer
+    ada.CustomerName = "Ada"
+    ada.Age = 36
+    ada.City = "London"
+    Set grace = New GenericCustomer
+    grace.CustomerName = "Grace"
+    grace.Age = 40
+    grace.City = "Arlington"
+    Set grace.Manager = ada
+    Set katherine = New GenericCustomer
+    katherine.CustomerName = "Katherine"
+    katherine.Age = 49
+    katherine.City = "Cleveland"
+    Set katherine.Manager = grace
+    Set customers = ROneCOne.ListFrom(ada, grace, katherine)
+
+    Set allowedCities = ROneCOne.ListOf( _
+        vbString, "London", "Cleveland")
+    Set result = customers.Where("City").IsIn(allowedCities).ToList
+    AssertEqual "membership contextual", CLng(2), result.Count
+    Set result = customers.Where("City") _
+        .OneOf(Array("London", "Cleveland")).ToList
+    AssertEqual "OneOf array", CLng(2), result.Count
+    '@pyvba-ignore-next-line: undeclared-variable -- City is a bang identifier.
+    Set result = customers.Where(allowedCities.Contains(customers!City)).ToList
+    AssertEqual "collection.Contains expression", CLng(2), result.Count
+    Set result = customers.Where( _
+        allowedCities.ContainsMember(customers, "City")).ToList
+    AssertEqual "ContainsMember expression", CLng(2), result.Count
+
+    AssertEqual "ignore-case equality", CLng(1), _
+        customers.Where("City").EqualToIgnoreCase("LONDON").Count
+    AssertEqual "ignore-case contains", CLng(1), _
+        customers.Where("CustomerName").ContainsIgnoreCase("THER").Count
+    AssertEqual "ignore-case pattern", CLng(1), _
+        customers.Where("CustomerName") _
+            .MatchesPatternIgnoreCase("k*").Count
+    AssertEqual "null-safe nested path", CLng(1), _
+        customers.Where("Manager?.Age").AtLeast(CLng(40)).Count
+    AssertEqual "null-safe path short-circuits remainder", CLng(1), _
+        customers.Where("Manager?.Manager.Age").EqualTo(CLng(36)).Count
+
+    AssertEqual "Both composition", CLng(1), customers.Where( _
+        customers.Condition("Age").AtLeast(CLng(40)).Both( _
+            customers.Condition("City").EqualTo("Arlington"))).Count
+    AssertEqual "Either composition", CLng(2), customers.Where( _
+        customers.Match("City", "London").Either( _
+            customers.Match("City", "Cleveland"))).Count
+    AssertEqual "Negated composition", CLng(2), customers.Where( _
+        customers.Match("City", "London").Negated).Count
+    AssertEqual "WhereNot", CLng(2), _
+        customers.WhereNot(customers.Match("City", "London")).Count
+    AssertEqual "Always", CLng(3), customers.Count(customers.Always)
+    AssertTrue "Never", customers.None(customers.Never)
+
+    AssertEqual "predicate Count", CLng(2), _
+        customers.Count(customers.Condition("Age").AtLeast(CLng(40)))
+    AssertEqual "FirstOrDefault value", CLng(0), _
+        ROneCOne.ListOf(vbLong).FirstOrDefault
+    AssertEqual "LastOrDefault value", CLng(0), _
+        ROneCOne.ListOf(vbLong).LastOrDefault
+    Set noCustomer = customers.FirstOrDefault(customers.Match("Age", CLng(99)))
+    AssertTrue "FirstOrDefault object", noCustomer Is Nothing
+    Set grace = customers.SingleItem(customers.Match("Age", CLng(40)))
+    AssertEqual "Single", "Grace", grace.CustomerName
+    Set noCustomer = customers.SingleOrDefault(customers.Match("Age", CLng(99)))
+    AssertTrue "SingleOrDefault object", noCustomer Is Nothing
+    On Error Resume Next
+    Set noCustomer = customers.SingleItem
+    actualError = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertEqual "Single rejects many", _
+        ROneCOne.InvalidOperationError, actualError
+
+    Set equalityComparer = ROneCOne.EqualityComparer( _
+        "DelegateProcedures.TextEqualsIgnoreCase")
+    Set comparer = ROneCOne.Comparer( _
+        "DelegateProcedures.CompareTextIgnoreCase")
+    Set strings = ROneCOne.ListOf( _
+        vbString, "Ada", "ADA", "grace")
+    AssertEqual "custom Distinct comparer", CLng(2), _
+        strings.Distinct(equalityComparer).Count
+    AssertTrue "custom Contains comparer", _
+        strings.Contains("ada", equalityComparer)
+    Set result = strings.Where( _
+        ROneCOne.ListOf(vbString, "ada").Contains( _
+            strings.Element, equalityComparer)).ToList
+    AssertEqual "custom predicate membership comparer", CLng(2), result.Count
+    AssertEqual "custom ordering comparer", "Ada", _
+        strings.Sorted(comparer).First
+    AssertTrue "SequenceEqual comparer", _
+        ROneCOne.ListOf(vbString, "ada", "Grace").SequenceEqual( _
+            Array("ADA", "grace"), equalityComparer)
+
+    Set ada.Reports = ROneCOne.ListFrom(grace, katherine)
+    Set grace.Reports = ROneCOne.ListFrom(ada)
+    Set katherine.Reports = ROneCOne.ListLike(ada)
+    Set reportPredicate = ada.Reports.Condition("Age").AtLeast(CLng(40))
+    AssertEqual "nested Any", CLng(1), _
+        customers.WhereAny("Reports", reportPredicate).Count
+    AssertEqual "nested All", CLng(3), customers.WhereAll( _
+        "Reports", ada.Reports.Condition("Age").AtLeast(CLng(36))).Count
+    AssertEqual "nested None", CLng(2), _
+        customers.WhereNone("Reports", reportPredicate).Count
+    AssertEqual "fluent nested Any", CLng(1), _
+        customers.Where("Reports").AnyMatch(reportPredicate).Count
 End Sub
 
 Private Sub TestCollectionInitializers()

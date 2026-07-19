@@ -128,12 +128,20 @@ public static class ROneCOneDemoProcess
         }
 
         $workbook.Save()
+        $featureName = [string]$workbook.Worksheets.Item(
+            "Start Here").Range("G8").Value2
+        $memberDispatchSeconds = [double]$workbook.Worksheets.Item(
+            "Benchmarks").Range("C7").Value2
+        if ($featureName -eq "List<T> + LINQ" -and $memberDispatchSeconds -gt 0.75) {
+            throw "Member-dispatch benchmark exceeded the 0.75-second release gate."
+        }
         [pscustomobject]@{
             workbook = $resolvedWorkbook
-            feature = [string]$workbook.Worksheets.Item("Start Here").Range("G8").Value2
+            feature = $featureName
             status = $demoStatus
             examples_passing = $statuses.Count
             benchmark_seconds = [double]$workbook.Worksheets.Item("Benchmarks").Range("C6").Value2
+            member_dispatch_seconds = $memberDispatchSeconds
         } | ConvertTo-Json -Compress
     }
     finally {

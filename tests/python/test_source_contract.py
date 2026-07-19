@@ -206,11 +206,64 @@ class SourceContractTests(unittest.TestCase):
             r"Public Function Where\(ByVal predicateOrMember As Variant\)",
             r"Public Function SelectItems\(\s*_\s*\n\s*ByVal selector As Variant",
             r"Public Function Map\(\s*_\s*\n\s*ByVal selector As Variant",
-            r"Public Function OrderBy\(ByVal keySelector As Variant\)",
-            r"Public Function OrderByDescending\(ByVal keySelector As Variant\)",
+            r"Public Function OrderBy\(\s*_\s*\n\s*ByVal keySelector As Variant",
+            r"Public Function OrderByDescending\(\s*_\s*\n\s*"
+            r"ByVal keySelector As Variant",
         )
         for signature in contextual_signatures:
             self.assertRegex(self.source, re.compile(signature, re.IGNORECASE))
+
+    def test_predicate_system_contract_is_present(self) -> None:
+        required_members = (
+            "Both",
+            "Either",
+            "Negated",
+            "WhereNot",
+            "IsIn",
+            "NotIn",
+            "ContainsMember",
+            "EqualToIgnoreCase",
+            "NotEqualToIgnoreCase",
+            "StartsWithIgnoreCase",
+            "EndsWithIgnoreCase",
+            "ContainsIgnoreCase",
+            "MatchesPatternIgnoreCase",
+            "FirstOrDefault",
+            "LastOrDefault",
+            "SingleItem",
+            "SingleOrDefault",
+            "None",
+            "AnyMatch",
+            "AllMatch",
+            "NoneMatch",
+            "WhereAny",
+            "WhereAll",
+            "WhereNone",
+            "SequenceEqual",
+            "EqualityComparer",
+            "Comparer",
+            "Always",
+            "Never",
+            "Match",
+            "NotMatch",
+        )
+        for member in required_members:
+            pattern = rf"Public\s+Function\s+\[?{member}\]?(?![A-Za-z0-9_])"
+            self.assertRegex(self.source, re.compile(pattern, re.IGNORECASE), member)
+
+    def test_predicate_terminals_accept_optional_predicates(self) -> None:
+        self.assertRegex(
+            self.source,
+            re.compile(
+                r"Public Property Get Count\(Optional ByVal predicate As Variant\)",
+                re.IGNORECASE,
+            ),
+        )
+
+    def test_null_safe_paths_and_cached_member_plans_are_present(self) -> None:
+        self.assertIn('Replace(memberPath, "?.", ".?")', self.source)
+        self.assertIn("ConfigureMemberExpression", self.source)
+        self.assertIn("InternalMethodName", self.source)
 
     def test_sequence_default_member_can_select_contextual_members(self) -> None:
         self.assertIn("Set result = Condition(", self.source)

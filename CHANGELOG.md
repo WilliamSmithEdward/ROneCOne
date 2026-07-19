@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.8.0 - 2026-07-19
+
+### Added
+
+- Composable collection-membership expressions through `IsIn`, `NotIn`, `ContainsMember`, and
+  expression arguments to `List<T>.Contains`; `OneOf` now accepts arrays and collections.
+- Null-safe `?.` member paths with deterministic Null propagation through the remaining chain.
+- `Both`, `Either`, `Negated`, and `WhereNot` predicate composition sugar plus case-insensitive
+  equality, prefix, suffix, containment, and pattern helpers.
+- Predicate-aware `Count`, `FirstOrDefault`, `LastOrDefault`, `SingleItem`, `SingleOrDefault`, and
+  `None` terminals.
+- Nested collection quantifiers through `AnyMatch`, `AllMatch`, `NoneMatch`, `WhereAny`,
+  `WhereAll`, and `WhereNone`.
+- `EqualityComparer` and `Comparer` factories with comparer-aware containment, distinctness,
+  sorting, extreme-value operators, and `SequenceEqual`.
+- Reusable `Always`, `Never`, `Match`, and `NotMatch` predicate factories.
+- A repeated object-member benchmark alongside the scalar query benchmark.
+
+### Changed
+
+- Cached normalized member names directly on expression nodes, removing one captured-value node
+  and one recursive evaluation per member access.
+- Expanded the live collection suite from 91 to 122 assertions and the Collections workbook from
+  nineteen to twenty-five formula-verified examples.
+- Replaced explicit nullable-object guard chains in the primary demo with `?.` paths.
+- Recorded the Excel-host grammar boundary that forbids `In` and `Single` as procedure names;
+  the legal public forms are `IsIn` and `SingleItem`.
+
 ## 0.7.0 - 2026-07-19
 
 ### Added

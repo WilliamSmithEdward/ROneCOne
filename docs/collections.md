@@ -56,8 +56,8 @@ VBIDE trust, or a second runtime class.
 | `Add` / `AddRange` | `Add` / `AddRange` | Accepts typed sequences, arrays, or Collections atomically |
 | `Insert` | `Insert` | Inserts at a zero-based position |
 | `Remove` / `RemoveAt` | `Remove` / `RemoveAt` | Removes by value or index |
-| `Contains` / `IndexOf` | `Contains` / `IndexOf` | Scalar equality or object identity |
-| `Count` / `Clear` | `Count` / `Clear` | Immediate count and mutation |
+| `Contains` / `IndexOf` | `Contains` / `IndexOf` | Equality, identity, or custom comparer |
+| `Count` / `Clear` | `Count` / `Clear` | Total count, predicate count, and mutation |
 | `foreach` | `For Each` | Supports independent nested enumeration |
 | `List<T>.ForEach` | `ForEach(Action)` | Runs one typed Action per element |
 | `String.Join` | `JoinText(separator)` | Joins scalar elements without a helper loop |
@@ -88,8 +88,10 @@ Debug.Print filtered.Last    ' 30
 
 The sequence operators are `Where`, `SelectItems`, `Take`, `Skip`, `Distinct`, `DistinctBy`,
 `OrderBy`, `OrderByDescending`, `Append`, `Prepend`, and `Reverse`. `Range` and `Repeat` create typed
-source sequences. Immediate terminals are `Exists`, `AnyItem`, `All`, `First`, `Last`, `Sum`,
-`Average`, `Min`, `Max`, `MinBy`, `MaxBy`, `Count`, `ForEach`, `JoinText`, `ToList`, and `ToArray`.
+source sequences. Immediate terminals are `Exists`, `AnyItem`, `All`, `None`, `First`,
+`FirstOrDefault`, `Last`, `LastOrDefault`, `SingleItem`, `SingleOrDefault`, `Sum`, `Average`,
+`Min`, `Max`, `MinBy`, `MaxBy`, `Count`, `ForEach`, `JoinText`, `SequenceEqual`, `ToList`, and
+`ToArray`.
 
 ```vba
 Set result = ROneCOne.Range(CLng(1), CLng(6)) _
@@ -113,6 +115,9 @@ contract. The canonical members remain public for explicit construction, teachin
 | `Set element = values.Element` | `Set element = ROneCOne.Parameter(vbLong)` | Parameter typed from the sequence |
 | `values.Where(x.AtLeast(10))` | `values.Where(ROneCOne.Lambda(x.GreaterThanOrEqual(10), x))` | Inferred unary predicate |
 | `values.Where("Age").AtLeast(40)` | `values.Where(values.Condition("Age").AtLeast(40))` | Contextual member filter |
+| `values.Where("City").IsIn(cities)` | `values.Where(values.Condition("City").IsIn(cities))` | Collection membership |
+| `cities.Contains(values!City)` | `values.Condition("City").IsIn(cities)` | C#-shaped membership expression |
+| `values.Where("Manager?.Age")` | `values.Condition("Manager?.Age")` | Null-safe nested access |
 | `values!Age` | `values.Condition("Age")` | Native VBA default-member expression |
 | `values.Map(x.Multiply(2), vbLong)` | `values.SelectItems(ROneCOne.Lambda(x.Multiply(2), x), vbLong)` | Typed projection |
 | `values.Map("Name", vbString)` | `values.Map(values.Condition("Name"), vbString)` | Member-name projection |
@@ -120,6 +125,9 @@ contract. The canonical members remain public for explicit construction, teachin
 | `values.WhereMethod("Queries.IsActive")` | `values.Where(values.Predicate("Queries.IsActive"))` | Inferred `Func<T, Boolean>` |
 | `values.Exists(predicate)` | `values.AnyItem(predicate)` | Predicate-based existence test |
 | `values.Exists` | `values.AnyItem` | Tests whether the sequence has an element |
+| `values.None(predicate)` | `Not values.AnyItem(predicate)` | Tests that no element matches |
+| `values.Count(predicate)` | `values.Where(predicate).Count` | Counts matching elements |
+| `values.WhereAny("Items", p)` | `values.Where(values.Condition("Items", True).AnyMatch(p))` | Nested Any |
 | `values.ForEach(action)` | explicit `For Each` plus `action.Execute` | Typed side effects |
 | `values.JoinText("|")` | explicit string-building loop | Scalar text joining |
 | `values.Sorted` | `values.OrderBy(values.Element)` | Identity-key ascending order |
@@ -145,28 +153,38 @@ Set matching = customers.Where("Name").StartsWith("Gr")
 ```
 
 The fluent condition vocabulary is `EqualTo`, `NotEqualTo`, `LessThan`, `AtMost`, `GreaterThan`,
-`AtLeast`, inclusive or exclusive `Between`, `OneOf`, `StartsWith`, `EndsWith`, `Contains`,
-`ContainsText`, `MatchesPattern`, `IsNothing`, `IsNotNothing`, `IsNullOrEmpty`, `IsTrue`, and
-`IsFalse`. String comparisons default to binary comparison and accept `vbTextCompare` explicitly.
-Repeated `Where` calls are logical AND and retain deferred execution.
+`AtLeast`, inclusive or exclusive `Between`, `OneOf`, `IsIn`, `NotIn`, `StartsWith`, `EndsWith`,
+`Contains`, `ContainsText`, `MatchesPattern`, `IsNothing`, `IsNotNothing`, `IsNullOrEmpty`,
+`IsTrue`, and `IsFalse`. `OneOf` and `IsIn` accept ROneCOne sequences, VBA arrays, and
+`Collection` values. String comparisons default to binary comparison; `EqualToIgnoreCase`,
+`NotEqualToIgnoreCase`, `StartsWithIgnoreCase`, `EndsWithIgnoreCase`, `ContainsIgnoreCase`, and
+`MatchesPatternIgnoreCase` provide the common text forms directly. Repeated `Where` calls are
+logical AND and retain deferred execution.
 
 Use `Condition` when a predicate combines multiple members:
 
 ```vba
 Set predicate = customers.Condition("Age").AtLeast(CLng(40)) _
-    .AndAlso(customers.Condition("City").EqualTo("London"))
+    .Both(customers.Condition("City").EqualTo("London"))
 Set selected = customers.Where(predicate)
 ```
 
+`Both`, `Either`, and `Negated` are concise aliases for the canonical `AndAlso`, `OrElse`, and
+`NotExpression` nodes. `WhereNot(predicate)` filters the inverse directly. `Always`, `Never`,
+`Match(member, value)`, and `NotMatch(member, value)` create reusable parameterized predicates.
+
 `Element` is stable for each sequence, so separately created `Condition` expressions share one
 typed parameter and compose as a unary predicate. Dotted paths traverse object-valued intermediate
-members. Guard a nullable reference before consuming a deeper path, matching C# null-safety:
+members. The `?.` path operator propagates `Null` when an intermediate object is `Nothing`:
 
 ```vba
-Set selected = customers _
-    .Where("Manager").IsNotNothing _
-    .Where("Manager.Age").AtLeast(CLng(40))
+Set selected = customers.Where("Manager?.Age").AtLeast(CLng(40))
 ```
+
+Ordinary `.` access still raises `MemberAccessError` on `Nothing`. Null-safe relational and string
+conditions evaluate False, equality follows deterministic Null equality, and `IsNullOrEmpty`
+evaluates True for propagated scalar Null. Once `?.` encounters `Nothing`, every remaining segment
+in that path short-circuits, matching C# null-conditional chaining.
 
 `Predicate` and `WhereMethod` infer the input descriptor directly from `List<T>`:
 
@@ -179,11 +197,69 @@ Set selected = customers.WhereMethod("Queries.IsExperienced")
 An object method uses `customers.Predicate(target, "IsExperienced")` or
 `customers.WhereMethod(target, "IsExperienced")`. Existing typed delegates remain valid.
 
+## Collection membership predicates
+
+Membership is an ordinary expression node, so it can sit anywhere a predicate can. The clearest
+contextual form accepts a typed sequence, VBA array, or `Collection`:
+
+```vba
+Set selected = customers.Where("City").IsIn(allowedCities)
+Set selected = customers.Where("City").IsIn(Array("London", "Paris"))
+```
+
+The form closest to C# reverses the receiver and passes the current member expression to the
+collection:
+
+```vba
+Set selected = customers.Where(allowedCities.Contains(customers!City))
+```
+
+`List.Contains(literal)` retains normal immediate containment semantics. Passing a ROneCOne value,
+parameter, or expression returns a composable predicate instead. `ContainsMember(source,
+memberPath)` provides an explicit reusable form when bang syntax is not desirable.
+
+## Predicate terminals and nested collections
+
+`Count`, `FirstOrDefault`, `LastOrDefault`, `SingleItem`, `SingleOrDefault`, and `None` accept the
+same expression, member context, or universal `Func` predicates as `Where`. Defaults follow
+`default(T)`: `Nothing` for object types, an empty string for String, False for Boolean, zero for
+numeric types, and Empty for Variant.
+
+For a member that returns a ROneCOne sequence, use `AnyMatch`, `AllMatch`, or `NoneMatch` on the
+object-valued condition. `WhereAny`, `WhereAll`, and `WhereNone` provide the primary parent-query
+form:
+
+```vba
+Set selected = customers.WhereAny("Reports", reportPredicate)
+Set selected = customers.WhereAll("Reports", reportPredicate)
+Set selected = customers.WhereNone("Reports", reportPredicate)
+```
+
+As in LINQ, `AllMatch` is True for an empty nested sequence, while `AnyMatch` is False and
+`NoneMatch` is True. A `Nothing` nested sequence follows the same empty-sequence behavior.
+
+## Equality and ordering comparers
+
+`EqualityComparer(callable)` builds a `Func<T, T, Boolean>` and `Comparer(callable)` builds a
+`Func<T, T, Long>`. Both accept the universal object, callable-object, workbook-procedure, native,
+or expression delegate surface. Equality comparers are accepted by `Contains`, `IndexOf`,
+`Distinct`, `DistinctBy`, and `SequenceEqual`. Ordering comparers are accepted by `OrderBy`,
+`OrderByDescending`, `Sorted`, `SortedDescending`, `Min`, `Max`, `MinBy`, and `MaxBy`.
+
+```vba
+Set equality = ROneCOne.EqualityComparer("Queries.TextEqualsIgnoreCase")
+Set ordering = ROneCOne.Comparer("Queries.CompareTextIgnoreCase")
+
+Set unique = names.Distinct(equality)
+Set ordered = names.Sorted(ordering)
+Debug.Print names.Contains("ada", equality)
+```
+
 ## LINQ over user-defined classes
 
-The collections demo includes a normal `DemoCustomer` class with `CustomerName`, `Age`, `City`, and
-`Manager` properties. No predicate adapter class is required. Contextual member names are the
-primary readable surface.
+The collections demo includes a normal `DemoCustomer` class with `CustomerName`, `Age`, `City`,
+`Manager`, and nested `Reports` properties. No predicate adapter class is required. Contextual
+member names are the primary readable surface.
 
 ```vba
 Dim customers As ROneCOne
@@ -235,18 +311,18 @@ The canonical scalar forms are `customer("Age")` and `customer.Member("Age")`. F
 property, use `customer.Member("Manager", True)`. Missing or invalid access raises the deterministic
 `ROneCOne.MemberAccessError`.
 
-The workbook proves eleven object-oriented cases, including deferred contextual filtering,
-member-name projection and ordering, composed predicates, inferred procedure predicates, string
-conditions, key distinctness, bang syntax, and safe object paths. The customer model is demo
-application code; the deployed runtime remains the single `ROneCOne.cls` file.
+The workbook proves seventeen object-oriented cases, including deferred contextual filtering,
+membership expressions, null-safe paths, predicate terminals, nested quantifiers, custom
+comparers, composition, bang syntax, and key operators. The customer model is demo application
+code; the deployed runtime remains the single `ROneCOne.cls` file.
 
 ## VBA-constrained API names
 
-VBA reserves `Select` and `Any`, and the VBE rejects those words as class member declarations.
-ROneCOne therefore uses `Map` and `Exists` as its concise names and exposes `SelectItems` and
-`AnyItem` as the explicit core members. `AtLeast`, `AtMost`, `Sorted`, and
-`SortedDescending` similarly expand to the longer comparison and ordering primitives without
-changing their behavior.
+VBA reserves `Select`, `Any`, `In`, and `Single`, and the VBE rejects those words as class member
+declarations. ROneCOne therefore uses `Map`, `Exists`, `IsIn`, and `SingleItem`; `SelectItems` and
+`AnyItem` remain the explicit core members. `AtLeast`, `AtMost`, `Sorted`, and
+`SortedDescending` similarly expand to longer comparison and ordering primitives without changing
+their behavior.
 
 The feature roadmap covers the standard LINQ and generic-collection surface. Operators that
 need new result abstractions, including dictionaries, lookups, groupings, joins, sets, queues, and

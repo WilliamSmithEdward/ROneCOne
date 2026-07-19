@@ -1,0 +1,82 @@
+{
+  "schema_version": 3,
+  "ronecone_version": "0.8.0",
+  "captured_on": "2026-07-19",
+  "environment": {
+    "platform": "Windows x64",
+    "excel": "Microsoft 365 16.0.20131.20154 x64",
+    "process_model": "one fresh Excel process per sample"
+  },
+  "live_contracts": {
+    "delegate_event_exception_assertions": 58,
+    "collection_assertions": 122,
+    "collections_workbook_examples": 25,
+    "office_or_vbe_popups": 0
+  },
+  "scenarios": [
+    {
+      "name": "square(x) universal delegate kernel",
+      "operations_per_sample": 10000,
+      "seconds": [
+        0.091796875,
+        0.0732421875,
+        0.07177734375,
+        0.083984375,
+        0.17431640625
+      ],
+      "minimum_seconds": 0.07177734375,
+      "median_seconds": 0.083984375,
+      "mean_seconds": 0.0990234375,
+      "maximum_seconds": 0.17431640625,
+      "release_gate_seconds": 0.5
+    },
+    {
+      "name": "Range.Where.ToList live contract",
+      "operations_per_sample": 10000,
+      "seconds": [
+        0.19287109375,
+        0.2578125,
+        0.123046875,
+        0.15673828125,
+        0.47607421875
+      ],
+      "minimum_seconds": 0.123046875,
+      "median_seconds": 0.19287109375,
+      "mean_seconds": 0.24130859375,
+      "maximum_seconds": 0.47607421875,
+      "release_gate_seconds": 0.75
+    },
+    {
+      "name": "Range.Where.ToList living workbook",
+      "operations_per_sample": 10000,
+      "seconds": [
+        0.4169921875,
+        0.244140625,
+        0.22216796875,
+        0.177734375,
+        0.69384765625
+      ],
+      "minimum_seconds": 0.177734375,
+      "median_seconds": 0.244140625,
+      "mean_seconds": 0.3509765625,
+      "maximum_seconds": 0.69384765625,
+      "release_gate_seconds": 0.75
+    },
+    {
+      "name": "Repeated object member Where cached plan",
+      "operations_per_sample": 10000,
+      "seconds": [
+        0.27685546875,
+        0.2392578125,
+        0.30517578125,
+        0.15966796875,
+        0.490234375
+      ],
+      "minimum_seconds": 0.15966796875,
+      "median_seconds": 0.27685546875,
+      "mean_seconds": 0.29423828125,
+      "maximum_seconds": 0.490234375,
+      "release_gate_seconds": 0.75
+    }
+  ]
+}

@@ -58,6 +58,22 @@ Public Function IsExperiencedCustomer(ByVal value As Variant) As Variant
     IsExperiencedCustomer = (CLng(value.Age) >= 40)
 End Function
 
+Public Function TextEqualsIgnoreCase( _
+    ByVal leftValue As Variant, _
+    ByVal rightValue As Variant _
+) As Variant
+    TextEqualsIgnoreCase = (StrComp( _
+        CStr(leftValue), CStr(rightValue), vbTextCompare) = 0)
+End Function
+
+Public Function CompareTextIgnoreCase( _
+    ByVal leftValue As Variant, _
+    ByVal rightValue As Variant _
+) As Variant
+    CompareTextIgnoreCase = CLng(Sgn(StrComp( _
+        CStr(leftValue), CStr(rightValue), vbTextCompare)))
+End Function
+
 Public Sub RecordWork()
     mTrace = mTrace & "work|"
 End Sub
