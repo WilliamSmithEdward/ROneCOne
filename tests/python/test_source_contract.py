@@ -1,0 +1,109 @@
+from __future__ import annotations
+
+import re
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
+SOURCE = ROOT / "src" / "ROneCOne.cls"
+BUILD_TOOL = ROOT / "tools" / "build_test_workbook.py"
+
+
+class SourceContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.source = SOURCE.read_text(encoding="utf-8") if SOURCE.exists() else ""
+
+    def test_runtime_source_exists(self) -> None:
+        self.assertTrue(SOURCE.is_file(), "src/ROneCOne.cls must be the shipped runtime")
+
+    def test_runtime_is_one_predeclared_class(self) -> None:
+        class_files = sorted((ROOT / "src").glob("*.cls")) if (ROOT / "src").exists() else []
+        self.assertEqual([SOURCE], class_files)
+        self.assertIn('Attribute VB_Name = "ROneCOne"', self.source)
+        self.assertIn("Attribute VB_PredeclaredId = True", self.source)
+        self.assertIn("Option Explicit", self.source)
+
+    def test_binary_builder_strips_only_the_class_export_preamble(self) -> None:
+        builder = BUILD_TOOL.read_text(encoding="utf-8")
+        self.assertIn("def prepare_class_source", builder)
+        self.assertIn('"VERSION 1.0 CLASS"', builder)
+        self.assertIn("prepare_class_source(ROOT / \"src\" / \"ROneCOne.cls\")", builder)
+
+    def test_delegate_public_contract_is_present(self) -> None:
+        required_members = (
+            "Parameter",
+            "ParameterLike",
+            "Value",
+            "Lambda",
+            "FromMethod",
+            "Run",
+            "PipeTo",
+            "Add",
+            "Subtract",
+            "Multiply",
+            "Divide",
+            "Modulo",
+            "Negate",
+            "Concat",
+            "EqualTo",
+            "NotEqualTo",
+            "LessThan",
+            "LessThanOrEqual",
+            "GreaterThan",
+            "GreaterThanOrEqual",
+            "AndAlso",
+            "OrElse",
+            "NotExpression",
+            "Arity",
+            "TypeMismatchError",
+        )
+        for member in required_members:
+            pattern = rf"Public\s+(?:Function|Property\s+Get)\s+{member}\b"
+            self.assertRegex(self.source, re.compile(pattern, re.IGNORECASE), member)
+
+    def test_runtime_does_not_depend_on_vbide_or_external_processes(self) -> None:
+        lowered = self.source.lower()
+        forbidden = (
+            "vbproject",
+            "vbcomponents",
+            "vbe.",
+            "createobject(",
+            "getobject(",
+            "shell(",
+            "excel.application",
+        )
+        for term in forbidden:
+            self.assertNotIn(term, lowered)
+
+    def test_delegate_run_is_the_csharp_like_default_member(self) -> None:
+        self.assertIn("Public Function Run(ParamArray arguments() As Variant)", self.source)
+        self.assertIn("Attribute Run.VB_UserMemId = 0", self.source)
+        self.assertNotRegex(self.source, re.compile(r"^Public Function Invoke\b", re.MULTILINE))
+
+    def test_source_is_ascii_and_uses_short_lines(self) -> None:
+        self.source.encode("ascii")
+        long_lines = [
+            (number, len(line))
+            for number, line in enumerate(self.source.splitlines(), start=1)
+            if len(line) > 100
+        ]
+        self.assertEqual([], long_lines)
+
+    def test_public_members_have_intellisense_descriptions(self) -> None:
+        public_members = re.findall(
+            r"^Public\s+(?:Function|Property\s+Get)\s+([A-Za-z][A-Za-z0-9_]*)\b",
+            self.source,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        missing = [
+            name
+            for name in public_members
+            if f"Attribute {name}.VB_Description = " not in self.source
+        ]
+        self.assertEqual([], missing)
+
+
+if __name__ == "__main__":
+    unittest.main()

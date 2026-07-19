@@ -1,0 +1,14 @@
+.ronecone.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+artifacts/
+tests/output/
+demo/.working/
+node_modules/
+~$*.xls*

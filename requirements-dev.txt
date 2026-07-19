@@ -1,0 +1,2 @@
+pyOpenVBA==3.0.1
+pyVBAanalysis==1.2.0

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "ronecone_version": "0.1.0",
+  "captured_on": "2026-07-18",
+  "environment": {
+    "platform": "Windows x64",
+    "excel": "Microsoft 365 16.0.20131.20154 x64",
+    "process_model": "one fresh Excel process per sample"
+  },
+  "scenario": "square(x) expression delegate",
+  "invocations_per_sample": 10000,
+  "seconds": [0.0625, 0.1328125, 0.0625],
+  "minimum_seconds": 0.0625,
+  "median_seconds": 0.0625,
+  "mean_seconds": 0.0859375,
+  "maximum_seconds": 0.1328125,
+  "release_gate_seconds": 0.5
+}
