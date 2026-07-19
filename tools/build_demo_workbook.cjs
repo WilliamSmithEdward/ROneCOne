@@ -64,7 +64,7 @@ function tableHeader(range) {
 titleBand(
   start,
   "ROneCOne Delegates",
-  "A one-file, dependency-free experiment in C#-style programming for Excel VBA",
+  "A one-file, dependency-free C#-style runtime for Excel VBA",
   "H",
 );
 start.getRange("A5:D5").merge();
@@ -212,7 +212,7 @@ benchmarks.getRange("C6").format.numberFormat = "0.000000";
 benchmarks.getRange("E6").format.numberFormat = "#,##0";
 benchmarks.getRange("A8:F8").merge();
 benchmarks.getRange("A8").values = [[
-  "Performance note: expression trees trade raw native VBA speed for composability, typed contracts, and lambda-like syntax. Every release tracks this cost.",
+  "This benchmark tracks expression-delegate overhead as a release-to-release performance baseline.",
 ]];
 benchmarks.getRange("A8:F8").format = {
   fill: "#FFF4E8",
@@ -228,7 +228,7 @@ benchmarks.freezePanes.freezeRows(5);
 titleBand(
   architecture,
   "One-file architecture",
-  "A tagged object kernel lets one predeclared class represent factories, values, expressions, delegates, and future runtime concepts.",
+  "One tagged object kernel represents factory, value, expression, delegate, and collection roles.",
   "F",
 );
 architecture.getRange("A5:F5").values = [[
@@ -243,9 +243,9 @@ tableHeader(architecture.getRange("A5:F5"));
 architecture.getRange("A6:F10").values = [
   ["Single-file core", "ROneCOne.cls", "One import operation", "ENFORCED", 1, 0],
   ["No runtime VBIDE", "Expression trees", "Works without trusted project access", "ENFORCED", 1, 0],
-  ["One Excel process", "Cooperative/native-safe future scheduler", "No multi-instance parallelism", "ENFORCED", 1, 0],
+  ["One Excel process", "Single-process execution contract", "No multi-instance parallelism", "ENFORCED", 1, 0],
   ["Privacy", "Local-only opt-in logs", "Never transmits workbook data", "ENFORCED", 1, 0],
-  ["Compatibility", ".xlsm / .xlsb / .xlam", "Normal VBA remains unchanged", "TARGETED", 1, 0],
+  ["Workbook formats", ".xlsm / .xlsb / .xlam", "Normal VBA remains unchanged", "SUPPORTED CONTRACT", 1, 0],
 ];
 architecture.getRange("A6:F10").format = {
   borders: { preset: "all", style: "thin", color: colors.line },
@@ -256,14 +256,19 @@ architecture.getRange("D6:D10").format = {
   fill: colors.pale,
   font: { bold: true, color: colors.green },
 };
-architecture.getRange("A12:D12").values = [["Milestone", "Capability", "State", "Depends on"]];
+architecture.getRange("A12:D12").values = [[
+  "Milestone",
+  "Capability",
+  "Release status",
+  "Depends on",
+]];
 tableHeader(architecture.getRange("A12:D12"));
 architecture.getRange("A13:D17").values = [
-  [1, "Delegates + expression lambdas", "SHIPPED IN v0.1.0", "Tagged object kernel"],
-  [2, "Runtime-generic List<T> + LINQ", "SHIPPED IN v0.2.0", "Delegates"],
-  [3, "Try / Catch / Finally", "NEXT", "Delegates"],
-  [4, "Tasks / async / await / cancellation", "PLANNED", "Exceptions + delegates"],
-  [5, "Events / disposables / native-safe parallelism", "PLANNED", "Tasks + collections"],
+  [1, "Delegates + expression lambdas", "AVAILABLE (v0.1.0)", "Tagged object kernel"],
+  [2, "Runtime-generic List<T> + LINQ", "AVAILABLE (v0.2.0)", "Delegates"],
+  [3, "Try / Catch / Finally", "SCHEDULED", "Delegates"],
+  [4, "Tasks / async / await / cancellation", "SCHEDULED", "Exceptions + delegates"],
+  [5, "Events / disposables / native-safe parallelism", "SCHEDULED", "Tasks + collections"],
 ];
 architecture.getRange("A13:D17").format = {
   borders: { preset: "all", style: "thin", color: colors.line },

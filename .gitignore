@@ -1,14 +1,57 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
 .ronecone.env
+.ronecone.env.*
+!.ronecone.env.example
+
+# Python environments, caches, coverage, and packages
 .venv/
+venv/
+env/
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+*.egg-info/
+
+# JavaScript dependencies and package-manager logs
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Project build, test, and generated working output
 build/
 dist/
 artifacts/
 tests/output/
 demo/.working/
-node_modules/
-~$*.xls*
+*.candidate.xls*
+*.new.xls*
+*.jsonl
+*.log
+
+# Microsoft Office lock, recovery, and backup files
+~$*
+*.xlk
+*.asd
+*.wbk
+
+# Editor and operating-system metadata
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+.DS_Store
+Thumbs.db
+Desktop.ini

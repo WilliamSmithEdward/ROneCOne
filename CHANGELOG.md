@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.1 - 2026-07-18
+
+### Added
+
+- A dedicated **User Class LINQ** worksheet with six live, formula-verified `DemoCustomer`
+  scenarios: strict typing, deferred filtering, projection, object ordering, quantifiers, and an
+  aggregate projection.
+- `Age` and `City` fields on the demo customer model plus a demo-only `DemoCustomerQuery` adapter
+  containing named predicates and selectors.
+- Source-contract tests for demo organization, readability, workbook content, and VBA packaging.
+
+### Changed
+
+- Reorganized both demo VBA modules into small, purpose-focused procedures with comments that
+  explain the important design decisions.
+- Expanded the collections runner from one example sheet and eight checks to two sheets and
+  fourteen checks.
+- Extended final workbook rendering and module round-trip verification for the new demo surface.
+- Expanded `.gitignore` for local secrets, development environments, generated workbooks, Office
+  recovery files, task logs, and editor metadata.
+
+The shipped one-file `ROneCOne.cls` runtime and its public API are unchanged from 0.2.0.
+
 ## 0.2.0 - 2026-07-18
 
 ### Added

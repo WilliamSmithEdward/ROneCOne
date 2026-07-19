@@ -8,8 +8,8 @@ not runtime dependencies.
 
 The class uses `VB_PredeclaredId = True` so `ROneCOne` provides a zero-setup factory surface while
 explicit `New ROneCOne` instances remain available. Every runtime value returned by the library is
-also a `ROneCOne` instance with an internal role tag. This permits delegates, expression nodes,
-collections, tasks, cancellation tokens, errors, and later runtime concepts to coexist without
+also a `ROneCOne` instance with an internal role tag. This provides one extensible representation
+for delegates, expression nodes, collections, tasks, cancellation tokens, and errors without
 additional shipped class modules.
 
 ## Delegate and expression slice
@@ -56,18 +56,19 @@ See [`collections.md`](collections.md) for the public surface and examples.
 ## State and isolation
 
 Expression nodes, delegates, and query nodes are immutable after construction. Explicit list
-instances own their mutable values; the predeclared instance remains a stateless factory. Later
-schedulers and logs must be owned by explicit runtime contexts keyed to one workbook; no
-process-global mutable state may couple workbooks.
+instances own their mutable values; the predeclared instance remains a stateless factory. Scheduler
+and diagnostics components follow the same ownership rule: explicit runtime contexts are keyed to
+one workbook, and process-global mutable state never couples workbooks.
 
-## Feature order
+## Release sequence
 
-1. Delegates and expression-tree lambdas.
-2. Runtime-generic `List<T>` and foundational query operators.
-3. Structured `Try/Catch/Finally` over callable blocks.
-4. Tasks, async/await, cancellation, progress, and captured exceptions.
-5. Additional generic collections, events, disposables, parallel native-safe operations, and
-   other C#-inspired types.
+| Release status | Capability |
+|---|---|
+| Available | Delegates and expression-tree lambdas |
+| Available | Runtime-generic `List<T>` and foundational query operators |
+| Scheduled | Structured `Try/Catch/Finally` over callable blocks |
+| Scheduled | Tasks, async/await, cancellation, progress, and captured exceptions |
+| Scheduled | Additional generic collections, events, disposables, and native-safe parallelism |
 
-Each feature must pass its full behavioral, live-host, and performance gates before the next one
-begins.
+Each capability must pass its full behavioral, live-host, and performance gates before it enters
+the supported surface.

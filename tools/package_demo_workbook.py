@@ -40,30 +40,51 @@ def package_delegates(workbook_path: Path = DELEGATES_WORKBOOK) -> None:
 def package_collections(workbook_path: Path = COLLECTIONS_WORKBOOK) -> None:
     runtime_source = prepare_class_source(ROOT / "src" / "ROneCOne.cls")
     customer_source = prepare_class_source(ROOT / "demo" / "vba" / "DemoCustomer.cls")
+    query_source = prepare_class_source(
+        ROOT / "demo" / "vba" / "DemoCustomerQuery.cls"
+    )
     demo_source = read_vba(ROOT / "demo" / "vba" / "CollectionsDemoUsage.bas")
 
     with ExcelFile(workbook_path) as workbook:
         project = workbook.vba_project()
         existing = set(workbook.module_names())
-        names = ("Module1", "ROneCOne", "DemoCustomer", "CollectionsDemoUsage")
+        names = (
+            "Module1",
+            "ROneCOne",
+            "DemoCustomer",
+            "DemoCustomerQuery",
+            "CollectionsDemoUsage",
+        )
         for module_name in names:
             if module_name in existing:
                 project.delete_module(module_name)
         project.add_module("ROneCOne", runtime_source, kind=VBAModuleKind.other)
         project.add_module("DemoCustomer", customer_source, kind=VBAModuleKind.other)
         project.add_module(
+            "DemoCustomerQuery", query_source, kind=VBAModuleKind.other
+        )
+        project.add_module(
             "CollectionsDemoUsage", demo_source, kind=VBAModuleKind.standard
         )
         workbook.save()
 
     with ExcelFile(workbook_path) as verification:
-        expected = {"ROneCOne", "DemoCustomer", "CollectionsDemoUsage"}
+        expected = {
+            "ROneCOne",
+            "DemoCustomer",
+            "DemoCustomerQuery",
+            "CollectionsDemoUsage",
+        }
         actual = set(verification.module_names())
         missing = expected - actual
         if missing:
             raise RuntimeError(f"Collections demo is missing modules: {sorted(missing)}")
         if verification.get_module("ROneCOne") != runtime_source:
             raise RuntimeError("Collections ROneCOne source did not round-trip")
+        if verification.get_module("DemoCustomer") != customer_source:
+            raise RuntimeError("Collections DemoCustomer source did not round-trip")
+        if verification.get_module("DemoCustomerQuery") != query_source:
+            raise RuntimeError("Collections DemoCustomerQuery source did not round-trip")
 
 
 def parse_args() -> argparse.Namespace:
