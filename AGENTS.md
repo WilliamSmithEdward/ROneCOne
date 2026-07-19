@@ -139,6 +139,29 @@ Ask for clarification only when reasonable interpretations would materially chan
 authority, irreversible or outward-facing action, safety, privacy, or success criteria. Otherwise,
 use the narrowest reversible interpretation and surface any decisive assumption.
 
+### Pre-build discovery protocol
+
+Before creating or modifying project implementation, conduct a sequential discovery interview with
+the user.
+
+- Ask exactly one focused question per turn.
+- Make each question resolve one atomic decision unit. Do not bundle independent choices, fields,
+  requirements, or follow-up questions into one prompt.
+- Wait for the user's answer before asking the next question.
+- If an answer leaves the current unit materially ambiguous, ask one focused follow-up about that
+  same unit before moving on.
+- At the start of each subsequent prompt, briefly record the decision just resolved, then ask the
+  next single question.
+- Use read-only inspection when it helps frame the next question, but do not begin implementation or
+  make project state changes during discovery.
+- Continue until objective, users, scope, behavior, data, interfaces, constraints, risks,
+  validation, and success criteria are sufficiently resolved for the task.
+- Present a concise build-contract summary when discovery is complete, then ask one final atomic
+  question for permission to begin implementation.
+
+A later explicit user instruction may narrow, skip, or end this interview. Do not infer that urgency
+or a partial answer waives the remaining material discovery questions.
+
 ## Evidence and Materiality
 
 - Ground every decisive material claim in direct observations, repository evidence, tests, or an
