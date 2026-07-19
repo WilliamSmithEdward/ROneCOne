@@ -54,6 +54,10 @@ Public Function IsEvenLong(ByVal value As Variant) As Variant
     IsEvenLong = (CLng(value) Mod 2 = 0)
 End Function
 
+Public Function IsExperiencedCustomer(ByVal value As Variant) As Variant
+    IsExperiencedCustomer = (CLng(value.Age) >= 40)
+End Function
+
 Public Sub RecordWork()
     mTrace = mTrace & "work|"
 End Sub

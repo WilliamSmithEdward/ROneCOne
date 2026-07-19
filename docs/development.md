@@ -22,7 +22,7 @@ The collection suite adds strict primitive/user-class lists, atomic mutation fai
 indexing, populated/inferred initializers, atomic heterogeneous inputs, deferred source mutation,
 universal procedure delegates in LINQ, `ForEach(Action)`, text joining, query chaining, numeric
 terminals, nested enumeration, and enumerator refresh after mutation. The current live totals are
-58 delegate/event/exception and 66 collection assertions.
+58 delegate/event/exception and 91 collection assertions.
 
 The invocation benchmark has a configurable release ceiling (`-MaxBenchmarkSeconds`, default
 `0.5` for 10,000 calls). The v0.1.0 measurements are stored in
@@ -41,6 +41,18 @@ multicast changes. Measurements and live assertion totals are stored in
 The v0.6.0 baseline repeats those gates after collection initializers, typed events, and structured
 exceptions. It records three fresh-process samples plus the expanded live assertion totals in
 `benchmarks/v0.6.0-baseline.json`.
+
+The v0.7.0 baseline repeats them after contextual LINQ, inferred sequence predicates, key-based
+operators, and native bang-member expressions. The collection suite now includes fluent condition
+builders, composed stable-parameter expressions, dotted object paths, member-name selectors, and
+procedure predicate inference. Five fresh-process samples are recorded in
+`benchmarks/v0.7.0-baseline.json`.
+
+pyVBAanalysis 1.2.0 treats a VBA bang identifier such as `!Age` as an ordinary undeclared
+variable. The three live bang examples carry line-scoped `undeclared-variable` suppressions with
+an explicit reason. The normal complete-project gate is clean; an audit run with
+`--no-inline-suppression` reports exactly those three known false positives. Excel compilation and
+execution are the decisive host-level checks for that syntax.
 
 ## Popup-adaptive Excel harness
 

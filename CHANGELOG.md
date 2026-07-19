@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.7.0 - 2026-07-19
+
+### Added
+
+- Deferred contextual filters through `Where("Member").AtLeast(...)` and the complete comparison,
+  set, string, Boolean, null, and pattern condition vocabulary.
+- Reusable `Condition(memberPath)` expressions backed by one stable typed element parameter per
+  sequence, including composed multi-member predicates and dotted object paths.
+- Native VBA bang-member expressions such as `customers!Age` and `With customers: !Age` through
+  the existing default-member dispatch surface.
+- Member-name selectors for projection, ordering, aggregation, and text joining.
+- `DistinctBy`, `MinBy`, and `MaxBy` key-based LINQ operators.
+- `Predicate` and `WhereMethod` inference of `Func<T, Boolean>` from a sequence's generic type.
+- Eleven live user-class LINQ scenarios in the Collections workbook.
+
+### Changed
+
+- Made `Contains` serve both typed sequence containment and C#-style string expression containment.
+- Updated the primary demo surface to remove explicit element variables wherever member context is
+  sufficient, while retaining and documenting the canonical expression/delegate forms.
+- Expanded the live collection suite from 66 to 91 assertions.
+- Confirmed through the popup-aware VBE harness that both direct and `With`-scoped bang syntax
+  compile and execute in Microsoft 365 x64 Excel.
+
 ## 0.6.0 - 2026-07-19
 
 ### Added

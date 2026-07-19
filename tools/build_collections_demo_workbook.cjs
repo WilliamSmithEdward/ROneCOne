@@ -98,10 +98,10 @@ async function main() {
   ];
   start.getRange("G6").formulas = [[
     "=COUNTIF('Examples'!F6:F13,\"PASS\")+" +
-      "COUNTIF('User Class LINQ'!F6:F11,\"PASS\")",
+      "COUNTIF('User Class LINQ'!F6:F16,\"PASS\")",
   ]];
   start.getRange("G7").formulas = [[
-    "=COUNTA('Examples'!A6:A13)+COUNTA('User Class LINQ'!A6:A11)",
+    "=COUNTA('Examples'!A6:A13)+COUNTA('User Class LINQ'!A6:A16)",
   ]];
   start.getRange("F6:G10").format = {
     borders: { preset: "all", style: "thin", color: colors.line },
@@ -202,7 +202,7 @@ async function main() {
   titleBand(
     userClassLinq,
     "User-defined class LINQ",
-    "Typed object queries with implicit lambdas: no adapter class or callback scaffolding.",
+    "Typed object queries with contextual members, inferred predicates, and native VBA sugar.",
     "F",
   );
   userClassLinq.getRange("A5:F5").values = [[
@@ -214,7 +214,7 @@ async function main() {
     "Status",
   ]];
   tableHeader(userClassLinq.getRange("A5:F5"));
-  userClassLinq.getRange("A6:D11").values = [
+  userClassLinq.getRange("A6:D16").values = [
     [
       "Typed class list",
       "List<DemoCustomer>",
@@ -224,56 +224,87 @@ async function main() {
     [
       "Deferred class Where",
       "customers.Where(c => c.Age >= 40)",
-      'Set customer = customers.Element\n' +
-        'Set experienced = customers.Where(customer("Age").AtLeast(40))\n' +
+      'Set experienced = customers.Where("Age").AtLeast(40)\n' +
         "customers.Add margaret",
       "3|Margaret",
     ],
     [
       "Projection + ordering",
       ".Select(c => c.Name).OrderBy(name => name)",
-      'Set names = experienced.Map(customer("CustomerName"), vbString).Sorted.ToList',
+      'Set names = experienced.Map("CustomerName", vbString).Sorted.ToList',
       "Grace|Katherine|Margaret",
     ],
     [
       "Object ordering",
       ".OrderByDescending(c => c.Age).First()",
-      'Set oldest = customers.OrderByDescending(customer("Age")).First',
+      'Set oldest = customers.OrderByDescending("Age").First',
       "Katherine|49",
     ],
     [
       "Quantifiers",
       ".Any(city) / .All(age)",
-      'anyLondon = customers.Exists(customer("City").EqualTo("London"))',
+      'customers.Exists(customers.Condition("City").EqualTo("London"))',
       "True|False",
     ],
     [
       "Aggregate projection",
-      ".Where(age).Select(c => c.Age).Average()",
-      'averageAge = experienced.Map(customer("Age"), vbLong).Average',
+      ".Where(age).Average(c => c.Age)",
+      'averageAge = experienced.Average("Age")',
       44.7,
+    ],
+    [
+      "Inferred predicate",
+      "customers.Where(IsExperienced)",
+      'customers.WhereMethod("CollectionsDemoUsage.IsExperiencedCustomer")',
+      "3|Func<DemoCustomer, Boolean>",
+    ],
+    [
+      "String conditions",
+      "StartsWith / Contains",
+      '.Where("CustomerName").StartsWith("G")\n' +
+        '.Where("CustomerName").Contains("ther")',
+      "1|1",
+    ],
+    [
+      "Distinct keys",
+      ".DistinctBy(c => c.City)",
+      'customers.DistinctBy("City")',
+      3,
+    ],
+    [
+      "Native bang member",
+      "c => c.Age >= 40",
+      'With customers\n  Set q = .Where(!Age.AtLeast(40))\nEnd With',
+      "Grace|Katherine|Margaret",
+    ],
+    [
+      "Safe object path",
+      "c.Manager != null && c.Manager.Age >= 40",
+      '.Where("Manager").IsNotNothing\n' +
+        '.Where("Manager.Age").AtLeast(40)',
+      "1|2",
     ],
   ];
   userClassLinq.getRange("F6").formulas = [[
     "=IF(E6=\"\",\"NOT RUN\",IF(E6=D6,\"PASS\",\"CHECK\"))",
   ]];
-  userClassLinq.getRange("F6:F11").fillDown();
-  userClassLinq.getRange("A6:F11").format = {
+  userClassLinq.getRange("F6:F16").fillDown();
+  userClassLinq.getRange("A6:F16").format = {
     borders: { preset: "all", style: "thin", color: colors.line },
     wrapText: true,
     verticalAlignment: "top",
   };
-  userClassLinq.getRange("C6:C11").format = {
+  userClassLinq.getRange("C6:C16").format = {
     fill: "#F8FAFC",
     font: { name: "Consolas", color: colors.ink, size: 10 },
     wrapText: true,
   };
   userClassLinq.getRange("D11:E11").format.numberFormat = "0.0";
-  userClassLinq.getRange("F6:F11").conditionalFormats.add("containsText", {
+  userClassLinq.getRange("F6:F16").conditionalFormats.add("containsText", {
     text: "PASS",
     format: { fill: "#DCFCE7", font: { bold: true, color: colors.green } },
   });
-  userClassLinq.getRange("F6:F11").conditionalFormats.add("containsText", {
+  userClassLinq.getRange("F6:F16").conditionalFormats.add("containsText", {
     text: "CHECK",
     format: { fill: "#FEE2E2", font: { bold: true, color: "#B91C1C" } },
   });
@@ -283,7 +314,7 @@ async function main() {
   userClassLinq.getRange("D:D").format.columnWidth = 31;
   userClassLinq.getRange("E:E").format.columnWidth = 25;
   userClassLinq.getRange("F:F").format.columnWidth = 16;
-  userClassLinq.getRange("6:11").format.rowHeight = 58;
+  userClassLinq.getRange("6:16").format.rowHeight = 62;
   userClassLinq.freezePanes.freezeRows(5);
 
   titleBand(
@@ -340,7 +371,7 @@ async function main() {
     ["Concrete T", "VarType or exact class name", "Reject before mutation", "ENFORCED", 1, 0],
     ["User classes", "ListFrom or prototype token", "Exact class identity", "ENFORCED", 1, 0],
     ["Deferred LINQ", "Immutable query nodes", "Evaluate on consumption", "ENFORCED", 1, 0],
-    ["Syntax sugar", "Implicit unary expressions", "Canonical API remains available", "ENFORCED", 1, 0],
+    ["Syntax sugar", "Contextual members + native bang", "Canonical API remains available", "ENFORCED", 1, 0],
     ["Enumeration", "Persistent list mirror", "Nested For Each works", "ENFORCED", 1, 0],
     ["One process", "In-process execution", "Never launches Excel", "ENFORCED", 1, 0],
     ["Privacy", "No transmission", "Workbook data stays local", "ENFORCED", 1, 0],

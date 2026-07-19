@@ -18,6 +18,7 @@ Option Explicit
 Private mAge As Long
 Private mCity As String
 Private mCustomerName As String
+Private mManager As DemoCustomer
 
 Public Property Get CustomerName() As String
     CustomerName = mCustomerName
@@ -41,4 +42,12 @@ End Property
 
 Public Property Let City(ByVal value As String)
     mCity = value
+End Property
+
+Public Property Get Manager() As DemoCustomer
+    Set Manager = mManager
+End Property
+
+Public Property Set Manager(ByVal value As DemoCustomer)
+    Set mManager = value
 End Property

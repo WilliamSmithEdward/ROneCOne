@@ -61,6 +61,7 @@ Private Const ROLE_REFERENCE As Long = 12
 Private Const ROLE_EVENT As Long = 13
 Private Const ROLE_TRY As Long = 14
 Private Const ROLE_ERROR As Long = 15
+Private Const ROLE_WHERE_BUILDER As Long = 16
 
 Private Const CALLCONV_STDCALL As Long = 4
 Private Const HRESULT_SUCCESS As Long = 0
@@ -83,6 +84,13 @@ Private Const OP_OR_ELSE As Long = 15
 Private Const OP_NOT As Long = 16
 Private Const OP_MEMBER_VALUE As Long = 17
 Private Const OP_MEMBER_OBJECT As Long = 18
+Private Const OP_STARTS_WITH As Long = 19
+Private Const OP_ENDS_WITH As Long = 20
+Private Const OP_CONTAINS_TEXT As Long = 21
+Private Const OP_IS_NOTHING As Long = 22
+Private Const OP_IS_NOT_NOTHING As Long = 23
+Private Const OP_IS_NULL_OR_EMPTY As Long = 24
+Private Const OP_MATCHES_PATTERN As Long = 25
 
 Private Const QUERY_WHERE As Long = 1
 Private Const QUERY_SELECT As Long = 2
@@ -94,6 +102,7 @@ Private Const QUERY_ORDER_BY_DESCENDING As Long = 7
 Private Const QUERY_APPEND As Long = 8
 Private Const QUERY_PREPEND As Long = 9
 Private Const QUERY_REVERSE As Long = 10
+Private Const QUERY_DISTINCT_BY As Long = 11
 
 Private Const ERROR_INVALID_ARGUMENT As Long = vbObjectError + 4100
 Private Const ERROR_INVALID_OPERATION As Long = vbObjectError + 4101
@@ -107,6 +116,7 @@ Private Const ERROR_BYREF_INVOCATION As Long = vbObjectError + 4108
 
 Private mRole As Long
 Private mOperator As Long
+Private mExpressionOption As Long
 Private mLeft As ROneCOne
 Private mRight As ROneCOne
 Private mNext As ROneCOne
@@ -152,6 +162,8 @@ Private mQueryValue As ROneCOne
 Private mQueryCount As Long
 Private mVersion As Long
 Private mEnumerationVersion As Long
+Private mElementParameter As ROneCOne
+Private mContextMemberPath As String
 
 Public Function Parameter( _
     Optional ByVal expectedType As VbVarType = vbVariant _
@@ -750,12 +762,17 @@ Private Sub AssignInvocationResult( _
     If mRole = ROLE_LIST Or mRole = ROLE_QUERY Then
         If argumentValues.Count <> 1 Then
             RaiseContractError ERROR_ARITY_MISMATCH, "Run", _
-                "A sequence indexer requires exactly one argument."
+                "A sequence indexer or member selector requires one argument."
         End If
         Set argumentValue = argumentValues.Item(1)
         If argumentValue.InternalHasObjectValue Then
             RaiseContractError ERROR_TYPE_MISMATCH, "Run", _
-                "A sequence index must be numeric."
+                "A sequence index must be numeric or a member name."
+        End If
+        If VarType(argumentValue.InternalScalarValue) = vbString Then
+            Set result = Condition(CStr(argumentValue.InternalScalarValue))
+            Set destination = result
+            Exit Sub
         End If
         Set result = WrappedItem(CLng(argumentValue.InternalScalarValue))
         If result.InternalHasObjectValue Then
@@ -833,32 +850,60 @@ End Function
 
 Public Function EqualTo(ByVal operand As Variant) As ROneCOne
 Attribute EqualTo.VB_Description = "Creates an equality expression."
-    Set EqualTo = CreateBinaryExpression(OP_EQUAL, operand)
+    If mRole = ROLE_WHERE_BUILDER Then
+        Set EqualTo = CompleteWhereBinary(OP_EQUAL, operand)
+    Else
+        Set EqualTo = CreateBinaryExpression(OP_EQUAL, operand)
+    End If
 End Function
 
 Public Function NotEqualTo(ByVal operand As Variant) As ROneCOne
 Attribute NotEqualTo.VB_Description = "Creates an inequality expression."
-    Set NotEqualTo = CreateBinaryExpression(OP_NOT_EQUAL, operand)
+    If mRole = ROLE_WHERE_BUILDER Then
+        Set NotEqualTo = CompleteWhereBinary(OP_NOT_EQUAL, operand)
+    Else
+        Set NotEqualTo = CreateBinaryExpression(OP_NOT_EQUAL, operand)
+    End If
 End Function
 
 Public Function LessThan(ByVal operand As Variant) As ROneCOne
 Attribute LessThan.VB_Description = "Creates a less-than expression."
-    Set LessThan = CreateBinaryExpression(OP_LESS_THAN, operand)
+    If mRole = ROLE_WHERE_BUILDER Then
+        Set LessThan = CompleteWhereBinary(OP_LESS_THAN, operand)
+    Else
+        Set LessThan = CreateBinaryExpression(OP_LESS_THAN, operand)
+    End If
 End Function
 
 Public Function LessThanOrEqual(ByVal operand As Variant) As ROneCOne
 Attribute LessThanOrEqual.VB_Description = "Creates a less-than-or-equal expression."
-    Set LessThanOrEqual = CreateBinaryExpression(OP_LESS_THAN_OR_EQUAL, operand)
+    If mRole = ROLE_WHERE_BUILDER Then
+        Set LessThanOrEqual = CompleteWhereBinary( _
+            OP_LESS_THAN_OR_EQUAL, operand)
+    Else
+        Set LessThanOrEqual = CreateBinaryExpression( _
+            OP_LESS_THAN_OR_EQUAL, operand)
+    End If
 End Function
 
 Public Function GreaterThan(ByVal operand As Variant) As ROneCOne
 Attribute GreaterThan.VB_Description = "Creates a greater-than expression."
-    Set GreaterThan = CreateBinaryExpression(OP_GREATER_THAN, operand)
+    If mRole = ROLE_WHERE_BUILDER Then
+        Set GreaterThan = CompleteWhereBinary(OP_GREATER_THAN, operand)
+    Else
+        Set GreaterThan = CreateBinaryExpression(OP_GREATER_THAN, operand)
+    End If
 End Function
 
 Public Function GreaterThanOrEqual(ByVal operand As Variant) As ROneCOne
 Attribute GreaterThanOrEqual.VB_Description = "Creates a greater-than-or-equal expression."
-    Set GreaterThanOrEqual = CreateBinaryExpression(OP_GREATER_THAN_OR_EQUAL, operand)
+    If mRole = ROLE_WHERE_BUILDER Then
+        Set GreaterThanOrEqual = CompleteWhereBinary( _
+            OP_GREATER_THAN_OR_EQUAL, operand)
+    Else
+        Set GreaterThanOrEqual = CreateBinaryExpression( _
+            OP_GREATER_THAN_OR_EQUAL, operand)
+    End If
 End Function
 
 Public Function AtLeast(ByVal operand As Variant) As ROneCOne
@@ -869,6 +914,148 @@ End Function
 Public Function AtMost(ByVal operand As Variant) As ROneCOne
 Attribute AtMost.VB_Description = "Sugar for a less-than-or-equal expression."
     Set AtMost = LessThanOrEqual(operand)
+End Function
+
+Public Function Between( _
+    ByVal lowerBound As Variant, _
+    ByVal upperBound As Variant, _
+    Optional ByVal inclusive As Boolean = True _
+) As ROneCOne
+Attribute Between.VB_Description = "Tests whether a value lies between two bounds."
+    Dim receiver As ROneCOne
+    Dim expression As ROneCOne
+
+    If mRole = ROLE_WHERE_BUILDER Then
+        Set receiver = ContextMemberExpression(False)
+    Else
+        RequireExpression Me, "Between receiver"
+        Set receiver = Me
+    End If
+    If inclusive Then
+        Set expression = receiver.GreaterThanOrEqual(lowerBound) _
+            .AndAlso(receiver.LessThanOrEqual(upperBound))
+    Else
+        Set expression = receiver.GreaterThan(lowerBound) _
+            .AndAlso(receiver.LessThan(upperBound))
+    End If
+    Set Between = CompleteWhereOrExpression(expression)
+End Function
+
+Public Function OneOf(ParamArray values() As Variant) As ROneCOne
+Attribute OneOf.VB_Description = "Tests whether a value equals any supplied candidate."
+    Dim candidate As Variant
+    Dim expression As ROneCOne
+    Dim receiver As ROneCOne
+
+    If mRole = ROLE_WHERE_BUILDER Then
+        Set receiver = ContextMemberExpression(False)
+    Else
+        RequireExpression Me, "OneOf receiver"
+        Set receiver = Me
+    End If
+    For Each candidate In values
+        If expression Is Nothing Then
+            Set expression = receiver.EqualTo(candidate)
+        Else
+            Set expression = expression.OrElse(receiver.EqualTo(candidate))
+        End If
+    Next candidate
+    If expression Is Nothing Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "OneOf", _
+            "At least one candidate value is required."
+    End If
+    Set OneOf = CompleteWhereOrExpression(expression)
+End Function
+
+Public Function StartsWith( _
+    ByVal prefix As String, _
+    Optional ByVal compareMode As VbCompareMethod = vbBinaryCompare _
+) As ROneCOne
+Attribute StartsWith.VB_Description = "Tests a string prefix using an explicit comparison mode."
+    Set StartsWith = CompleteStringCondition( _
+        OP_STARTS_WITH, prefix, compareMode)
+End Function
+
+Public Function EndsWith( _
+    ByVal suffix As String, _
+    Optional ByVal compareMode As VbCompareMethod = vbBinaryCompare _
+) As ROneCOne
+Attribute EndsWith.VB_Description = "Tests a string suffix using an explicit comparison mode."
+    Set EndsWith = CompleteStringCondition( _
+        OP_ENDS_WITH, suffix, compareMode)
+End Function
+
+Public Function ContainsText( _
+    ByVal fragment As String, _
+    Optional ByVal compareMode As VbCompareMethod = vbBinaryCompare _
+) As ROneCOne
+Attribute ContainsText.VB_Description = "Tests whether a string contains a fragment."
+    Set ContainsText = CompleteStringCondition( _
+        OP_CONTAINS_TEXT, fragment, compareMode)
+End Function
+
+Public Function MatchesPattern(ByVal pattern As String) As ROneCOne
+Attribute MatchesPattern.VB_Description = "Tests a value with VBA's Like pattern syntax."
+    Dim expression As ROneCOne
+    Dim receiver As ROneCOne
+    Dim rightValue As ROneCOne
+
+    Set receiver = ConditionReceiver(False, "MatchesPattern")
+    Set rightValue = CoerceExpression(pattern)
+    Set expression = New ROneCOne
+    expression.ConfigureExpression OP_MATCHES_PATTERN, receiver, rightValue
+    Set MatchesPattern = CompleteWhereOrExpression(expression)
+End Function
+
+Public Function IsNothing() As ROneCOne
+Attribute IsNothing.VB_Description = "Tests whether an object reference is Nothing."
+    Dim expression As ROneCOne
+    Dim receiver As ROneCOne
+
+    Set receiver = ConditionReceiver(True, "IsNothing")
+    Set expression = New ROneCOne
+    expression.ConfigureExpression OP_IS_NOTHING, receiver, Nothing
+    Set IsNothing = CompleteWhereOrExpression(expression)
+End Function
+
+Public Function IsNotNothing() As ROneCOne
+Attribute IsNotNothing.VB_Description = "Tests whether an object reference is not Nothing."
+    Dim expression As ROneCOne
+    Dim receiver As ROneCOne
+
+    Set receiver = ConditionReceiver(True, "IsNotNothing")
+    Set expression = New ROneCOne
+    expression.ConfigureExpression OP_IS_NOT_NOTHING, receiver, Nothing
+    Set IsNotNothing = CompleteWhereOrExpression(expression)
+End Function
+
+Public Function IsNullOrEmpty() As ROneCOne
+Attribute IsNullOrEmpty.VB_Description = "Tests whether a scalar is Null or an empty string."
+    Dim expression As ROneCOne
+    Dim receiver As ROneCOne
+
+    Set receiver = ConditionReceiver(False, "IsNullOrEmpty")
+    Set expression = New ROneCOne
+    expression.ConfigureExpression OP_IS_NULL_OR_EMPTY, receiver, Nothing
+    Set IsNullOrEmpty = CompleteWhereOrExpression(expression)
+End Function
+
+Public Function IsTrue() As ROneCOne
+Attribute IsTrue.VB_Description = "Tests whether a Boolean value is True."
+    If mRole = ROLE_WHERE_BUILDER Then
+        Set IsTrue = CompleteWhereBinary(OP_EQUAL, True)
+    Else
+        Set IsTrue = EqualTo(True)
+    End If
+End Function
+
+Public Function IsFalse() As ROneCOne
+Attribute IsFalse.VB_Description = "Tests whether a Boolean value is False."
+    If mRole = ROLE_WHERE_BUILDER Then
+        Set IsFalse = CompleteWhereBinary(OP_EQUAL, False)
+    Else
+        Set IsFalse = EqualTo(False)
+    End If
 End Function
 
 Public Function AndAlso(ByVal operand As Variant) As ROneCOne
@@ -974,9 +1161,13 @@ Attribute Clear.VB_Description = "Removes every item from this typed list."
     mVersion = mVersion + 1
 End Sub
 
-Public Function Contains(ByVal value As Variant) As Boolean
-Attribute Contains.VB_Description = "Tests whether a typed sequence contains a value."
-    Contains = (IndexOf(value) >= 0)
+Public Function Contains(ByVal value As Variant) As Variant
+Attribute Contains.VB_Description = "Tests a sequence value or string expression for containment."
+    If mRole = ROLE_LIST Or mRole = ROLE_QUERY Then
+        Contains = (IndexOf(value) >= 0)
+        Exit Function
+    End If
+    Set Contains = ContainsText(CStr(value))
 End Function
 
 Public Function IndexOf(ByVal value As Variant) As Long
@@ -1066,25 +1257,65 @@ End Sub
 
 Public Property Get Element() As ROneCOne
 Attribute Element.VB_Description = "Gets a typed parameter representing each sequence element."
-    Dim parameterValue As ROneCOne
-
     RequireSequence Me, "Element"
-    Set parameterValue = New ROneCOne
-    parameterValue.ConfigureParameter mElementType, mElementObjectType
-    Set Element = parameterValue
+    If mElementParameter Is Nothing Then
+        Set mElementParameter = New ROneCOne
+        mElementParameter.ConfigureParameter mElementType, mElementObjectType
+    End If
+    Set Element = mElementParameter
 End Property
 
-Public Function Where(ByVal predicate As ROneCOne) As ROneCOne
-Attribute Where.VB_Description = "Defers filtering until the sequence is consumed."
+Public Function Condition( _
+    ByVal memberPath As String, _
+    Optional ByVal returnsObject As Boolean = False _
+) As ROneCOne
+Attribute Condition.VB_Description = "Creates a reusable sequence-member expression."
+    RequireSequence Me, "Condition"
+    Set Condition = BuildMemberPath(memberPath, returnsObject)
+End Function
+
+Public Function Predicate( _
+    ByVal callable As Variant, _
+    Optional ByVal memberName As String = vbNullString _
+) As ROneCOne
+Attribute Predicate.VB_Description = "Infers a typed Func<T, Boolean> for this sequence."
     Dim predicateDelegate As ROneCOne
 
-    Set predicateDelegate = NormalizeUnary(predicate, "Where")
+    RequireSequence Me, "Predicate"
+    Set predicateDelegate = ROneCOne.Func(callable, memberName)
+    Set Predicate = BindContextPredicate(predicateDelegate)
+End Function
+
+Public Function WhereMethod( _
+    ByVal callable As Variant, _
+    Optional ByVal memberName As String = vbNullString _
+) As ROneCOne
+Attribute WhereMethod.VB_Description = "Filters with an inferred method or procedure predicate."
+    Set WhereMethod = Where(Predicate(callable, memberName))
+End Function
+
+Public Function Where(ByVal predicateOrMember As Variant) As ROneCOne
+Attribute Where.VB_Description = "Defers filtering or begins a fluent member condition."
+    Dim builder As ROneCOne
+    Dim predicateDelegate As ROneCOne
+
+    RequireSequence Me, "Where"
+    If Not IsObject(predicateOrMember) Then
+        If VarType(predicateOrMember) = vbString Then
+            Set builder = New ROneCOne
+            builder.ConfigureWhereBuilder Me, CStr(predicateOrMember)
+            Set Where = builder
+            Exit Function
+        End If
+    End If
+    Set predicateDelegate = NormalizeUnary( _
+        RequireROneCOne(predicateOrMember, "Where"), "Where")
     Set Where = CreateQuery(QUERY_WHERE, predicateDelegate, Nothing, 0, _
         mElementType, mElementObjectType)
 End Function
 
 Public Function SelectItems( _
-    ByVal selector As ROneCOne, _
+    ByVal selector As Variant, _
     ByVal resultTypeToken As Variant _
 ) As ROneCOne
 Attribute SelectItems.VB_Description = "Defers a strongly typed LINQ Select projection."
@@ -1092,14 +1323,15 @@ Attribute SelectItems.VB_Description = "Defers a strongly typed LINQ Select proj
     Dim selectorDelegate As ROneCOne
     Dim valueType As VbVarType
 
-    Set selectorDelegate = NormalizeUnary(selector, "SelectItems")
     ResolveTypeDescriptor resultTypeToken, valueType, objectType, "SelectItems"
+    Set selectorDelegate = NormalizeContextUnary( _
+        selector, "SelectItems", valueType = vbObject)
     Set SelectItems = CreateQuery(QUERY_SELECT, selectorDelegate, Nothing, 0, _
         valueType, objectType)
 End Function
 
 Public Function Map( _
-    ByVal selector As ROneCOne, _
+    ByVal selector As Variant, _
     ByVal resultTypeToken As Variant _
 ) As ROneCOne
 Attribute Map.VB_Description = "Concise sugar for a strongly typed SelectItems projection."
@@ -1126,20 +1358,32 @@ Attribute Distinct.VB_Description = "Defers removal of duplicate sequence values
         mElementType, mElementObjectType)
 End Function
 
-Public Function OrderBy(ByVal keySelector As ROneCOne) As ROneCOne
+Public Function DistinctBy(ByVal keySelector As Variant) As ROneCOne
+Attribute DistinctBy.VB_Description = "Defers removal of elements with duplicate selected keys."
+    Dim selectorDelegate As ROneCOne
+
+    Set selectorDelegate = NormalizeContextUnary( _
+        keySelector, "DistinctBy", False)
+    Set DistinctBy = CreateQuery(QUERY_DISTINCT_BY, selectorDelegate, _
+        Nothing, 0, mElementType, mElementObjectType)
+End Function
+
+Public Function OrderBy(ByVal keySelector As Variant) As ROneCOne
 Attribute OrderBy.VB_Description = "Defers stable ascending ordering by a selected key."
     Dim selectorDelegate As ROneCOne
 
-    Set selectorDelegate = NormalizeUnary(keySelector, "OrderBy")
+    Set selectorDelegate = NormalizeContextUnary( _
+        keySelector, "OrderBy", False)
     Set OrderBy = CreateQuery(QUERY_ORDER_BY, selectorDelegate, Nothing, 0, _
         mElementType, mElementObjectType)
 End Function
 
-Public Function OrderByDescending(ByVal keySelector As ROneCOne) As ROneCOne
+Public Function OrderByDescending(ByVal keySelector As Variant) As ROneCOne
 Attribute OrderByDescending.VB_Description = "Defers stable descending ordering by a selected key."
     Dim selectorDelegate As ROneCOne
 
-    Set selectorDelegate = NormalizeUnary(keySelector, "OrderByDescending")
+    Set selectorDelegate = NormalizeContextUnary( _
+        keySelector, "OrderByDescending", False)
     Set OrderByDescending = CreateQuery( _
         QUERY_ORDER_BY_DESCENDING, selectorDelegate, Nothing, 0, _
         mElementType, mElementObjectType)
@@ -1192,8 +1436,8 @@ Attribute AnyItem.VB_Description = "Tests whether any element exists or matches 
         AnyItem = (values.Count <> 0)
         Exit Function
     End If
-    Set predicateValue = NormalizeUnary( _
-        RequireROneCOne(predicate, "Any predicate"), "Any")
+    Set predicateValue = NormalizeContextUnary( _
+        predicate, "Any", False)
     For Each wrapped In values
         If InvokePredicate(predicateValue, wrapped, "Any") Then
             AnyItem = True
@@ -1211,13 +1455,13 @@ Attribute Exists.VB_Description = "Tests whether any element exists or matches."
     End If
 End Function
 
-Public Function All(ByVal predicate As ROneCOne) As Boolean
+Public Function All(ByVal predicate As Variant) As Boolean
 Attribute All.VB_Description = "Tests whether every element matches a predicate."
     Dim predicateDelegate As ROneCOne
     Dim values As Collection
     Dim wrapped As ROneCOne
 
-    Set predicateDelegate = NormalizeUnary(predicate, "All")
+    Set predicateDelegate = NormalizeContextUnary(predicate, "All", False)
     Set values = MaterializeWrapped
     All = True
     For Each wrapped In values
@@ -1234,8 +1478,8 @@ Attribute First.VB_Description = "Returns the first element, optionally matching
     Dim wrapped As ROneCOne
 
     If Not IsMissing(predicate) Then
-        Set predicateValue = NormalizeUnary( _
-            RequireROneCOne(predicate, "First predicate"), "First")
+        Set predicateValue = NormalizeContextUnary( _
+            predicate, "First", False)
     End If
     Set wrapped = FindTerminalElement(predicateValue, False, "First")
     If wrapped.InternalHasObjectValue Then
@@ -1251,8 +1495,8 @@ Attribute Last.VB_Description = "Returns the last element, optionally matching a
     Dim wrapped As ROneCOne
 
     If Not IsMissing(predicate) Then
-        Set predicateValue = NormalizeUnary( _
-            RequireROneCOne(predicate, "Last predicate"), "Last")
+        Set predicateValue = NormalizeContextUnary( _
+            predicate, "Last", False)
     End If
     Set wrapped = FindTerminalElement(predicateValue, True, "Last")
     If wrapped.InternalHasObjectValue Then
@@ -1273,8 +1517,8 @@ Attribute Sum.VB_Description = "Sums numeric elements or selected numeric values
     Set values = MaterializeWrapped
     total = 0
     If Not IsMissing(selector) Then
-        Set selectorValue = NormalizeUnary( _
-            RequireROneCOne(selector, "Sum selector"), "Sum")
+        Set selectorValue = NormalizeContextUnary( _
+            selector, "Sum", False)
     End If
     For Each wrapped In values
         Set selected = SelectTerminalValue(wrapped, selectorValue)
@@ -1294,8 +1538,8 @@ Attribute Average.VB_Description = "Averages numeric elements or selected numeri
     Set values = MaterializeWrapped
     If values.Count = 0 Then RaiseEmptySequence "Average"
     If Not IsMissing(selector) Then
-        Set selectorValue = NormalizeUnary( _
-            RequireROneCOne(selector, "Average selector"), "Average")
+        Set selectorValue = NormalizeContextUnary( _
+            selector, "Average", False)
     End If
     For Each wrapped In values
         Set selected = SelectTerminalValue(wrapped, selectorValue)
@@ -1310,8 +1554,8 @@ Attribute Min.VB_Description = "Returns the minimum element or selected value."
     Dim wrapped As ROneCOne
 
     If Not IsMissing(selector) Then
-        Set selectorValue = NormalizeUnary( _
-            RequireROneCOne(selector, "Min selector"), "Min")
+        Set selectorValue = NormalizeContextUnary( _
+            selector, "Min", False)
     End If
     Set wrapped = ExtremeValue(selectorValue, False, "Min")
     If wrapped.InternalHasObjectValue Then
@@ -1327,8 +1571,8 @@ Attribute Max.VB_Description = "Returns the maximum element or selected value."
     Dim wrapped As ROneCOne
 
     If Not IsMissing(selector) Then
-        Set selectorValue = NormalizeUnary( _
-            RequireROneCOne(selector, "Max selector"), "Max")
+        Set selectorValue = NormalizeContextUnary( _
+            selector, "Max", False)
     End If
     Set wrapped = ExtremeValue(selectorValue, True, "Max")
     If wrapped.InternalHasObjectValue Then
@@ -1336,6 +1580,26 @@ Attribute Max.VB_Description = "Returns the maximum element or selected value."
     Else
         Max = wrapped.InternalScalarValue
     End If
+End Function
+
+Public Function MinBy(ByVal keySelector As Variant) As Variant
+Attribute MinBy.VB_Description = "Returns the element with the minimum selected key."
+    Dim selectorValue As ROneCOne
+    Dim wrapped As ROneCOne
+
+    Set selectorValue = NormalizeContextUnary(keySelector, "MinBy", False)
+    Set wrapped = ExtremeElement(selectorValue, False, "MinBy")
+    AssignPublicResult MinBy, wrapped
+End Function
+
+Public Function MaxBy(ByVal keySelector As Variant) As Variant
+Attribute MaxBy.VB_Description = "Returns the element with the maximum selected key."
+    Dim selectorValue As ROneCOne
+    Dim wrapped As ROneCOne
+
+    Set selectorValue = NormalizeContextUnary(keySelector, "MaxBy", False)
+    Set wrapped = ExtremeElement(selectorValue, True, "MaxBy")
+    AssignPublicResult MaxBy, wrapped
 End Function
 
 Public Function ToList() As ROneCOne
@@ -1486,8 +1750,8 @@ Attribute JoinText.VB_Description = "Joins scalar sequence values into one Strin
 
     RequireSequence Me, "JoinText"
     If Not IsMissing(selector) Then
-        Set selectorDelegate = NormalizeUnary( _
-            RequireROneCOne(selector, "JoinText selector"), "JoinText")
+        Set selectorDelegate = NormalizeContextUnary( _
+            selector, "JoinText", False)
     End If
     Set values = MaterializeWrapped
     If values.Count = 0 Then Exit Function
@@ -1573,6 +1837,11 @@ End Property
 Friend Property Get InternalOperator() As Long
 Attribute InternalOperator.VB_MemberFlags = "40"
     InternalOperator = mOperator
+End Property
+
+Friend Property Get InternalExpressionOption() As Long
+Attribute InternalExpressionOption.VB_MemberFlags = "40"
+    InternalExpressionOption = mExpressionOption
 End Property
 
 Friend Property Get InternalLeft() As ROneCOne
@@ -1726,10 +1995,12 @@ End Sub
 Friend Sub ConfigureExpression( _
     ByVal expressionOperator As Long, _
     ByVal leftValue As ROneCOne, _
-    ByVal rightValue As ROneCOne _
+    ByVal rightValue As ROneCOne, _
+    Optional ByVal expressionOption As Long = 0 _
 )
     mRole = ROLE_EXPRESSION
     mOperator = expressionOperator
+    mExpressionOption = expressionOption
     Set mLeft = leftValue
     Set mRight = rightValue
 End Sub
@@ -1909,6 +2180,15 @@ Friend Sub ConfigureQuery( _
     mEnumerationVersion = -1
 End Sub
 
+Friend Sub ConfigureWhereBuilder( _
+    ByVal source As ROneCOne, _
+    ByVal memberPath As String _
+)
+    mRole = ROLE_WHERE_BUILDER
+    Set mSource = source
+    mContextMemberPath = NormalizeMemberPath(memberPath, "Where")
+End Sub
+
 Friend Sub InternalAddWrapped(ByVal wrapped As ROneCOne)
     ValidateElementWrapped wrapped, "ToList"
     mItems.Add wrapped
@@ -1952,6 +2232,8 @@ Friend Function MaterializeWrapped() As Collection
             Set values = ApplySkip(sourceValues)
         Case QUERY_DISTINCT
             Set values = ApplyDistinct(sourceValues)
+        Case QUERY_DISTINCT_BY
+            Set values = ApplyDistinctBy(sourceValues)
         Case QUERY_ORDER_BY
             Set values = ApplyOrder(sourceValues, False)
         Case QUERY_ORDER_BY_DESCENDING
@@ -2928,6 +3210,37 @@ Private Function ExtremeValue( _
     Set ExtremeValue = best
 End Function
 
+Private Function ExtremeElement( _
+    ByVal selector As ROneCOne, _
+    ByVal findMaximum As Boolean, _
+    ByVal memberName As String _
+) As ROneCOne
+    Dim bestElement As ROneCOne
+    Dim bestKey As ROneCOne
+    Dim candidateKey As ROneCOne
+    Dim values As Collection
+    Dim wrapped As ROneCOne
+
+    Set values = MaterializeWrapped
+    If values.Count = 0 Then RaiseEmptySequence memberName
+    For Each wrapped In values
+        Set candidateKey = InvokeUnary(selector, wrapped)
+        If bestElement Is Nothing Then
+            Set bestElement = wrapped
+            Set bestKey = candidateKey
+        ElseIf findMaximum And _
+            CompareWrapped(candidateKey, bestKey, memberName) > 0 Then
+            Set bestElement = wrapped
+            Set bestKey = candidateKey
+        ElseIf Not findMaximum And _
+            CompareWrapped(candidateKey, bestKey, memberName) < 0 Then
+            Set bestElement = wrapped
+            Set bestKey = candidateKey
+        End If
+    Next wrapped
+    Set ExtremeElement = bestElement
+End Function
+
 Private Sub RaiseEmptySequence(ByVal memberName As String)
     RaiseContractError ERROR_INVALID_OPERATION, memberName, _
         "The sequence contains no matching elements."
@@ -3028,6 +3341,26 @@ Private Function ApplyDistinct(ByVal sourceValues As Collection) As Collection
         If Not WrappedCollectionContains(output, wrapped) Then output.Add wrapped
     Next wrapped
     Set ApplyDistinct = output
+End Function
+
+Private Function ApplyDistinctBy( _
+    ByVal sourceValues As Collection _
+) As Collection
+    Dim key As ROneCOne
+    Dim keys As Collection
+    Dim output As Collection
+    Dim wrapped As ROneCOne
+
+    Set keys = New Collection
+    Set output = New Collection
+    For Each wrapped In sourceValues
+        Set key = InvokeUnary(mQueryDelegate, wrapped)
+        If Not WrappedCollectionContains(keys, key) Then
+            keys.Add key
+            output.Add wrapped
+        End If
+    Next wrapped
+    Set ApplyDistinctBy = output
 End Function
 
 Private Function ApplyOrder( _
@@ -3179,6 +3512,211 @@ Private Function CoerceExpression(ByVal candidate As Variant) As ROneCOne
     Set CoerceExpression = node
 End Function
 
+Private Function NormalizeContextUnary( _
+    ByVal candidate As Variant, _
+    ByVal memberName As String, _
+    ByVal returnsObject As Boolean _
+) As ROneCOne
+    Dim expression As ROneCOne
+
+    RequireSequence Me, memberName
+    If Not IsObject(candidate) Then
+        If VarType(candidate) = vbString Then
+            Set expression = BuildMemberPath(CStr(candidate), returnsObject)
+            Set NormalizeContextUnary = NormalizeUnary(expression, memberName)
+            Exit Function
+        End If
+    End If
+    Set NormalizeContextUnary = NormalizeUnary( _
+        RequireROneCOne(candidate, memberName), memberName)
+End Function
+
+Private Function BindContextPredicate( _
+    ByVal predicateDelegate As ROneCOne _
+) As ROneCOne
+    Dim bound As ROneCOne
+    Dim descriptor As ROneCOne
+    Dim descriptors As Collection
+
+    RequireDelegate predicateDelegate, "Predicate"
+    If predicateDelegate.IsAction Then
+        RaiseContractError ERROR_INVALID_OPERATION, "Predicate", _
+            "A predicate requires a Func result."
+    End If
+    If predicateDelegate.Arity <> 1 And predicateDelegate.Arity <> -1 Then
+        RaiseContractError ERROR_ARITY_MISMATCH, "Predicate", _
+            "The predicate must accept exactly one sequence element."
+    End If
+    If predicateDelegate.InternalHasReturnSignature Then
+        If predicateDelegate.InternalReturnType <> vbBoolean Or _
+            Len(predicateDelegate.InternalReturnObjectType) > 0 Then
+            RaiseContractError ERROR_TYPE_MISMATCH, "Predicate", _
+                "The predicate result must be Boolean."
+        End If
+    End If
+    If predicateDelegate.InternalHasParameterSignature Then
+        Set descriptor = predicateDelegate.InternalParameters.Item(1)
+        ValidateContextPredicateParameter descriptor
+    End If
+
+    Set bound = CloneDelegate(predicateDelegate)
+    If Not bound.InternalHasParameterSignature Then
+        Set descriptors = New Collection
+        Set descriptor = New ROneCOne
+        descriptor.ConfigureParameter mElementType, mElementObjectType
+        descriptors.Add descriptor
+        bound.ConfigureParameterSignature descriptors
+    End If
+    If Not bound.InternalHasReturnSignature Then
+        bound.ConfigureReturnSignature vbBoolean, vbNullString
+    End If
+    Set BindContextPredicate = bound
+End Function
+
+Private Sub ValidateContextPredicateParameter( _
+    ByVal descriptor As ROneCOne _
+)
+    Dim expectedObjectType As String
+    Dim expectedType As VbVarType
+
+    If descriptor.InternalIsByRef Then
+        RaiseContractError ERROR_TYPE_MISMATCH, "Predicate", _
+            "A sequence predicate parameter must be passed ByVal."
+    End If
+    expectedType = descriptor.InternalExpectedType
+    expectedObjectType = descriptor.InternalExpectedObjectType
+    If expectedType = vbVariant Then Exit Sub
+
+    If mElementType = vbObject Then
+        If expectedType <> vbObject Then
+            RaiseContractError ERROR_TYPE_MISMATCH, "Predicate", _
+                "The predicate parameter does not accept the sequence type."
+        End If
+        If Len(expectedObjectType) = 0 Then Exit Sub
+        If StrComp(expectedObjectType, mElementObjectType, _
+            vbTextCompare) = 0 Then Exit Sub
+    ElseIf expectedType = mElementType Then
+        Exit Sub
+    End If
+    RaiseContractError ERROR_TYPE_MISMATCH, "Predicate", _
+        "The predicate parameter does not accept the sequence type."
+End Sub
+
+Private Function BuildMemberPath( _
+    ByVal memberPath As String, _
+    ByVal returnsObject As Boolean _
+) As ROneCOne
+    Dim expression As ROneCOne
+    Dim index As Long
+    Dim normalized As String
+    Dim parts As Variant
+
+    normalized = NormalizeMemberPath(memberPath, "Condition")
+    parts = VBA.Split(normalized, ".")
+    Set expression = Element
+    For index = LBound(parts) To UBound(parts)
+        Set expression = expression.Member( _
+            CStr(parts(index)), index < UBound(parts) Or returnsObject)
+    Next index
+    Set BuildMemberPath = expression
+End Function
+
+Private Function NormalizeMemberPath( _
+    ByVal memberPath As String, _
+    ByVal memberName As String _
+) As String
+    Dim index As Long
+    Dim normalized As String
+    Dim parts As Variant
+    Dim segment As String
+
+    memberPath = Trim$(memberPath)
+    If Len(memberPath) = 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "The member path cannot be empty."
+    End If
+    parts = VBA.Split(memberPath, ".")
+    For index = LBound(parts) To UBound(parts)
+        segment = Trim$(CStr(parts(index)))
+        If Len(segment) = 0 Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+                "The member path cannot contain an empty segment."
+        End If
+        If Len(normalized) > 0 Then normalized = normalized & "."
+        normalized = normalized & segment
+    Next index
+    NormalizeMemberPath = normalized
+End Function
+
+Private Function ContextMemberExpression( _
+    ByVal returnsObject As Boolean _
+) As ROneCOne
+    If mRole <> ROLE_WHERE_BUILDER Then
+        RaiseContractError ERROR_INVALID_OPERATION, "Where", _
+            "A contextual member condition must begin with Where(memberName)."
+    End If
+    Set ContextMemberExpression = mSource.Condition( _
+        mContextMemberPath, returnsObject)
+End Function
+
+Private Function ConditionReceiver( _
+    ByVal returnsObject As Boolean, _
+    ByVal memberName As String _
+) As ROneCOne
+    If mRole = ROLE_WHERE_BUILDER Then
+        Set ConditionReceiver = ContextMemberExpression(returnsObject)
+    Else
+        RequireExpression Me, memberName & " receiver"
+        Set ConditionReceiver = Me
+    End If
+End Function
+
+Private Function CompleteWhereBinary( _
+    ByVal expressionOperator As Long, _
+    ByVal operand As Variant _
+) As ROneCOne
+    Dim expression As ROneCOne
+    Dim receiver As ROneCOne
+    Dim rightValue As ROneCOne
+
+    Set receiver = ContextMemberExpression(False)
+    Set rightValue = CoerceExpression(operand)
+    Set expression = New ROneCOne
+    expression.ConfigureExpression expressionOperator, receiver, rightValue
+    Set CompleteWhereBinary = mSource.Where(expression)
+End Function
+
+Private Function CompleteStringCondition( _
+    ByVal expressionOperator As Long, _
+    ByVal operand As String, _
+    ByVal compareMode As VbCompareMethod _
+) As ROneCOne
+    Dim expression As ROneCOne
+    Dim receiver As ROneCOne
+    Dim rightValue As ROneCOne
+
+    If compareMode <> vbBinaryCompare And compareMode <> vbTextCompare Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "String condition", _
+            "Comparison mode must be vbBinaryCompare or vbTextCompare."
+    End If
+    Set receiver = ConditionReceiver(False, "String condition")
+    Set rightValue = CoerceExpression(operand)
+    Set expression = New ROneCOne
+    expression.ConfigureExpression expressionOperator, receiver, _
+        rightValue, compareMode
+    Set CompleteStringCondition = CompleteWhereOrExpression(expression)
+End Function
+
+Private Function CompleteWhereOrExpression( _
+    ByVal expression As ROneCOne _
+) As ROneCOne
+    If mRole = ROLE_WHERE_BUILDER Then
+        Set CompleteWhereOrExpression = mSource.Where(expression)
+    Else
+        Set CompleteWhereOrExpression = expression
+    End If
+End Function
+
 Private Sub ExecuteTryOperation()
     Dim arguments As Collection
     Dim catchAction As ROneCOne
@@ -3301,7 +3839,10 @@ Private Function EvaluateNode( _
     ByVal arguments As Collection _
 ) As ROneCOne
     Dim leftResult As ROneCOne
+    Dim leftText As String
+    Dim objectResult As Object
     Dim rightResult As ROneCOne
+    Dim rightText As String
     Dim scalarResult As Variant
     Dim operatorCode As Long
 
@@ -3384,6 +3925,48 @@ Private Function EvaluateNode( _
                     scalarResult = CBool(RequireScalar(rightResult, "OrElse"))
                 Case OP_NOT
                     scalarResult = Not CBool(RequireScalar(leftResult, "NotExpression"))
+                Case OP_STARTS_WITH
+                    leftText = CStr(RequireScalar(leftResult, "StartsWith"))
+                    rightText = CStr(RequireScalar(rightResult, "StartsWith"))
+                    scalarResult = (StrComp( _
+                        Left$(leftText, Len(rightText)), rightText, _
+                        node.InternalExpressionOption) = 0)
+                Case OP_ENDS_WITH
+                    leftText = CStr(RequireScalar(leftResult, "EndsWith"))
+                    rightText = CStr(RequireScalar(rightResult, "EndsWith"))
+                    scalarResult = (StrComp( _
+                        Right$(leftText, Len(rightText)), rightText, _
+                        node.InternalExpressionOption) = 0)
+                Case OP_CONTAINS_TEXT
+                    leftText = CStr(RequireScalar(leftResult, "ContainsText"))
+                    rightText = CStr(RequireScalar(rightResult, "ContainsText"))
+                    scalarResult = (InStr( _
+                        1, leftText, rightText, _
+                        node.InternalExpressionOption) > 0)
+                Case OP_IS_NOTHING, OP_IS_NOT_NOTHING
+                    If Not leftResult.InternalHasObjectValue Then
+                        RaiseContractError ERROR_TYPE_MISMATCH, "IsNothing", _
+                            "IsNothing requires an object-valued expression."
+                    End If
+                    Set objectResult = leftResult.InternalObjectValue
+                    scalarResult = (objectResult Is Nothing)
+                    If operatorCode = OP_IS_NOT_NOTHING Then
+                        scalarResult = Not CBool(scalarResult)
+                    End If
+                Case OP_IS_NULL_OR_EMPTY
+                    If leftResult.InternalHasObjectValue Then
+                        RaiseContractError ERROR_TYPE_MISMATCH, "IsNullOrEmpty", _
+                            "IsNullOrEmpty requires a scalar expression."
+                    End If
+                    scalarResult = IsNull(leftResult.InternalScalarValue)
+                    If Not CBool(scalarResult) Then
+                        scalarResult = (Len(CStr( _
+                            leftResult.InternalScalarValue)) = 0)
+                    End If
+                Case OP_MATCHES_PATTERN
+                    scalarResult = CStr( _
+                        RequireScalar(leftResult, "MatchesPattern")) Like _
+                        CStr(RequireScalar(rightResult, "MatchesPattern"))
                 Case Else
                     RaiseContractError ERROR_INVALID_OPERATION, "EvaluateNode", _
                         "Unknown expression operator."
@@ -4406,6 +4989,7 @@ Private Sub Class_Terminate()
     Set mFinallyAction = Nothing
     Set mItems = Nothing
     Set mEnumerationValues = Nothing
+    Set mElementParameter = Nothing
     Set mSource = Nothing
     Set mQueryDelegate = Nothing
     Set mQueryValue = Nothing

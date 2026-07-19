@@ -2,8 +2,8 @@
 
 ROneCOne is a one-file runtime that brings typed expressions, universal delegates, runtime-generic
 collections, LINQ-style queries, typed events, and structured exceptions to ordinary Excel VBA.
-Version 0.6.0 adds fluent `EventOf` publishers, `Try/Catch/Finally`, Action `Execute`, collection
-initializers, `ForEach`, and text joining over the universal delegate kernel.
+Version 0.7.0 adds contextual LINQ members, inferred `Func<T, Boolean>` predicates, C#-style
+member selectors and conditions, key-based operators, and native VBA bang-member expressions.
 
 The deployed runtime is one [`ROneCOne.cls`](src/ROneCOne.cls) file. It requires no install,
 add-in, runtime code generation, network access, external package, or trusted VBIDE access.
@@ -14,7 +14,7 @@ Each core capability has its own verified workbook:
 
 - [`ROneCOne_Delegates_Demo.xlsm`](demo/ROneCOne_Delegates_Demo.xlsm) runs eleven expression,
   object, procedure, dynamic, multicast, metadata, composition, and true-`ByRef` examples.
-- [`ROneCOne_Collections_Demo.xlsm`](demo/ROneCOne_Collections_Demo.xlsm) runs fourteen `List<T>`
+- [`ROneCOne_Collections_Demo.xlsm`](demo/ROneCOne_Collections_Demo.xlsm) runs nineteen `List<T>`
   and LINQ examples, including a dedicated **User Class LINQ** tutorial.
 - [`ROneCOne_Events_Demo.xlsm`](demo/ROneCOne_Events_Demo.xlsm) demonstrates typed subscription,
   deterministic emission, removal, and handler metadata.
@@ -62,16 +62,24 @@ Set changed = changed.Remove(secondHandler)
 Typed collections and user-defined classes use the same delegate kernel:
 
 ```vba
-Dim customer As ROneCOne
 Dim customers As ROneCOne
 Dim names As ROneCOne
 Set customers = ROneCOne.ListFrom(ada, grace, katherine)
-Set customer = customers.Element
 Set names = customers _
-    .Where(customer("Age").AtLeast(CLng(40))) _
-    .Map(customer("CustomerName"), vbString) _
+    .Where("Age").AtLeast(CLng(40)) _
+    .Map("CustomerName", vbString) _
     .Sorted _
     .ToList
+```
+
+VBA's native bang syntax can remove even the member-name string when desired:
+
+```vba
+With customers
+    Set names = .Where(!Age.AtLeast(CLng(40))) _
+        .Map("CustomerName", vbString) _
+        .ToList
+End With
 ```
 
 Typed events and structured exceptions use the same Actions:
@@ -88,7 +96,20 @@ Set attempt = ROneCOne.Try(work) _
 attempt.Execute
 ```
 
-## Version 0.6.0
+## Version 0.7.0
+
+- deferred `Where("Member").AtLeast(...)` contextual filters
+- reusable `Condition("Member")` expressions with a stable typed element parameter
+- `Between`, `OneOf`, `StartsWith`, `EndsWith`, `Contains`, `ContainsText`, `MatchesPattern`,
+  `IsNothing`, `IsNotNothing`, `IsNullOrEmpty`, `IsTrue`, and `IsFalse`
+- member-name `Map`, `OrderBy`, `OrderByDescending`, `Sum`, `Average`, `Min`, `Max`, and `JoinText`
+- `DistinctBy`, `MinBy`, and `MaxBy`
+- dotted object paths with explicit `Nothing` guards
+- `Predicate` and `WhereMethod` inference of `Func<T, Boolean>` from the source sequence
+- native `sequence!Member` expression selection through the existing default member
+- the canonical `Element`, `Member`, expression, and universal delegate forms remain available
+
+Previously delivered capabilities include:
 
 - `Execute` for Action calls without dummy return variables
 - typed `EventOf`, `Subscribe`, `Unsubscribe`, `Emit`, and `HandlerCount`
@@ -147,8 +168,7 @@ Use Python 3.10 or later. Development dependencies are isolated from the shipped
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .venv\Scripts\python.exe -m unittest discover -s tests\python -v
-.venv\Scripts\pyvbaanalysis.exe src tests\vba demo\vba `
-    --no-inline-suppression --format text
+.venv\Scripts\pyvbaanalysis.exe src tests\vba demo\vba --format text
 .venv\Scripts\python.exe tools\build_test_workbook.py
 powershell -ExecutionPolicy Bypass -File tools\run_excel_tests.ps1
 ```
@@ -159,7 +179,7 @@ deadline. It never enumerates or closes user-open Excel instances. See
 [`docs/development.md`](docs/development.md).
 
 The optional `%USERPROFILE%\.ronecone.env` is private. The committed
-`.ronecone.env.example` defines the reserved local-only diagnostics schema; version 0.6.0 does not
+`.ronecone.env.example` defines the reserved local-only diagnostics schema; the runtime does not
 read it or emit runtime logs.
 
 ## Release roadmap

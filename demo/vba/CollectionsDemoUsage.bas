@@ -112,42 +112,67 @@ End Sub
 Private Sub WriteUserClassLinqExamples()
     Dim allExperienced As Boolean
     Dim anyLondon As Boolean
-    Dim customer As ROneCOne
+    Dim ada As DemoCustomer
     Dim customers As ROneCOne
+    Dim distinctCities As ROneCOne
     Dim experienced As ROneCOne
     Dim firstCustomer As DemoCustomer
+    Dim grace As DemoCustomer
+    Dim katherine As DemoCustomer
     Dim lastCustomer As DemoCustomer
+    Dim managed As ROneCOne
+    Dim margaret As DemoCustomer
     Dim names As ROneCOne
     Dim orderedCustomers As ROneCOne
+    Dim procedureFiltered As ROneCOne
+    Dim stringMatches As ROneCOne
 
-    Set customers = ROneCOne.ListFrom( _
-        CreateCustomer("Ada", CLng(36), "London"), _
-        CreateCustomer("Grace", CLng(40), "Arlington"), _
-        CreateCustomer("Katherine", CLng(49), "Cleveland"))
-
-    ' Element represents one typed customer. Its default member selects a
-    ' scalar property, so customer("Age") is the VBA equivalent of c.Age.
-    Set customer = customers.Element
+    Set ada = CreateCustomer("Ada", CLng(36), "London")
+    Set grace = CreateCustomer("Grace", CLng(40), "Arlington")
+    Set grace.Manager = ada
+    Set katherine = CreateCustomer("Katherine", CLng(49), "Cleveland")
+    Set katherine.Manager = grace
+    Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 
     ' Build the query first, then mutate its source to prove it remains deferred.
-    Set experienced = customers.Where(customer("Age").AtLeast(CLng(40)))
-    customers.Add CreateCustomer("Margaret", CLng(45), "New York")
+    Set experienced = customers.Where("Age").AtLeast(CLng(40))
+    Set margaret = CreateCustomer("Margaret", CLng(45), "Arlington")
+    Set margaret.Manager = grace
+    customers.Add margaret
     Set lastCustomer = experienced.Last
 
-    ' Map projects the names; Sorted orders each projected value directly.
+    ' Member-name selectors eliminate the explicit element parameter.
     Set names = experienced _
-        .Map(customer("CustomerName"), vbString) _
+        .Map("CustomerName", vbString) _
         .Sorted _
         .ToList
 
-    ' Ordering objects preserves T, so First returns a DemoCustomer instance.
+    ' Ordering objects preserves T, so First returns a DemoCustomer.
     Set orderedCustomers = customers _
-        .OrderByDescending(customer("Age")) _
+        .OrderByDescending("Age") _
         .ToList
     Set firstCustomer = orderedCustomers.First
 
-    anyLondon = customers.Exists(customer("City").EqualTo("London"))
-    allExperienced = customers.All(customer("Age").AtLeast(CLng(40)))
+    ' Condition creates a reusable expression when a predicate is composed.
+    anyLondon = customers.Exists( _
+        customers.Condition("City").EqualTo("London"))
+    allExperienced = customers.All( _
+        customers.Condition("Age").AtLeast(CLng(40)))
+
+    ' Procedure signatures are inferred as Func<DemoCustomer, Boolean>.
+    Set procedureFiltered = customers.WhereMethod( _
+        "CollectionsDemoUsage.IsExperiencedCustomer").ToList
+
+    Set stringMatches = customers _
+        .Where("CustomerName").StartsWith("G") _
+        .ToList
+    Set distinctCities = customers.DistinctBy("City").ToList
+
+    ' Dotted paths compose object access; the first Where guards Nothing.
+    Set managed = customers _
+        .Where("Manager").IsNotNothing _
+        .Where("Manager.Age").AtLeast(CLng(40)) _
+        .ToList
 
     With ThisWorkbook.Worksheets(USER_CLASS_SHEET)
         .Range("E6").Value2 = customers.GenericTypeName & ":" & customers.Count
@@ -158,7 +183,23 @@ Private Sub WriteUserClassLinqExamples()
             CStr(firstCustomer.Age)
         .Range("E10").Value2 = CStr(anyLondon) & "|" & CStr(allExperienced)
         .Range("E11").Value2 = Round(CDbl( _
-            experienced.Map(customer("Age"), vbLong).Average), 1)
+            experienced.Average("Age")), 1)
+        .Range("E12").Value2 = procedureFiltered.Count & "|" & _
+            customers.Predicate( _
+                "CollectionsDemoUsage.IsExperiencedCustomer").Signature
+        .Range("E13").Value2 = stringMatches.Count & "|" & _
+            customers.Where("CustomerName").Contains("ther").Count
+        .Range("E14").Value2 = distinctCities.Count
+        With customers
+            '@pyvba-ignore-next-line: undeclared-variable -- Age is a bang identifier.
+            Set names = .Where(!Age.AtLeast(CLng(40))) _
+                .Map("CustomerName", vbString) _
+                .Sorted _
+                .ToList
+        End With
+        .Range("E15").Value2 = names.JoinText("|")
+        .Range("E16").Value2 = customers.Where("Manager").IsNothing.Count & _
+            "|" & managed.Count
     End With
 End Sub
 
@@ -223,6 +264,10 @@ End Function
 Public Sub DemoAccumulateLong(ByVal value As Variant)
     mForEachTotal = mForEachTotal + CLng(value)
 End Sub
+
+Public Function IsExperiencedCustomer(ByVal value As Variant) As Variant
+    IsExperiencedCustomer = (CLng(value.Age) >= 40)
+End Function
 
 Private Function RaisesExpectedTypeMismatch(ByVal values As ROneCOne) As Boolean
     Dim description As String

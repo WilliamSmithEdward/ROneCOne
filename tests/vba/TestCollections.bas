@@ -134,8 +134,8 @@ End Sub
 Private Sub TestSyntaxSugar()
     Dim actualError As Long
     Dim ada As GenericCustomer
-    Dim customer As ROneCOne
     Dim customers As ROneCOne
+    Dim distinctCities As ROneCOne
     Dim experienced As ROneCOne
     Dim grace As GenericCustomer
     Dim invalid As ROneCOne
@@ -143,43 +143,129 @@ Private Sub TestSyntaxSugar()
     Dim names As ROneCOne
     Dim numbers As ROneCOne
     Dim oldest As GenericCustomer
+    Dim predicate As ROneCOne
     Dim prototype As GenericCustomer
     Dim result As ROneCOne
     Dim value As ROneCOne
+    Dim youngest As GenericCustomer
 
     Set prototype = New GenericCustomer
     Set customers = ROneCOne.ListOf(prototype)
     Set ada = New GenericCustomer
     ada.CustomerName = "Ada"
     ada.Age = 36
+    ada.Active = True
+    ada.City = "London"
     Set grace = New GenericCustomer
     grace.CustomerName = "Grace"
     grace.Age = 40
+    grace.Active = True
+    grace.City = "London"
+    Set grace.Manager = ada
     Set katherine = New GenericCustomer
     katherine.CustomerName = "Katherine"
     katherine.Age = 49
+    katherine.Active = False
+    katherine.City = vbNullString
+    Set katherine.Manager = grace
     customers.Add ada
     customers.Add grace
     customers.Add katherine
 
-    Set customer = customers.Element
-    Set experienced = customers.Where(customer("Age").AtLeast(CLng(40)))
+    Set experienced = customers.Where("Age").AtLeast(CLng(40))
     Set names = experienced _
-        .Map(customer("CustomerName"), vbString) _
+        .Map("CustomerName", vbString) _
         .Sorted _
         .ToList
-    Set oldest = customers.OrderByDescending(customer("Age")).First
+    Set oldest = customers.OrderByDescending("Age").First
+    Set youngest = customers.MinBy("Age")
+    Set distinctCities = customers.DistinctBy("City").ToList
 
     AssertEqual "sugar Where count", CLng(2), experienced.Count
     AssertEqual "sugar Map count", CLng(2), names.Count
     AssertEqual "sugar Sorted first", "Grace", names.Item(0)
     AssertEqual "sugar Sorted last", "Katherine", names.Item(1)
     AssertEqual "sugar object ordering", "Katherine", oldest.CustomerName
+    AssertEqual "sugar MinBy", "Ada", youngest.CustomerName
+    AssertEqual "sugar MaxBy", "Katherine", _
+        customers.MaxBy("Age").CustomerName
+    AssertEqual "sugar DistinctBy", CLng(2), distinctCities.Count
     AssertTrue "sugar Exists", customers.Exists( _
-        customer("CustomerName").EqualTo("Ada"))
-    AssertTrue "sugar All", customers.All(customer("Age").AtLeast(CLng(30)))
-    AssertEqual "sugar aggregate", CDbl(44.5), CDbl( _
-        experienced.Map(customer("Age"), vbLong).Average)
+        customers.Condition("CustomerName").EqualTo("Ada"))
+    AssertTrue "sugar All", customers.All( _
+        customers.Condition("Age").AtLeast(CLng(30)))
+    AssertEqual "sugar aggregate", CDbl(44.5), _
+        CDbl(experienced.Average("Age"))
+    AssertEqual "sugar Sum selector", CLng(125), CLng(customers.Sum("Age"))
+    AssertEqual "sugar JoinText selector", "Ada|Grace|Katherine", _
+        customers.JoinText("|", "CustomerName")
+
+    Set result = customers.Where("Age").Between(CLng(36), CLng(40)).ToList
+    AssertEqual "sugar Between", CLng(2), result.Count
+    Set result = customers.Where("CustomerName") _
+        .OneOf("Ada", "Katherine").ToList
+    AssertEqual "sugar OneOf", CLng(2), result.Count
+    Set result = customers.Where("CustomerName").StartsWith("G").ToList
+    AssertEqual "sugar StartsWith", CLng(1), result.Count
+    Set result = customers.Where("CustomerName").EndsWith("e").ToList
+    AssertEqual "sugar EndsWith", CLng(2), result.Count
+    Set result = customers.Where("CustomerName") _
+        .ContainsText("ther").ToList
+    AssertEqual "sugar ContainsText", CLng(1), result.Count
+    Set result = customers.Where("CustomerName").Contains("ther").ToList
+    AssertEqual "C#-style Contains", CLng(1), result.Count
+    Set result = customers.Where("CustomerName") _
+        .MatchesPattern("K*").ToList
+    AssertEqual "sugar MatchesPattern", CLng(1), result.Count
+    Set result = customers.Where("City").IsNullOrEmpty.ToList
+    AssertEqual "sugar IsNullOrEmpty", CLng(1), result.Count
+    Set result = customers.Where("Active").IsTrue.ToList
+    AssertEqual "sugar IsTrue", CLng(2), result.Count
+    Set result = customers.Where("Active").IsFalse.ToList
+    AssertEqual "sugar IsFalse", CLng(1), result.Count
+    Set result = customers.Where("Manager").IsNothing.ToList
+    AssertEqual "sugar IsNothing", CLng(1), result.Count
+    Set result = customers.Where("Manager").IsNotNothing.ToList
+    AssertEqual "sugar IsNotNothing", CLng(2), result.Count
+    Set result = customers _
+        .Where("Manager").IsNotNothing _
+        .Where("Manager.Age").AtLeast(CLng(40)) _
+        .ToList
+    AssertEqual "sugar nested path", CLng(1), result.Count
+
+    Set result = customers.Where( _
+        customers.Condition("Age").Between(CLng(35), CLng(45)) _
+        .AndAlso(customers.Condition("City").EqualTo("London"))) _
+        .ToList
+    AssertEqual "sugar composed conditions", CLng(2), result.Count
+
+    Set predicate = customers.Predicate( _
+        "DelegateProcedures.IsExperiencedCustomer")
+    AssertEqual "inferred predicate signature", _
+        "Func<GenericCustomer, Boolean>", predicate.Signature
+    Set result = customers.WhereMethod( _
+        "DelegateProcedures.IsExperiencedCustomer").ToList
+    AssertEqual "inferred procedure predicate", CLng(2), result.Count
+
+    On Error Resume Next
+    Set predicate = customers.Predicate( _
+        ROneCOne.Func("DelegateProcedures.IsExperiencedCustomer") _
+            .Takes(vbLong) _
+            .Returns(vbBoolean))
+    actualError = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertEqual "predicate type mismatch fails early", _
+        ROneCOne.TypeMismatchError, actualError
+
+    '@pyvba-ignore-next-line: undeclared-variable -- Age is a bang identifier.
+    Set result = customers.Where(customers!Age.AtLeast(CLng(40))).ToList
+    AssertEqual "native bang member", CLng(2), result.Count
+    With customers
+        '@pyvba-ignore-next-line: undeclared-variable -- Age is a bang identifier.
+        Set result = .Where(!Age.AtLeast(CLng(40))).ToList
+    End With
+    AssertEqual "With bang member", CLng(2), result.Count
 
     Set numbers = ROneCOne.Range(CLng(1), CLng(4))
     Set value = numbers.Element
@@ -192,7 +278,7 @@ Private Sub TestSyntaxSugar()
     AssertEqual "sugar primitive last", CLng(4), result.Last
 
     On Error Resume Next
-    Set invalid = customers.Where(customer("Missing").EqualTo(1)).ToList
+    Set invalid = customers.Where("Missing").EqualTo(1).ToList
     actualError = Err.Number
     Err.Clear
     On Error GoTo 0
@@ -232,6 +318,10 @@ Private Sub TestUserClassLinq()
 
     AssertEqual "class LINQ count", CLng(1), names.Count
     AssertEqual "class LINQ projection", "Grace", names.Item(0)
+    Set names = customers.WhereMethod(fixture, "CustomerAtLeast40") _
+        .Map("CustomerName", vbString) _
+        .ToList
+    AssertEqual "inferred object-method predicate", "Grace", names.Item(0)
 End Sub
 
 Public Sub RunROneCOneCollectionBenchmark()

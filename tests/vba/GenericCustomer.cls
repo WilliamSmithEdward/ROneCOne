@@ -14,6 +14,8 @@ Option Explicit
 
 Private mName As String
 Private mAge As Long
+Private mActive As Boolean
+Private mCity As String
 Private mManager As GenericCustomer
 
 Public Property Get CustomerName() As String
@@ -30,6 +32,22 @@ End Property
 
 Public Property Let Age(ByVal value As Long)
     mAge = value
+End Property
+
+Public Property Get Active() As Boolean
+    Active = mActive
+End Property
+
+Public Property Let Active(ByVal value As Boolean)
+    mActive = value
+End Property
+
+Public Property Get City() As String
+    City = mCity
+End Property
+
+Public Property Let City(ByVal value As String)
+    mCity = value
 End Property
 
 Public Property Get Manager() As GenericCustomer

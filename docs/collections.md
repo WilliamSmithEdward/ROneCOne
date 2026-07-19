@@ -86,10 +86,10 @@ Debug.Print filtered.Count   ' 2
 Debug.Print filtered.Last    ' 30
 ```
 
-The sequence operators are `Where`, `SelectItems`, `Take`, `Skip`, `Distinct`, `OrderBy`,
-`OrderByDescending`, `Append`, `Prepend`, and `Reverse`. `Range` and `Repeat` create typed source
-sequences. Immediate terminals are `Exists`, `AnyItem`, `All`, `First`, `Last`, `Sum`, `Average`,
-`Min`, `Max`, `Count`, `ForEach`, `JoinText`, `ToList`, and `ToArray`.
+The sequence operators are `Where`, `SelectItems`, `Take`, `Skip`, `Distinct`, `DistinctBy`,
+`OrderBy`, `OrderByDescending`, `Append`, `Prepend`, and `Reverse`. `Range` and `Repeat` create typed
+source sequences. Immediate terminals are `Exists`, `AnyItem`, `All`, `First`, `Last`, `Sum`,
+`Average`, `Min`, `Max`, `MinBy`, `MaxBy`, `Count`, `ForEach`, `JoinText`, `ToList`, and `ToArray`.
 
 ```vba
 Set result = ROneCOne.Range(CLng(1), CLng(6)) _
@@ -112,7 +112,12 @@ contract. The canonical members remain public for explicit construction, teachin
 |---|---|---|
 | `Set element = values.Element` | `Set element = ROneCOne.Parameter(vbLong)` | Parameter typed from the sequence |
 | `values.Where(x.AtLeast(10))` | `values.Where(ROneCOne.Lambda(x.GreaterThanOrEqual(10), x))` | Inferred unary predicate |
+| `values.Where("Age").AtLeast(40)` | `values.Where(values.Condition("Age").AtLeast(40))` | Contextual member filter |
+| `values!Age` | `values.Condition("Age")` | Native VBA default-member expression |
 | `values.Map(x.Multiply(2), vbLong)` | `values.SelectItems(ROneCOne.Lambda(x.Multiply(2), x), vbLong)` | Typed projection |
+| `values.Map("Name", vbString)` | `values.Map(values.Condition("Name"), vbString)` | Member-name projection |
+| `values.OrderBy("Age")` | `values.OrderBy(values.Condition("Age"))` | Member-name key selector |
+| `values.WhereMethod("Queries.IsActive")` | `values.Where(values.Predicate("Queries.IsActive"))` | Inferred `Func<T, Boolean>` |
 | `values.Exists(predicate)` | `values.AnyItem(predicate)` | Predicate-based existence test |
 | `values.Exists` | `values.AnyItem` | Tests whether the sequence has an element |
 | `values.ForEach(action)` | explicit `For Each` plus `action.Execute` | Typed side effects |
@@ -121,31 +126,78 @@ contract. The canonical members remain public for explicit construction, teachin
 | `values.SortedDescending` | `values.OrderByDescending(values.Element)` | Identity-key descending order |
 
 `Where`, `Map`, ordering, quantifiers, element terminals, and selector-based numeric terminals all
-accept either any universal unary `Func` or an expression containing exactly one parameter. That
-includes object, callable-object, workbook-procedure, native, composition, and multicast delegates.
-The runtime infers expression parameters once when the query is built, not once per element.
+accept either any universal unary `Func` or an expression containing exactly one parameter. Member
+selectors additionally accept a member-path string. That includes object, callable-object,
+workbook-procedure, native, composition, and multicast delegates. The runtime infers expression
+parameters once when the query is built, not once per element.
+
+## Contextual conditions
+
+`Where("Member")` starts a deferred condition builder. The comparison completes the query, so
+there is no adapter class, explicit element variable, lambda wrapper, or predicate string language.
+
+```vba
+Set adults = customers.Where("Age").AtLeast(CLng(18))
+Set selected = customers _
+    .Where("Age").Between(CLng(18), CLng(65)) _
+    .Where("City").OneOf("London", "Paris")
+Set matching = customers.Where("Name").StartsWith("Gr")
+```
+
+The fluent condition vocabulary is `EqualTo`, `NotEqualTo`, `LessThan`, `AtMost`, `GreaterThan`,
+`AtLeast`, inclusive or exclusive `Between`, `OneOf`, `StartsWith`, `EndsWith`, `Contains`,
+`ContainsText`, `MatchesPattern`, `IsNothing`, `IsNotNothing`, `IsNullOrEmpty`, `IsTrue`, and
+`IsFalse`. String comparisons default to binary comparison and accept `vbTextCompare` explicitly.
+Repeated `Where` calls are logical AND and retain deferred execution.
+
+Use `Condition` when a predicate combines multiple members:
+
+```vba
+Set predicate = customers.Condition("Age").AtLeast(CLng(40)) _
+    .AndAlso(customers.Condition("City").EqualTo("London"))
+Set selected = customers.Where(predicate)
+```
+
+`Element` is stable for each sequence, so separately created `Condition` expressions share one
+typed parameter and compose as a unary predicate. Dotted paths traverse object-valued intermediate
+members. Guard a nullable reference before consuming a deeper path, matching C# null-safety:
+
+```vba
+Set selected = customers _
+    .Where("Manager").IsNotNothing _
+    .Where("Manager.Age").AtLeast(CLng(40))
+```
+
+`Predicate` and `WhereMethod` infer the input descriptor directly from `List<T>`:
+
+```vba
+Set isExperienced = customers.Predicate("Queries.IsExperienced")
+Debug.Print isExperienced.Signature  ' Func<Customer, Boolean>
+Set selected = customers.WhereMethod("Queries.IsExperienced")
+```
+
+An object method uses `customers.Predicate(target, "IsExperienced")` or
+`customers.WhereMethod(target, "IsExperienced")`. Existing typed delegates remain valid.
 
 ## LINQ over user-defined classes
 
-The collections demo includes a normal `DemoCustomer` class with `CustomerName`, `Age`, and `City`
-properties. No predicate adapter class is required. `Element` creates the typed customer
-parameter, and its default member turns `customer("Age")` into a scalar property-access expression.
+The collections demo includes a normal `DemoCustomer` class with `CustomerName`, `Age`, `City`, and
+`Manager` properties. No predicate adapter class is required. Contextual member names are the
+primary readable surface.
 
 ```vba
-Dim customer As ROneCOne
 Dim customers As ROneCOne
 Dim experienced As ROneCOne
 Dim names As ROneCOne
 Dim oldest As DemoCustomer
 Set customers = ROneCOne.ListFrom(ada, grace, katherine)
-Set customer = customers.Element
 
-Set experienced = customers.Where(customer("Age").AtLeast(CLng(40)))
+Set experienced = customers.Where("Age").AtLeast(CLng(40))
 Set names = experienced _
-    .Map(customer("CustomerName"), vbString) _
+    .Map("CustomerName", vbString) _
     .Sorted _
     .ToList
-Set oldest = customers.OrderByDescending(customer("Age")).First
+Set oldest = customers.OrderByDescending("Age").First
 
 Debug.Print names.GenericTypeName  ' List<String>
 Debug.Print oldest.CustomerName
@@ -165,17 +217,28 @@ Set predicate = ROneCOne.Lambda( _
 Set experienced = customers.Where(predicate)
 ```
 
-VBA has no `nameof` operator or first-class property reference, so the member name is the one
-irreducible string boundary. Scalar properties use `customer("Age")` or
-`customer.Member("Age")`. For an object-valued property, use
-`customer.Member("Manager", True)` so ROneCOne preserves object assignment semantics. A missing,
-invalid, or scalar-on-non-object member access raises the deterministic
+VBA has no `nameof` operator or first-class property reference, so ordinary contextual selectors
+use a member name. VBA's existing bang operator provides an optional identifier-shaped form because
+ROneCOne's default member maps a sequence member to `Condition`:
+
+```vba
+Set experienced = customers.Where(customers!Age.AtLeast(CLng(40)))
+
+With customers
+    Set experienced = .Where(!Age.AtLeast(CLng(40)))
+End With
+```
+
+This is native VBA syntax, not source rewriting. The string form remains the primary surface
+because it is clearer to developers outside Access-style VBA and naturally supports dotted paths.
+The canonical scalar forms are `customer("Age")` and `customer.Member("Age")`. For an object-valued
+property, use `customer.Member("Manager", True)`. Missing or invalid access raises the deterministic
 `ROneCOne.MemberAccessError`.
 
-The workbook proves six object-oriented cases: exact `List<DemoCustomer>` typing, deferred
-filtering after source mutation, projection to `List<String>`, ordering while preserving the
-customer type, `Exists`/`All` predicates, and an average over a projected `List<Long>`. The customer
-model is demo application code; the deployed runtime remains the single `ROneCOne.cls` file.
+The workbook proves eleven object-oriented cases, including deferred contextual filtering,
+member-name projection and ordering, composed predicates, inferred procedure predicates, string
+conditions, key distinctness, bang syntax, and safe object paths. The customer model is demo
+application code; the deployed runtime remains the single `ROneCOne.cls` file.
 
 ## VBA-constrained API names
 

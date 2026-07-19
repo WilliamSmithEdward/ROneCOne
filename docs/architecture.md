@@ -70,6 +70,18 @@ materializes the current source, which preserves deferred behavior after list mu
 a mutation version; queries propagate that version so nested enumerators share stable backing while
 unchanged and refresh after mutation.
 
+Each sequence lazily owns one stable typed element parameter. `Condition(memberPath)` builds an
+expression from that parameter, while `Where(memberName)` returns a short-lived contextual builder
+whose terminal comparison creates the ordinary immutable `Where` query node. Member-name selectors
+are normalized into the same unary lambda representation as canonical expressions, so concise and
+explicit forms share evaluation, validation, and performance behavior.
+
+The sequence default member distinguishes numeric indices from String member names. Numeric values
+retain zero-based indexing; names return `Condition(name)`. This makes VBA's native `sequence!Age`
+syntax an expression selector without code generation, parsing a new language, or accessing VBIDE.
+`Predicate` uses the sequence's existing `T` descriptor to complete dynamic procedure and object
+method delegates as `Func<T, Boolean>`.
+
 See [`collections.md`](collections.md) for the public surface and examples.
 
 ## Event slice
@@ -103,6 +115,7 @@ contexts are keyed to one workbook, and process-global mutable state never coupl
 | Available | Universal delegates, multicast, native calls, and expression lambdas |
 | Available | Runtime-generic `List<T>` and foundational query operators |
 | Available | Inferred `Func` and LINQ syntax sugar |
+| Available | Contextual member LINQ, bang expressions, and key operators |
 | Available | Typed events over universal Actions |
 | Available | Structured `Try/Catch/Finally` over callable blocks |
 | Scheduled | Tasks, async/await, cancellation, progress, and captured exceptions |

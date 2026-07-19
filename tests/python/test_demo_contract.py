@@ -75,11 +75,14 @@ class DemoContractTests(unittest.TestCase):
         source = COLLECTIONS_DEMO.read_text(encoding="utf-8")
 
         required_syntax = (
-            "Set customer = customers.Element",
-            'customers.Where(customer("Age").AtLeast(CLng(40)))',
-            '.Map(customer("CustomerName"), vbString)',
+            'customers.Where("Age").AtLeast(CLng(40))',
+            '.Map("CustomerName", vbString)',
             ".Sorted",
-            'customers.Exists(customer("City").EqualTo("London"))',
+            'customers.Condition("City").EqualTo("London")',
+            '.OrderByDescending("Age")',
+            '.Where("CustomerName").StartsWith("G")',
+            '.DistinctBy("City")',
+            '"CollectionsDemoUsage.IsExperiencedCustomer").ToList',
         )
         for syntax in required_syntax:
             self.assertIn(syntax, source)
@@ -121,9 +124,10 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("Object ordering", source)
         self.assertIn("Quantifiers", source)
         self.assertIn("Aggregate projection", source)
-        self.assertIn("customers.Element", source)
-        self.assertIn('.Where(customer("Age").AtLeast(40))', source)
-        self.assertIn('.Map(customer("CustomerName"), vbString)', source)
+        self.assertIn('.Where("Age").AtLeast(40)', source)
+        self.assertIn('.Map("CustomerName", vbString)', source)
+        self.assertIn('.OrderByDescending("Age")', source)
+        self.assertIn('.DistinctBy("City")', source)
 
     def test_collections_packager_removes_obsolete_query_helper(self) -> None:
         source = PACKAGER.read_text(encoding="utf-8")

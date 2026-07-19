@@ -147,6 +147,7 @@ class SourceContractTests(unittest.TestCase):
             "Take",
             "Skip",
             "Distinct",
+            "DistinctBy",
             "OrderBy",
             "OrderByDescending",
             "Append",
@@ -175,6 +176,22 @@ class SourceContractTests(unittest.TestCase):
             "SortedDescending",
             "AtLeast",
             "AtMost",
+            "Between",
+            "OneOf",
+            "StartsWith",
+            "EndsWith",
+            "ContainsText",
+            "IsNothing",
+            "IsNotNothing",
+            "IsNullOrEmpty",
+            "MatchesPattern",
+            "IsTrue",
+            "IsFalse",
+            "Condition",
+            "Predicate",
+            "WhereMethod",
+            "MinBy",
+            "MaxBy",
             "MemberAccessError",
         )
         for member in required_members:
@@ -183,6 +200,21 @@ class SourceContractTests(unittest.TestCase):
                 rf"\[?{member}\]?(?![A-Za-z0-9_])"
             )
             self.assertRegex(self.source, re.compile(pattern, re.IGNORECASE), member)
+
+    def test_contextual_linq_contract_accepts_member_names(self) -> None:
+        contextual_signatures = (
+            r"Public Function Where\(ByVal predicateOrMember As Variant\)",
+            r"Public Function SelectItems\(\s*_\s*\n\s*ByVal selector As Variant",
+            r"Public Function Map\(\s*_\s*\n\s*ByVal selector As Variant",
+            r"Public Function OrderBy\(ByVal keySelector As Variant\)",
+            r"Public Function OrderByDescending\(ByVal keySelector As Variant\)",
+        )
+        for signature in contextual_signatures:
+            self.assertRegex(self.source, re.compile(signature, re.IGNORECASE))
+
+    def test_sequence_default_member_can_select_contextual_members(self) -> None:
+        self.assertIn("Set result = Condition(", self.source)
+        self.assertIn("Attribute Run.VB_UserMemId = 0", self.source)
 
     def test_collections_expose_vba_foreach_enumeration(self) -> None:
         self.assertRegex(
