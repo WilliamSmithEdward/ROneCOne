@@ -12,6 +12,17 @@ Attribute VB_TemplateDerived = False
 Attribute VB_Customizable = False
 Option Explicit
 
+Private Declare PtrSafe Function DispCallFunc Lib "oleaut32.dll" ( _
+    ByVal instancePointer As LongPtr, _
+    ByVal functionPointer As LongPtr, _
+    ByVal callingConvention As Long, _
+    ByVal returnType As Integer, _
+    ByVal argumentCount As Long, _
+    ByVal argumentTypesPointer As LongPtr, _
+    ByVal argumentPointersPointer As LongPtr, _
+    ByVal resultPointer As LongPtr _
+) As Long
+
 ' MIT License
 '
 ' Copyright (c) 2026 William Smith
@@ -43,6 +54,13 @@ Private Const ROLE_METHOD As Long = 5
 Private Const ROLE_COMPOSITION As Long = 6
 Private Const ROLE_LIST As Long = 7
 Private Const ROLE_QUERY As Long = 8
+Private Const ROLE_PROCEDURE As Long = 9
+Private Const ROLE_MULTICAST As Long = 10
+Private Const ROLE_NATIVE As Long = 11
+Private Const ROLE_REFERENCE As Long = 12
+
+Private Const CALLCONV_STDCALL As Long = 4
+Private Const HRESULT_SUCCESS As Long = 0
 
 Private Const OP_ADD As Long = 1
 Private Const OP_SUBTRACT As Long = 2
@@ -81,6 +99,8 @@ Private Const ERROR_TYPE_MISMATCH As Long = vbObjectError + 4103
 Private Const ERROR_UNBOUND_PARAMETER As Long = vbObjectError + 4104
 Private Const ERROR_METHOD_INVOCATION As Long = vbObjectError + 4105
 Private Const ERROR_MEMBER_ACCESS As Long = vbObjectError + 4106
+Private Const ERROR_NATIVE_INVOCATION As Long = vbObjectError + 4107
+Private Const ERROR_BYREF_INVOCATION As Long = vbObjectError + 4108
 
 Private mRole As Long
 Private mOperator As Long
@@ -95,11 +115,19 @@ Private mHasObjectValue As Boolean
 Private mExpectedType As VbVarType
 Private mExpectedObjectType As String
 Private mParameters As Collection
+Private mIsByRef As Boolean
 
 Private mTarget As Object
 Private mMethodName As String
 Private mMethodArity As Long
-Private mMethodReturnsObject As Boolean
+Private mIsActionDelegate As Boolean
+Private mHasParameterSignature As Boolean
+Private mHasReturnSignature As Boolean
+Private mReturnType As VbVarType
+Private mReturnObjectType As String
+Private mInvocationList As Collection
+Private mNativeAddress As LongPtr
+Private mReferenceAddress As LongPtr
 
 Private mItems As Collection
 Private mEnumerationValues As Collection
@@ -295,31 +323,186 @@ Attribute AsFunc.VB_Description = "Infers parameters and turns this expression i
     Set AsFunc = ROneCOne.Lambda(Me)
 End Function
 
-Public Function FromMethod( _
-    ByVal target As Object, _
-    ByVal methodName As String, _
-    Optional ByVal parameterCount As Long = -1, _
-    Optional ByVal returnsObject As Boolean = False _
+Public Function Func( _
+    ByVal callable As Variant, _
+    Optional ByVal memberName As String = vbNullString _
 ) As ROneCOne
-Attribute FromMethod.VB_Description = "Creates a delegate for an object method."
+Attribute Func.VB_Description = "Creates a Func from an expression, object, or procedure."
+    Set Func = CreateCallableDelegate(callable, memberName, False)
+End Function
+
+Public Function Action( _
+    ByVal callable As Variant, _
+    Optional ByVal memberName As String = vbNullString _
+) As ROneCOne
+Attribute Action.VB_Description = "Creates an Action from an expression, object, or procedure."
+    Set Action = CreateCallableDelegate(callable, memberName, True)
+End Function
+
+Public Function Native(ByVal procedureAddress As LongPtr) As ROneCOne
+Attribute Native.VB_Description = "Creates a signature-bound native function delegate."
     Dim delegateValue As ROneCOne
 
-    If target Is Nothing Then
-        RaiseContractError ERROR_INVALID_ARGUMENT, "FromMethod", _
-            "The method target cannot be Nothing."
+    If procedureAddress = 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "Native", _
+            "The procedure address cannot be zero."
     End If
-    If Len(Trim$(methodName)) = 0 Then
-        RaiseContractError ERROR_INVALID_ARGUMENT, "FromMethod", _
-            "The method name cannot be empty."
+    Set delegateValue = New ROneCOne
+    delegateValue.ConfigureNative procedureAddress, False
+    Set Native = delegateValue
+End Function
+
+Public Function NativeAction(ByVal procedureAddress As LongPtr) As ROneCOne
+Attribute NativeAction.VB_Description = "Creates a signature-bound native Action delegate."
+    Dim delegateValue As ROneCOne
+
+    If procedureAddress = 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "NativeAction", _
+            "The procedure address cannot be zero."
     End If
-    If parameterCount < -1 Or parameterCount > 8 Then
-        RaiseContractError ERROR_INVALID_ARGUMENT, "FromMethod", _
-            "The parameter count must be -1 or between 0 and 8."
+    Set delegateValue = New ROneCOne
+    delegateValue.ConfigureNative procedureAddress, True
+    Set NativeAction = delegateValue
+End Function
+
+Public Function RefOf(ByVal typeToken As Variant) As ROneCOne
+Attribute RefOf.VB_Description = "Marks a numeric delegate parameter as ByRef."
+    Dim descriptor As ROneCOne
+    Dim objectType As String
+    Dim valueType As VbVarType
+
+    ResolveTypeDescriptor typeToken, valueType, objectType, "RefOf"
+    ValidateReferenceType valueType, "RefOf"
+    Set descriptor = New ROneCOne
+    descriptor.ConfigureParameter valueType, objectType, True
+    Set RefOf = descriptor
+End Function
+
+Public Function RefLong(ByRef value As Long) As ROneCOne
+Attribute RefLong.VB_Description = "Captures a Long variable for true ByRef invocation."
+    Set RefLong = CreateReference(VarPtr(value), vbLong)
+End Function
+
+Public Function RefByte(ByRef value As Byte) As ROneCOne
+Attribute RefByte.VB_Description = "Captures a Byte variable for true ByRef invocation."
+    Set RefByte = CreateReference(VarPtr(value), vbByte)
+End Function
+
+Public Function RefInteger(ByRef value As Integer) As ROneCOne
+Attribute RefInteger.VB_Description = "Captures an Integer for true ByRef invocation."
+    Set RefInteger = CreateReference(VarPtr(value), vbInteger)
+End Function
+
+Public Function RefLongLong(ByRef value As LongLong) As ROneCOne
+Attribute RefLongLong.VB_Description = "Captures a LongLong for true ByRef invocation."
+    Set RefLongLong = CreateReference(VarPtr(value), vbLongLong)
+End Function
+
+Public Function RefSingle(ByRef value As Single) As ROneCOne
+Attribute RefSingle.VB_Description = "Captures a Single variable for true ByRef invocation."
+    Set RefSingle = CreateReference(VarPtr(value), vbSingle)
+End Function
+
+Public Function RefDouble(ByRef value As Double) As ROneCOne
+Attribute RefDouble.VB_Description = "Captures a Double variable for true ByRef invocation."
+    Set RefDouble = CreateReference(VarPtr(value), vbDouble)
+End Function
+
+Public Function RefCurrency(ByRef value As Currency) As ROneCOne
+Attribute RefCurrency.VB_Description = "Captures a Currency value for true ByRef invocation."
+    Set RefCurrency = CreateReference(VarPtr(value), vbCurrency)
+End Function
+
+Public Function RefDate(ByRef value As Date) As ROneCOne
+Attribute RefDate.VB_Description = "Captures a Date variable for true ByRef invocation."
+    Set RefDate = CreateReference(VarPtr(value), vbDate)
+End Function
+
+Public Function RefBoolean(ByRef value As Boolean) As ROneCOne
+Attribute RefBoolean.VB_Description = "Captures a Boolean for true ByRef invocation."
+    Set RefBoolean = CreateReference(VarPtr(value), vbBoolean)
+End Function
+
+Public Function Takes(ParamArray typeTokens() As Variant) As ROneCOne
+Attribute Takes.VB_Description = "Returns a delegate with an immutable parameter signature."
+    Dim clone As ROneCOne
+    Dim descriptor As ROneCOne
+    Dim descriptors As Collection
+    Dim rawToken As Variant
+
+    RequireDelegate Me, "Takes"
+    Set descriptors = New Collection
+    For Each rawToken In typeTokens
+        Set descriptor = CreateParameterDescriptor(rawToken, "Takes")
+        descriptors.Add descriptor
+    Next rawToken
+
+    Set clone = CloneDelegate(Me)
+    clone.ConfigureParameterSignature descriptors
+    Set Takes = clone
+End Function
+
+Public Function Returns(ByVal typeToken As Variant) As ROneCOne
+Attribute Returns.VB_Description = "Returns a Func with an immutable result type."
+    Dim clone As ROneCOne
+    Dim objectType As String
+    Dim valueType As VbVarType
+
+    RequireDelegate Me, "Returns"
+    If mIsActionDelegate Then
+        RaiseContractError ERROR_INVALID_OPERATION, "Returns", _
+            "An Action has no result; create a Func for a return value."
+    End If
+    ResolveTypeDescriptor typeToken, valueType, objectType, "Returns"
+    Set clone = CloneDelegate(Me)
+    clone.ConfigureReturnSignature valueType, objectType
+    Set Returns = clone
+End Function
+
+Public Function DynamicInvoke(ByVal arguments As Variant) As Variant
+Attribute DynamicInvoke.VB_Description = "Invokes from an array or sequence of arguments."
+    Dim argumentValues As Collection
+    Dim result As ROneCOne
+
+    RequireDelegate Me, "DynamicInvoke"
+    Set argumentValues = BuildDynamicArguments(arguments)
+    Set result = InvokeValue(argumentValues)
+    AssignPublicResult DynamicInvoke, result
+End Function
+
+Public Function Combine(ParamArray delegates() As Variant) As ROneCOne
+Attribute Combine.VB_Description = "Returns an immutable multicast delegate."
+    Dim combined As ROneCOne
+    Dim invocationList As Collection
+    Dim rawDelegate As Variant
+    Dim delegateValue As ROneCOne
+
+    Set invocationList = New Collection
+    If IsDelegateRole(mRole) Then
+        AppendInvocationList invocationList, Me
+    ElseIf mRole <> ROLE_EMPTY Then
+        RaiseContractError ERROR_INVALID_OPERATION, "Combine", _
+            "Combine must be called on a delegate or the ROneCOne factory."
     End If
 
-    Set delegateValue = New ROneCOne
-    delegateValue.ConfigureMethod target, Trim$(methodName), parameterCount, returnsObject
-    Set FromMethod = delegateValue
+    For Each rawDelegate In delegates
+        Set delegateValue = RequireROneCOne(rawDelegate, "Combine")
+        RequireDelegate delegateValue, "Combine"
+        AppendInvocationList invocationList, delegateValue
+    Next rawDelegate
+    If invocationList.Count = 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "Combine", _
+            "At least one delegate is required."
+    End If
+    ValidateInvocationCompatibility invocationList
+
+    If invocationList.Count = 1 Then
+        Set Combine = invocationList.Item(1)
+        Exit Function
+    End If
+    Set combined = New ROneCOne
+    combined.ConfigureMulticast invocationList
+    Set Combine = combined
 End Function
 
 Public Function Run(ParamArray arguments() As Variant) As Variant
@@ -327,21 +510,21 @@ Attribute Run.VB_Description = "Invokes, indexes, or selects a member from an ex
 Attribute Run.VB_UserMemId = 0
     Dim argumentValues As Collection
     Dim rawArgument As Variant
-    Dim argumentObject As Object
-    Dim argumentValue As ROneCOne
-    Dim result As ROneCOne
 
     Set argumentValues = New Collection
     For Each rawArgument In arguments
-        Set argumentValue = New ROneCOne
-        If IsObject(rawArgument) Then
-            Set argumentObject = rawArgument
-            argumentValue.ConfigureObjectValue argumentObject
-        Else
-            argumentValue.ConfigureScalarValue rawArgument
-        End If
-        argumentValues.Add argumentValue
+        argumentValues.Add WrapInvocationArgument(rawArgument)
     Next rawArgument
+
+    AssignInvocationResult Run, argumentValues
+End Function
+
+Private Sub AssignInvocationResult( _
+    ByRef destination As Variant, _
+    ByVal argumentValues As Collection _
+)
+    Dim argumentValue As ROneCOne
+    Dim result As ROneCOne
 
     If mRole = ROLE_VALUE Or mRole = ROLE_PARAMETER Or _
         mRole = ROLE_EXPRESSION Then
@@ -350,8 +533,8 @@ Attribute Run.VB_UserMemId = 0
             If Not argumentValue.InternalHasObjectValue Then
                 If VarType(argumentValue.InternalScalarValue) = vbString Then
                     Set result = Member(CStr(argumentValue.InternalScalarValue))
-                    Set Run = result
-                    Exit Function
+                    Set destination = result
+                    Exit Sub
                 End If
             End If
         End If
@@ -369,21 +552,16 @@ Attribute Run.VB_UserMemId = 0
         End If
         Set result = WrappedItem(CLng(argumentValue.InternalScalarValue))
         If result.InternalHasObjectValue Then
-            Set Run = result.InternalObjectValue
+            Set destination = result.InternalObjectValue
         Else
-            Run = result.InternalScalarValue
+            destination = result.InternalScalarValue
         End If
-        Exit Function
+        Exit Sub
     End If
 
     Set result = InvokeValue(argumentValues)
-
-    If result.InternalHasObjectValue Then
-        Set Run = result.InternalObjectValue
-    Else
-        Run = result.InternalScalarValue
-    End If
-End Function
+    AssignPublicResult destination, result
+End Sub
 
 Public Function PipeTo(ByVal nextDelegate As ROneCOne) As ROneCOne
 Attribute PipeTo.VB_Description = "Pipes this result into a one-parameter delegate."
@@ -632,18 +810,43 @@ Attribute Insert.VB_Description = "Inserts a typed item at a zero-based list ind
     mVersion = mVersion + 1
 End Sub
 
-Public Function Remove(ByVal value As Variant) As Boolean
-Attribute Remove.VB_Description = "Removes the first matching typed list item."
-    Dim index As Long
+Public Function Remove( _
+    ByVal value As Variant, _
+    Optional ByVal removal As Variant _
+) As Variant
+Attribute Remove.VB_Description = "Removes a list item or delegate invocation."
+    Dim delegateValue As ROneCOne
+    Dim result As ROneCOne
 
-    RequireList Me, "Remove"
-    index = IndexOf(value)
-    If index >= 0 Then
-        mItems.Remove index + 1
-        mEnumerationValues.Remove index + 1
-        mVersion = mVersion + 1
-        Remove = True
+    If mRole = ROLE_LIST Then
+        If Not IsMissing(removal) Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "Remove", _
+                "List removal accepts exactly one value."
+        End If
+        Remove = RemoveListItem(value)
+        Exit Function
     End If
+
+    If IsDelegateRole(mRole) Then
+        If Not IsMissing(removal) Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "Remove", _
+                "Instance delegate removal accepts one delegate."
+        End If
+        Set delegateValue = RequireROneCOne(value, "Remove")
+        Set result = RemoveDelegateValue(Me, delegateValue)
+    ElseIf mRole = ROLE_EMPTY Then
+        If IsMissing(removal) Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "Remove", _
+                "Static delegate removal requires source and value delegates."
+        End If
+        Set delegateValue = RequireROneCOne(removal, "Remove")
+        Set result = RemoveDelegateValue(RequireROneCOne(value, "Remove"), delegateValue)
+    Else
+        RaiseContractError ERROR_INVALID_OPERATION, "Remove", _
+            "Remove requires a list or delegate."
+    End If
+
+    Set Remove = result
 End Function
 
 Public Sub RemoveAt(ByVal index As Long)
@@ -983,14 +1186,67 @@ Attribute Arity.VB_Description = "Gets the number of delegate parameters, or -1 
     Select Case mRole
         Case ROLE_LAMBDA
             Arity = mParameters.Count
-        Case ROLE_METHOD
+        Case ROLE_METHOD, ROLE_PROCEDURE, ROLE_NATIVE
             Arity = mMethodArity
         Case ROLE_COMPOSITION
             Arity = mLeft.Arity
+        Case ROLE_MULTICAST
+            Arity = mInvocationList.Item(1).Arity
         Case Else
             Arity = -1
     End Select
 End Property
+
+Public Property Get InvocationCount() As Long
+Attribute InvocationCount.VB_Description = "Gets the immutable delegate invocation count."
+    RequireDelegate Me, "InvocationCount"
+    If mRole = ROLE_MULTICAST Then
+        InvocationCount = mInvocationList.Count
+    Else
+        InvocationCount = 1
+    End If
+End Property
+
+Public Property Get Target() As Object
+Attribute Target.VB_Description = "Gets the bound object target, or Nothing."
+    RequireDelegate Me, "Target"
+    Set Target = mTarget
+End Property
+
+Public Property Get MethodName() As String
+Attribute MethodName.VB_Description = "Gets the bound method or workbook procedure name."
+    RequireDelegate Me, "MethodName"
+    MethodName = mMethodName
+End Property
+
+Public Property Get IsAction() As Boolean
+Attribute IsAction.VB_Description = "Gets whether the delegate has no result value."
+    RequireDelegate Me, "IsAction"
+    IsAction = mIsActionDelegate
+End Property
+
+Public Property Get Signature() As String
+Attribute Signature.VB_Description = "Gets the C#-style delegate signature description."
+    RequireDelegate Me, "Signature"
+    Signature = BuildSignature(Me)
+End Property
+
+Public Function GetInvocationList() As ROneCOne
+Attribute GetInvocationList.VB_Description = "Returns a typed copy of the invocation list."
+    Dim delegateValue As ROneCOne
+    Dim result As ROneCOne
+
+    RequireDelegate Me, "GetInvocationList"
+    Set result = ROneCOne.ListOf(Me)
+    If mRole = ROLE_MULTICAST Then
+        For Each delegateValue In mInvocationList
+            result.Add delegateValue
+        Next delegateValue
+    Else
+        result.Add Me
+    End If
+    Set GetInvocationList = result
+End Function
 
 Public Property Get TypeMismatchError() As Long
 Attribute TypeMismatchError.VB_Description = "Gets the ROneCOne type-mismatch error number."
@@ -1005,6 +1261,21 @@ End Property
 Public Property Get MemberAccessError() As Long
 Attribute MemberAccessError.VB_Description = "Gets the object-member access error number."
     MemberAccessError = ERROR_MEMBER_ACCESS
+End Property
+
+Public Property Get NativeInvocationError() As Long
+Attribute NativeInvocationError.VB_Description = "Gets the native invocation error number."
+    NativeInvocationError = ERROR_NATIVE_INVOCATION
+End Property
+
+Public Property Get ByRefInvocationError() As Long
+Attribute ByRefInvocationError.VB_Description = "Gets the unsupported ByRef boundary error."
+    ByRefInvocationError = ERROR_BYREF_INVOCATION
+End Property
+
+Public Property Get InvalidOperationError() As Long
+Attribute InvalidOperationError.VB_Description = "Gets the invalid delegate operation error."
+    InvalidOperationError = ERROR_INVALID_OPERATION
 End Property
 
 Friend Property Get InternalRole() As Long
@@ -1052,13 +1323,85 @@ Attribute InternalExpectedObjectType.VB_MemberFlags = "40"
     InternalExpectedObjectType = mExpectedObjectType
 End Property
 
+Friend Property Get InternalIsByRef() As Boolean
+Attribute InternalIsByRef.VB_MemberFlags = "40"
+    InternalIsByRef = mIsByRef
+End Property
+
+Friend Property Get InternalNext() As ROneCOne
+Attribute InternalNext.VB_MemberFlags = "40"
+    Set InternalNext = mNext
+End Property
+
+Friend Property Get InternalParameters() As Collection
+Attribute InternalParameters.VB_MemberFlags = "40"
+    Set InternalParameters = mParameters
+End Property
+
+Friend Property Get InternalTarget() As Object
+Attribute InternalTarget.VB_MemberFlags = "40"
+    Set InternalTarget = mTarget
+End Property
+
+Friend Property Get InternalMethodName() As String
+Attribute InternalMethodName.VB_MemberFlags = "40"
+    InternalMethodName = mMethodName
+End Property
+
+Friend Property Get InternalMethodArity() As Long
+Attribute InternalMethodArity.VB_MemberFlags = "40"
+    InternalMethodArity = mMethodArity
+End Property
+
+Friend Property Get InternalIsActionDelegate() As Boolean
+Attribute InternalIsActionDelegate.VB_MemberFlags = "40"
+    InternalIsActionDelegate = mIsActionDelegate
+End Property
+
+Friend Property Get InternalHasParameterSignature() As Boolean
+Attribute InternalHasParameterSignature.VB_MemberFlags = "40"
+    InternalHasParameterSignature = mHasParameterSignature
+End Property
+
+Friend Property Get InternalHasReturnSignature() As Boolean
+Attribute InternalHasReturnSignature.VB_MemberFlags = "40"
+    InternalHasReturnSignature = mHasReturnSignature
+End Property
+
+Friend Property Get InternalReturnType() As VbVarType
+Attribute InternalReturnType.VB_MemberFlags = "40"
+    InternalReturnType = mReturnType
+End Property
+
+Friend Property Get InternalReturnObjectType() As String
+Attribute InternalReturnObjectType.VB_MemberFlags = "40"
+    InternalReturnObjectType = mReturnObjectType
+End Property
+
+Friend Property Get InternalInvocationList() As Collection
+Attribute InternalInvocationList.VB_MemberFlags = "40"
+    Set InternalInvocationList = mInvocationList
+End Property
+
+Friend Property Get InternalNativeAddress() As LongPtr
+Attribute InternalNativeAddress.VB_MemberFlags = "40"
+    InternalNativeAddress = mNativeAddress
+End Property
+
+Friend Property Get InternalReferenceAddress() As LongPtr
+Attribute InternalReferenceAddress.VB_MemberFlags = "40"
+    InternalReferenceAddress = mReferenceAddress
+End Property
+
 Friend Sub ConfigureParameter( _
     ByVal expectedType As VbVarType, _
-    ByVal expectedObjectType As String _
+    ByVal expectedObjectType As String, _
+    Optional ByVal isByRef As Boolean = False _
 )
     mRole = ROLE_PARAMETER
     mExpectedType = expectedType
     mExpectedObjectType = expectedObjectType
+    mIsByRef = isByRef
 End Sub
 
 Friend Sub ConfigureScalarValue(ByVal scalarValue As Variant)
@@ -1091,19 +1434,87 @@ Friend Sub ConfigureLambda( _
     mRole = ROLE_LAMBDA
     Set mLeft = body
     Set mParameters = parameters
+    mMethodArity = parameters.Count
+    mHasParameterSignature = True
+    mIsActionDelegate = False
 End Sub
 
 Friend Sub ConfigureMethod( _
     ByVal target As Object, _
     ByVal methodName As String, _
-    ByVal parameterCount As Long, _
-    ByVal returnsObject As Boolean _
+    ByVal isAction As Boolean _
 )
     mRole = ROLE_METHOD
     Set mTarget = target
     mMethodName = methodName
-    mMethodArity = parameterCount
-    mMethodReturnsObject = returnsObject
+    mMethodArity = -1
+    mIsActionDelegate = isAction
+    If isAction Then
+        mHasReturnSignature = True
+        mReturnType = vbEmpty
+    End If
+End Sub
+
+Friend Sub ConfigureProcedure(ByVal procedureName As String, ByVal isAction As Boolean)
+    mRole = ROLE_PROCEDURE
+    mMethodName = procedureName
+    mMethodArity = -1
+    mIsActionDelegate = isAction
+    If isAction Then
+        mHasReturnSignature = True
+        mReturnType = vbEmpty
+    End If
+End Sub
+
+Friend Sub ConfigureNative(ByVal procedureAddress As LongPtr, ByVal isAction As Boolean)
+    mRole = ROLE_NATIVE
+    mNativeAddress = procedureAddress
+    mMethodArity = -1
+    mIsActionDelegate = isAction
+    If isAction Then
+        mHasReturnSignature = True
+        mReturnType = vbEmpty
+    End If
+End Sub
+
+Friend Sub ConfigureReference(ByVal variableAddress As LongPtr, ByVal valueType As VbVarType)
+    mRole = ROLE_REFERENCE
+    mReferenceAddress = variableAddress
+    mExpectedType = valueType
+End Sub
+
+Friend Sub ConfigureParameterSignature(ByVal descriptors As Collection)
+    Set mParameters = descriptors
+    mMethodArity = descriptors.Count
+    mHasParameterSignature = True
+End Sub
+
+Friend Sub ConfigureReturnSignature( _
+    ByVal valueType As VbVarType, _
+    ByVal objectType As String _
+)
+    mReturnType = valueType
+    mReturnObjectType = objectType
+    mHasReturnSignature = True
+    mIsActionDelegate = False
+End Sub
+
+Friend Sub ConfigureActionSignature(ByVal isAction As Boolean)
+    mIsActionDelegate = isAction
+    If isAction Then
+        mHasReturnSignature = True
+        mReturnType = vbEmpty
+        mReturnObjectType = vbNullString
+    End If
+End Sub
+
+Friend Sub ConfigureMulticast(ByVal invocationList As Collection)
+    Dim firstDelegate As ROneCOne
+
+    mRole = ROLE_MULTICAST
+    Set mInvocationList = invocationList
+    Set firstDelegate = invocationList.Item(1)
+    CopySignatureFrom firstDelegate
 End Sub
 
 Friend Sub ConfigureComposition( _
@@ -1113,6 +1524,8 @@ Friend Sub ConfigureComposition( _
     mRole = ROLE_COMPOSITION
     Set mLeft = firstDelegate
     Set mNext = nextDelegate
+    mMethodArity = firstDelegate.Arity
+    mIsActionDelegate = nextDelegate.IsAction
 End Sub
 
 Friend Sub ConfigureList( _
@@ -1208,6 +1621,468 @@ Friend Function MaterializeWrapped() As Collection
                 "Unknown deferred query operator."
     End Select
     Set MaterializeWrapped = values
+End Function
+
+Private Function CreateCallableDelegate( _
+    ByVal callable As Variant, _
+    ByVal memberName As String, _
+    ByVal isAction As Boolean _
+) As ROneCOne
+    Dim candidate As Object
+    Dim created As ROneCOne
+    Dim runtimeValue As ROneCOne
+    Dim resolvedMember As String
+    Dim procedureName As String
+
+    If IsObject(callable) Then
+        Set candidate = callable
+        If candidate Is Nothing Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "Func", _
+                "The callable object cannot be Nothing."
+        End If
+        If TypeOf candidate Is ROneCOne Then
+            Set runtimeValue = candidate
+            If IsDelegateRole(runtimeValue.InternalRole) Then
+                If Not isAction And runtimeValue.InternalIsActionDelegate Then
+                    RaiseContractError ERROR_INVALID_OPERATION, "Func", _
+                        "An Action cannot be converted to a Func without a result."
+                End If
+                Set created = CloneDelegate(runtimeValue)
+                created.ConfigureActionSignature isAction
+                Set CreateCallableDelegate = created
+                Exit Function
+            End If
+            RequireExpression runtimeValue, "Func"
+            Set created = ROneCOne.Lambda(runtimeValue)
+            created.ConfigureActionSignature isAction
+            Set CreateCallableDelegate = created
+            Exit Function
+        End If
+
+        resolvedMember = Trim$(memberName)
+        If Len(resolvedMember) = 0 Then resolvedMember = "Run"
+        Set created = New ROneCOne
+        created.ConfigureMethod candidate, resolvedMember, isAction
+        Set CreateCallableDelegate = created
+        Exit Function
+    End If
+
+    If VarType(callable) <> vbString Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "Func", _
+            "A callable must be an expression, object, or workbook procedure name."
+    End If
+    If Len(Trim$(memberName)) <> 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "Func", _
+            "A workbook procedure does not accept a separate member name."
+    End If
+    procedureName = Trim$(CStr(callable))
+    If Len(procedureName) = 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "Func", _
+            "The workbook procedure name cannot be empty."
+    End If
+    Set created = New ROneCOne
+    created.ConfigureProcedure procedureName, isAction
+    Set CreateCallableDelegate = created
+End Function
+
+Private Function CloneDelegate(ByVal source As ROneCOne) As ROneCOne
+    Dim clone As ROneCOne
+
+    RequireDelegate source, "CloneDelegate"
+    Set clone = New ROneCOne
+    Select Case source.InternalRole
+        Case ROLE_LAMBDA
+            clone.ConfigureLambda source.InternalLeft, source.InternalParameters
+        Case ROLE_METHOD
+            clone.ConfigureMethod source.InternalTarget, source.InternalMethodName, _
+                source.InternalIsActionDelegate
+        Case ROLE_PROCEDURE
+            clone.ConfigureProcedure source.InternalMethodName, _
+                source.InternalIsActionDelegate
+        Case ROLE_NATIVE
+            clone.ConfigureNative source.InternalNativeAddress, _
+                source.InternalIsActionDelegate
+        Case ROLE_COMPOSITION
+            clone.ConfigureComposition source.InternalLeft, source.InternalNext
+        Case ROLE_MULTICAST
+            clone.ConfigureMulticast source.InternalInvocationList
+    End Select
+    If source.InternalHasParameterSignature Then
+        clone.ConfigureParameterSignature source.InternalParameters
+    End If
+    If source.InternalHasReturnSignature Then
+        If source.InternalIsActionDelegate Then
+            clone.ConfigureActionSignature True
+        Else
+            clone.ConfigureReturnSignature source.InternalReturnType, _
+                source.InternalReturnObjectType
+        End If
+    End If
+    Set CloneDelegate = clone
+End Function
+
+Private Sub CopySignatureFrom(ByVal source As ROneCOne)
+    Set mParameters = source.InternalParameters
+    mMethodArity = source.InternalMethodArity
+    mIsActionDelegate = source.InternalIsActionDelegate
+    mHasParameterSignature = source.InternalHasParameterSignature
+    mHasReturnSignature = source.InternalHasReturnSignature
+    mReturnType = source.InternalReturnType
+    mReturnObjectType = source.InternalReturnObjectType
+End Sub
+
+Private Function CreateParameterDescriptor( _
+    ByVal typeToken As Variant, _
+    ByVal memberName As String _
+) As ROneCOne
+    Dim candidate As Object
+    Dim descriptor As ROneCOne
+    Dim objectType As String
+    Dim valueType As VbVarType
+
+    If IsObject(typeToken) Then
+        Set candidate = typeToken
+        If Not candidate Is Nothing Then
+            If TypeOf candidate Is ROneCOne Then
+                Set descriptor = candidate
+                If descriptor.InternalRole = ROLE_PARAMETER And _
+                    descriptor.InternalIsByRef Then
+                    Set CreateParameterDescriptor = descriptor
+                    Exit Function
+                End If
+            End If
+        End If
+    End If
+
+    ResolveTypeDescriptor typeToken, valueType, objectType, memberName
+    Set descriptor = New ROneCOne
+    descriptor.ConfigureParameter valueType, objectType
+    Set CreateParameterDescriptor = descriptor
+End Function
+
+Private Sub ValidateReferenceType( _
+    ByVal valueType As VbVarType, _
+    ByVal memberName As String _
+)
+    Select Case valueType
+        Case vbByte, vbInteger, vbLong, vbLongLong
+        Case vbSingle, vbDouble, vbCurrency, vbDate, vbBoolean
+        Case Else
+            RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+                "ByRef currently supports numeric, Date, and Boolean variables."
+    End Select
+End Sub
+
+Private Function CreateReference( _
+    ByVal variableAddress As LongPtr, _
+    ByVal valueType As VbVarType _
+) As ROneCOne
+    Dim reference As ROneCOne
+
+    Set reference = New ROneCOne
+    reference.ConfigureReference variableAddress, valueType
+    Set CreateReference = reference
+End Function
+
+Private Function BuildDynamicArguments(ByVal arguments As Variant) As Collection
+    Dim candidate As Object
+    Dim rawArgument As Variant
+    Dim result As Collection
+    Dim values As Variant
+
+    Set result = New Collection
+    If IsObject(arguments) Then
+        Set candidate = arguments
+        If candidate Is Nothing Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "DynamicInvoke", _
+                "The argument collection cannot be Nothing."
+        End If
+        If TypeOf candidate Is ROneCOne Then
+            values = candidate.ToArray
+            For Each rawArgument In values
+                result.Add WrapInvocationArgument(rawArgument)
+            Next rawArgument
+            Set BuildDynamicArguments = result
+            Exit Function
+        End If
+        If TypeName(candidate) = "Collection" Then
+            For Each rawArgument In candidate
+                result.Add WrapInvocationArgument(rawArgument)
+            Next rawArgument
+            Set BuildDynamicArguments = result
+            Exit Function
+        End If
+    ElseIf IsArray(arguments) Then
+        For Each rawArgument In arguments
+            result.Add WrapInvocationArgument(rawArgument)
+        Next rawArgument
+        Set BuildDynamicArguments = result
+        Exit Function
+    ElseIf IsEmpty(arguments) Then
+        Set BuildDynamicArguments = result
+        Exit Function
+    End If
+
+    RaiseContractError ERROR_INVALID_ARGUMENT, "DynamicInvoke", _
+        "Arguments must be a VBA array, Collection, or ROneCOne sequence."
+End Function
+
+Private Function WrapInvocationArgument(ByVal rawArgument As Variant) As ROneCOne
+    Dim argumentObject As Object
+    Dim wrapped As ROneCOne
+
+    If IsObject(rawArgument) Then
+        Set argumentObject = rawArgument
+        If Not argumentObject Is Nothing Then
+            If TypeOf argumentObject Is ROneCOne Then
+                Set wrapped = argumentObject
+                If wrapped.InternalRole = ROLE_REFERENCE Then
+                    Set WrapInvocationArgument = wrapped
+                    Exit Function
+                End If
+            End If
+        End If
+    End If
+
+    Set wrapped = New ROneCOne
+    If IsObject(rawArgument) Then
+        wrapped.ConfigureObjectValue argumentObject
+    Else
+        wrapped.ConfigureScalarValue rawArgument
+    End If
+    Set WrapInvocationArgument = wrapped
+End Function
+
+Private Sub AssignPublicResult( _
+    ByRef destination As Variant, _
+    ByVal result As ROneCOne _
+)
+    If result.InternalHasObjectValue Then
+        Set destination = result.InternalObjectValue
+    Else
+        destination = result.InternalScalarValue
+    End If
+End Sub
+
+Private Function IsDelegateRole(ByVal roleValue As Long) As Boolean
+    Select Case roleValue
+        Case ROLE_LAMBDA, ROLE_METHOD, ROLE_COMPOSITION
+            IsDelegateRole = True
+        Case ROLE_PROCEDURE, ROLE_MULTICAST, ROLE_NATIVE
+            IsDelegateRole = True
+    End Select
+End Function
+
+Private Sub AppendInvocationList( _
+    ByVal destination As Collection, _
+    ByVal delegateValue As ROneCOne _
+)
+    Dim item As ROneCOne
+
+    If delegateValue.InternalRole = ROLE_MULTICAST Then
+        For Each item In delegateValue.InternalInvocationList
+            destination.Add item
+        Next item
+    Else
+        destination.Add delegateValue
+    End If
+End Sub
+
+Private Sub ValidateInvocationCompatibility(ByVal invocationList As Collection)
+    Dim firstDelegate As ROneCOne
+    Dim index As Long
+
+    Set firstDelegate = invocationList.Item(1)
+    For index = 2 To invocationList.Count
+        If Not DelegateSignaturesMatch(firstDelegate, invocationList.Item(index)) Then
+            RaiseContractError ERROR_TYPE_MISMATCH, "Combine", _
+                "Multicast delegates must have matching signatures."
+        End If
+    Next index
+End Sub
+
+Private Function DelegateSignaturesMatch( _
+    ByVal leftDelegate As ROneCOne, _
+    ByVal rightDelegate As ROneCOne _
+) As Boolean
+    Dim index As Long
+
+    If leftDelegate.IsAction <> rightDelegate.IsAction Then Exit Function
+    If leftDelegate.Arity <> rightDelegate.Arity Then Exit Function
+    If leftDelegate.InternalHasParameterSignature <> _
+        rightDelegate.InternalHasParameterSignature Then Exit Function
+    If leftDelegate.InternalHasReturnSignature <> _
+        rightDelegate.InternalHasReturnSignature Then Exit Function
+    If leftDelegate.InternalHasReturnSignature Then
+        If leftDelegate.InternalReturnType <> _
+            rightDelegate.InternalReturnType Then Exit Function
+        If StrComp( _
+            leftDelegate.InternalReturnObjectType, _
+            rightDelegate.InternalReturnObjectType, _
+            vbTextCompare _
+        ) <> 0 Then Exit Function
+    End If
+    If leftDelegate.InternalHasParameterSignature Then
+        For index = 1 To leftDelegate.InternalParameters.Count
+            If Not ParameterDescriptorsMatch( _
+                leftDelegate.InternalParameters.Item(index), _
+                rightDelegate.InternalParameters.Item(index) _
+            ) Then Exit Function
+        Next index
+    End If
+    DelegateSignaturesMatch = True
+End Function
+
+Private Function ParameterDescriptorsMatch( _
+    ByVal leftParameter As ROneCOne, _
+    ByVal rightParameter As ROneCOne _
+) As Boolean
+    If leftParameter.InternalExpectedType <> _
+        rightParameter.InternalExpectedType Then Exit Function
+    If leftParameter.InternalIsByRef <> _
+        rightParameter.InternalIsByRef Then Exit Function
+    ParameterDescriptorsMatch = (StrComp( _
+        leftParameter.InternalExpectedObjectType, _
+        rightParameter.InternalExpectedObjectType, _
+        vbTextCompare) = 0)
+End Function
+
+Private Function RemoveListItem(ByVal value As Variant) As Boolean
+    Dim index As Long
+
+    RequireList Me, "Remove"
+    index = IndexOf(value)
+    If index >= 0 Then
+        mItems.Remove index + 1
+        mEnumerationValues.Remove index + 1
+        mVersion = mVersion + 1
+        RemoveListItem = True
+    End If
+End Function
+
+Private Function RemoveDelegateValue( _
+    ByVal source As ROneCOne, _
+    ByVal value As ROneCOne _
+) As ROneCOne
+    Dim candidate As ROneCOne
+    Dim index As Long
+    Dim matchIndex As Long
+    Dim offset As Long
+    Dim remaining As Collection
+    Dim sourceList As Collection
+    Dim valueList As Collection
+
+    RequireDelegate source, "Remove"
+    RequireDelegate value, "Remove"
+    Set sourceList = New Collection
+    Set valueList = New Collection
+    AppendInvocationList sourceList, source
+    AppendInvocationList valueList, value
+    matchIndex = 0
+    For index = sourceList.Count - valueList.Count + 1 To 1 Step -1
+        For offset = 1 To valueList.Count
+            If Not DelegateIdentityEquals( _
+                sourceList.Item(index + offset - 1), _
+                valueList.Item(offset) _
+            ) Then Exit For
+        Next offset
+        If offset > valueList.Count Then
+            matchIndex = index
+            Exit For
+        End If
+    Next index
+    If matchIndex = 0 Then
+        Set RemoveDelegateValue = source
+        Exit Function
+    End If
+
+    Set remaining = New Collection
+    For index = 1 To sourceList.Count
+        If index < matchIndex Or index >= matchIndex + valueList.Count Then
+            remaining.Add sourceList.Item(index)
+        End If
+    Next index
+    If remaining.Count = 0 Then Exit Function
+    If remaining.Count = 1 Then
+        Set RemoveDelegateValue = remaining.Item(1)
+        Exit Function
+    End If
+    Set candidate = New ROneCOne
+    candidate.ConfigureMulticast remaining
+    Set RemoveDelegateValue = candidate
+End Function
+
+Private Function DelegateIdentityEquals( _
+    ByVal leftDelegate As ROneCOne, _
+    ByVal rightDelegate As ROneCOne _
+) As Boolean
+    If leftDelegate Is rightDelegate Then
+        DelegateIdentityEquals = True
+        Exit Function
+    End If
+    If leftDelegate.InternalRole <> rightDelegate.InternalRole Then Exit Function
+    If Not DelegateSignaturesMatch(leftDelegate, rightDelegate) Then Exit Function
+
+    Select Case leftDelegate.InternalRole
+        Case ROLE_METHOD
+            DelegateIdentityEquals = _
+                (leftDelegate.InternalTarget Is rightDelegate.InternalTarget) And _
+                (StrComp(leftDelegate.InternalMethodName, _
+                    rightDelegate.InternalMethodName, _
+                    vbTextCompare) = 0)
+        Case ROLE_PROCEDURE
+            DelegateIdentityEquals = (StrComp( _
+                leftDelegate.InternalMethodName, _
+                rightDelegate.InternalMethodName, _
+                vbTextCompare) = 0)
+        Case ROLE_NATIVE
+            DelegateIdentityEquals = _
+                (leftDelegate.InternalNativeAddress = _
+                    rightDelegate.InternalNativeAddress)
+        Case ROLE_COMPOSITION
+            DelegateIdentityEquals = _
+                (leftDelegate.InternalLeft Is rightDelegate.InternalLeft) And _
+                (leftDelegate.InternalNext Is rightDelegate.InternalNext)
+    End Select
+End Function
+
+Private Function BuildSignature(ByVal delegateValue As ROneCOne) As String
+    Dim descriptor As ROneCOne
+    Dim parts As String
+
+    If delegateValue.InternalHasParameterSignature Then
+        For Each descriptor In delegateValue.InternalParameters
+            If Len(parts) > 0 Then parts = parts & ", "
+            If descriptor.InternalIsByRef Then parts = parts & "ref "
+            If Len(descriptor.InternalExpectedObjectType) > 0 Then
+                parts = parts & descriptor.InternalExpectedObjectType
+            Else
+                parts = parts & TypeNameForVarType(descriptor.InternalExpectedType)
+            End If
+        Next descriptor
+    Else
+        parts = "dynamic"
+    End If
+
+    If delegateValue.InternalIsActionDelegate Then
+        If parts = vbNullString Then
+            BuildSignature = "Action"
+        Else
+            BuildSignature = "Action<" & parts & ">"
+        End If
+        Exit Function
+    End If
+    If Len(parts) > 0 Then parts = parts & ", "
+    If delegateValue.InternalHasReturnSignature Then
+        If Len(delegateValue.InternalReturnObjectType) > 0 Then
+            parts = parts & delegateValue.InternalReturnObjectType
+        Else
+            parts = parts & TypeNameForVarType(delegateValue.InternalReturnType)
+        End If
+    Else
+        parts = parts & "dynamic"
+    End If
+    BuildSignature = "Func<" & parts & ">"
 End Function
 
 Private Function CreateQuery( _
@@ -1809,8 +2684,10 @@ Private Function CoerceExpression(ByVal candidate As Variant) As ROneCOne
 End Function
 
 Friend Function InvokeValue(ByVal arguments As Collection) As ROneCOne
+    Dim delegateValue As ROneCOne
     Dim firstResult As ROneCOne
     Dim nextArguments As Collection
+    Dim result As ROneCOne
 
     Select Case mRole
         Case ROLE_LAMBDA
@@ -1819,21 +2696,37 @@ Friend Function InvokeValue(ByVal arguments As Collection) As ROneCOne
                     "Expected " & CStr(mParameters.Count) & " argument(s), received " & _
                     CStr(arguments.Count) & "."
             End If
-            Set InvokeValue = EvaluateNode(mLeft, mParameters, arguments)
+            Set result = EvaluateNode(mLeft, mParameters, arguments)
 
         Case ROLE_METHOD
-            Set InvokeValue = InvokeMethod(arguments)
+            ValidateDelegateArguments arguments
+            Set result = InvokeMethod(arguments)
+
+        Case ROLE_PROCEDURE
+            ValidateDelegateArguments arguments
+            Set result = InvokeProcedure(arguments)
+
+        Case ROLE_NATIVE
+            ValidateDelegateArguments arguments
+            Set result = InvokeNative(arguments)
+
+        Case ROLE_MULTICAST
+            ValidateDelegateArguments arguments
+            For Each delegateValue In mInvocationList
+                Set result = delegateValue.InvokeValue(arguments)
+            Next delegateValue
 
         Case ROLE_COMPOSITION
             Set firstResult = mLeft.InvokeValue(arguments)
             Set nextArguments = New Collection
             nextArguments.Add firstResult
-            Set InvokeValue = mNext.InvokeValue(nextArguments)
+            Set result = mNext.InvokeValue(nextArguments)
 
         Case Else
             RaiseContractError ERROR_INVALID_OPERATION, "Run", _
                 "Only delegates can be invoked."
     End Select
+    Set InvokeValue = FinalizeDelegateResult(result)
 End Function
 
 Private Function EvaluateNode( _
@@ -2023,42 +2916,52 @@ End Sub
 Private Function InvokeMethod(ByVal arguments As Collection) As ROneCOne
     Dim returnedObject As Object
     Dim returnedValue As Variant
+    Dim values() As Variant
 
-    If mMethodArity <> -1 And arguments.Count <> mMethodArity Then
-        RaiseContractError ERROR_ARITY_MISMATCH, "Run", _
-            "Expected " & CStr(mMethodArity) & " argument(s), received " & _
-            CStr(arguments.Count) & "."
-    End If
     If arguments.Count > 8 Then
         RaiseContractError ERROR_ARITY_MISMATCH, "Run", _
-            "Method delegates support at most 8 arguments."
+            "Object-method delegates currently support at most 8 arguments."
     End If
+    PrepareInvocationValues arguments, values
 
     On Error GoTo InvocationFailed
-    If mMethodReturnsObject Then
+    If mHasReturnSignature And mReturnType = vbObject Then
         Select Case arguments.Count
             Case 0
                 Set returnedObject = CallByName(mTarget, mMethodName, VbMethod)
             Case 1
                 Set returnedObject = CallByName( _
-                    mTarget, mMethodName, VbMethod, Unwrap(arguments.Item(1)))
+                    mTarget, mMethodName, VbMethod, values(0))
             Case 2
                 Set returnedObject = CallByName( _
                     mTarget, mMethodName, VbMethod, _
-                    Unwrap(arguments.Item(1)), Unwrap(arguments.Item(2)))
+                    values(0), values(1))
             Case 3
                 Set returnedObject = CallByName( _
                     mTarget, mMethodName, VbMethod, _
-                    Unwrap(arguments.Item(1)), Unwrap(arguments.Item(2)), _
-                    Unwrap(arguments.Item(3)))
+                    values(0), values(1), values(2))
             Case 4
                 Set returnedObject = CallByName( _
                     mTarget, mMethodName, VbMethod, _
-                    Unwrap(arguments.Item(1)), Unwrap(arguments.Item(2)), _
-                    Unwrap(arguments.Item(3)), Unwrap(arguments.Item(4)))
-            Case Else
-                RaiseContractError ERROR_ARITY_MISMATCH, "Run", _
-                    "Object-returning method delegates support at most 4 arguments."
+                    values(0), values(1), values(2), values(3))
+            Case 5
+                Set returnedObject = CallByName( _
+                    mTarget, mMethodName, VbMethod, _
+                    values(0), values(1), values(2), values(3), values(4))
+            Case 6
+                Set returnedObject = CallByName( _
+                    mTarget, mMethodName, VbMethod, _
+                    values(0), values(1), values(2), values(3), values(4), values(5))
+            Case 7
+                Set returnedObject = CallByName( _
+                    mTarget, mMethodName, VbMethod, _
+                    values(0), values(1), values(2), values(3), values(4), _
+                    values(5), values(6))
+            Case 8
+                Set returnedObject = CallByName( _
+                    mTarget, mMethodName, VbMethod, _
+                    values(0), values(1), values(2), values(3), values(4), _
+                    values(5), values(6), values(7))
         End Select
         Set InvokeMethod = CreateObjectResult(returnedObject)
     Else
@@ -2067,47 +2970,37 @@ Private Function InvokeMethod(ByVal arguments As Collection) As ROneCOne
                 returnedValue = CallByName(mTarget, mMethodName, VbMethod)
             Case 1
                 returnedValue = CallByName( _
-                    mTarget, mMethodName, VbMethod, Unwrap(arguments.Item(1)))
+                    mTarget, mMethodName, VbMethod, values(0))
             Case 2
                 returnedValue = CallByName( _
                     mTarget, mMethodName, VbMethod, _
-                    Unwrap(arguments.Item(1)), Unwrap(arguments.Item(2)))
+                    values(0), values(1))
             Case 3
                 returnedValue = CallByName( _
                     mTarget, mMethodName, VbMethod, _
-                    Unwrap(arguments.Item(1)), Unwrap(arguments.Item(2)), _
-                    Unwrap(arguments.Item(3)))
+                    values(0), values(1), values(2))
             Case 4
                 returnedValue = CallByName( _
                     mTarget, mMethodName, VbMethod, _
-                    Unwrap(arguments.Item(1)), Unwrap(arguments.Item(2)), _
-                    Unwrap(arguments.Item(3)), Unwrap(arguments.Item(4)))
+                    values(0), values(1), values(2), values(3))
             Case 5
                 returnedValue = CallByName( _
                     mTarget, mMethodName, VbMethod, _
-                    Unwrap(arguments.Item(1)), Unwrap(arguments.Item(2)), _
-                    Unwrap(arguments.Item(3)), Unwrap(arguments.Item(4)), _
-                    Unwrap(arguments.Item(5)))
+                    values(0), values(1), values(2), values(3), values(4))
             Case 6
                 returnedValue = CallByName( _
                     mTarget, mMethodName, VbMethod, _
-                    Unwrap(arguments.Item(1)), Unwrap(arguments.Item(2)), _
-                    Unwrap(arguments.Item(3)), Unwrap(arguments.Item(4)), _
-                    Unwrap(arguments.Item(5)), Unwrap(arguments.Item(6)))
+                    values(0), values(1), values(2), values(3), values(4), values(5))
             Case 7
                 returnedValue = CallByName( _
                     mTarget, mMethodName, VbMethod, _
-                    Unwrap(arguments.Item(1)), Unwrap(arguments.Item(2)), _
-                    Unwrap(arguments.Item(3)), Unwrap(arguments.Item(4)), _
-                    Unwrap(arguments.Item(5)), Unwrap(arguments.Item(6)), _
-                    Unwrap(arguments.Item(7)))
+                    values(0), values(1), values(2), values(3), values(4), _
+                    values(5), values(6))
             Case 8
                 returnedValue = CallByName( _
                     mTarget, mMethodName, VbMethod, _
-                    Unwrap(arguments.Item(1)), Unwrap(arguments.Item(2)), _
-                    Unwrap(arguments.Item(3)), Unwrap(arguments.Item(4)), _
-                    Unwrap(arguments.Item(5)), Unwrap(arguments.Item(6)), _
-                    Unwrap(arguments.Item(7)), Unwrap(arguments.Item(8)))
+                    values(0), values(1), values(2), values(3), values(4), _
+                    values(5), values(6), values(7))
         End Select
         Set InvokeMethod = CreateScalarResult(returnedValue)
     End If
@@ -2118,6 +3011,545 @@ InvocationFailed:
         "Method '" & mMethodName & "' failed with " & CStr(Err.Number) & ": " & _
         Err.Description
 End Function
+
+Private Function InvokeProcedure(ByVal arguments As Collection) As ROneCOne
+    Dim procedureName As String
+    Dim returnedObject As Object
+    Dim returnedValue As Variant
+    Dim values() As Variant
+
+    If arguments.Count > 30 Then
+        RaiseContractError ERROR_ARITY_MISMATCH, "Run", _
+            "Workbook procedure delegates support at most 30 arguments."
+    End If
+    PrepareInvocationValues arguments, values
+    procedureName = ResolveProcedureName(mMethodName)
+
+    On Error GoTo InvocationFailed
+    If mHasReturnSignature And mReturnType = vbObject Then
+        Set returnedObject = RunWorkbookProcedureObject(procedureName, values, arguments.Count)
+        Set InvokeProcedure = CreateObjectResult(returnedObject)
+    Else
+        returnedValue = RunWorkbookProcedure(procedureName, values, arguments.Count)
+        Set InvokeProcedure = CreateScalarResult(returnedValue)
+    End If
+    Exit Function
+
+InvocationFailed:
+    RaiseContractError ERROR_METHOD_INVOCATION, "Run", _
+        "Procedure '" & mMethodName & "' failed with " & CStr(Err.Number) & ": " & _
+        Err.Description
+End Function
+
+Private Function InvokeNative(ByVal arguments As Collection) As ROneCOne
+    Dim argumentPointers() As LongPtr
+    Dim argumentTypes() As Integer
+    Dim argumentValues() As Variant
+    Dim descriptor As ROneCOne
+    Dim hResult As Long
+    Dim index As Long
+    Dim returnedValue As Variant
+    Dim wrapped As ROneCOne
+
+    If Not mHasParameterSignature Or _
+        (Not mIsActionDelegate And Not mHasReturnSignature) Then
+        RaiseContractError ERROR_NATIVE_INVOCATION, "Native", _
+            "Native invocation requires complete Takes and Returns metadata."
+    End If
+    If arguments.Count > 0 Then
+        ReDim argumentPointers(0 To arguments.Count - 1)
+        ReDim argumentTypes(0 To arguments.Count - 1)
+        ReDim argumentValues(0 To arguments.Count - 1)
+        For index = 0 To arguments.Count - 1
+            Set descriptor = mParameters.Item(index + 1)
+            Set wrapped = arguments.Item(index + 1)
+            If descriptor.InternalIsByRef Then
+                argumentValues(index) = CLngLng(wrapped.InternalReferenceAddress)
+                argumentTypes(index) = vbLongLong
+            ElseIf wrapped.InternalHasObjectValue Then
+                Set argumentValues(index) = wrapped.InternalObjectValue
+                argumentTypes(index) = descriptor.InternalExpectedType
+            Else
+                argumentValues(index) = wrapped.InternalScalarValue
+                argumentTypes(index) = descriptor.InternalExpectedType
+            End If
+            argumentPointers(index) = VarPtr(argumentValues(index))
+        Next index
+        hResult = DispCallFunc( _
+            0, mNativeAddress, CALLCONV_STDCALL, CInt(mReturnType), _
+            arguments.Count, VarPtr(argumentTypes(0)), _
+            VarPtr(argumentPointers(0)), VarPtr(returnedValue))
+    Else
+        hResult = DispCallFunc( _
+            0, mNativeAddress, CALLCONV_STDCALL, CInt(mReturnType), _
+            0, 0, 0, VarPtr(returnedValue))
+    End If
+    If hResult <> HRESULT_SUCCESS Then
+        RaiseContractError ERROR_NATIVE_INVOCATION, "Native", _
+            "DispCallFunc failed with HRESULT " & CStr(hResult) & "."
+    End If
+
+    If mHasReturnSignature And mReturnType = vbObject Then
+        Set InvokeNative = CreateObjectResult(returnedValue)
+    Else
+        Set InvokeNative = CreateScalarResult(returnedValue)
+    End If
+End Function
+
+Private Sub PrepareInvocationValues( _
+    ByVal arguments As Collection, _
+    ByRef values() As Variant _
+)
+    Dim index As Long
+    Dim wrapped As ROneCOne
+
+    If arguments.Count = 0 Then Exit Sub
+    ReDim values(0 To arguments.Count - 1)
+    For index = 0 To arguments.Count - 1
+        Set wrapped = arguments.Item(index + 1)
+        If wrapped.InternalHasObjectValue Then
+            Set values(index) = wrapped.InternalObjectValue
+        Else
+            values(index) = wrapped.InternalScalarValue
+        End If
+    Next index
+End Sub
+
+Private Function ResolveProcedureName(ByVal procedureName As String) As String
+    If InStr(1, procedureName, "!", vbBinaryCompare) > 0 Then
+        ResolveProcedureName = procedureName
+    Else
+        ResolveProcedureName = "'" & Replace(ThisWorkbook.Name, "'", "''") & _
+            "'!" & procedureName
+    End If
+End Function
+
+Private Sub ValidateDelegateArguments(ByVal arguments As Collection)
+    Dim argumentValue As ROneCOne
+    Dim descriptor As ROneCOne
+    Dim index As Long
+
+    If Not mHasParameterSignature Then
+        If mRole = ROLE_NATIVE Then
+            RaiseContractError ERROR_NATIVE_INVOCATION, "Native", _
+                "Native invocation requires a complete Takes signature."
+        End If
+        Exit Sub
+    End If
+    If arguments.Count <> mParameters.Count Then
+        RaiseContractError ERROR_ARITY_MISMATCH, "Run", _
+            "Expected " & CStr(mParameters.Count) & " argument(s), received " & _
+            CStr(arguments.Count) & "."
+    End If
+
+    For index = 1 To mParameters.Count
+        Set descriptor = mParameters.Item(index)
+        Set argumentValue = arguments.Item(index)
+        If descriptor.InternalIsByRef Then
+            If mRole <> ROLE_NATIVE Then
+                RaiseContractError ERROR_BYREF_INVOCATION, "Run", _
+                    "True ByRef requires a signature-bound native delegate."
+            End If
+            If argumentValue.InternalRole <> ROLE_REFERENCE Then
+                RaiseContractError ERROR_TYPE_MISMATCH, "Run", _
+                    "Parameter " & CStr(index) & " requires a ROneCOne reference."
+            End If
+            If argumentValue.InternalExpectedType <> _
+                descriptor.InternalExpectedType Then
+                RaiseContractError ERROR_TYPE_MISMATCH, "Run", _
+                    "The ByRef argument type does not match its signature."
+            End If
+        Else
+            If argumentValue.InternalRole = ROLE_REFERENCE Then
+                RaiseContractError ERROR_TYPE_MISMATCH, "Run", _
+                    "A reference was supplied to a ByVal parameter."
+            End If
+            ValidateParameterValue descriptor, argumentValue
+        End If
+    Next index
+End Sub
+
+Private Function FinalizeDelegateResult(ByVal result As ROneCOne) As ROneCOne
+    Dim actualType As VbVarType
+
+    If result Is Nothing Then
+        RaiseContractError ERROR_INVALID_OPERATION, "Run", _
+            "The delegate did not produce an invocation result."
+    End If
+    If mIsActionDelegate Then
+        Set FinalizeDelegateResult = CreateScalarResult(Empty)
+        Exit Function
+    End If
+    If Not mHasReturnSignature Or mReturnType = vbVariant Then
+        Set FinalizeDelegateResult = result
+        Exit Function
+    End If
+
+    If mReturnType = vbObject Then
+        If Not result.InternalHasObjectValue Then
+            RaiseContractError ERROR_TYPE_MISMATCH, "Run", _
+                "The delegate result is not an object."
+        End If
+        If Len(mReturnObjectType) > 0 Then
+            If StrComp(TypeName(result.InternalObjectValue), mReturnObjectType, _
+                vbTextCompare) <> 0 Then
+                RaiseContractError ERROR_TYPE_MISMATCH, "Run", _
+                    "The delegate returned the wrong object type."
+            End If
+        End If
+    Else
+        If result.InternalHasObjectValue Then
+            RaiseContractError ERROR_TYPE_MISMATCH, "Run", _
+                "The delegate result is an object, not a scalar value."
+        End If
+        actualType = VarType(result.InternalScalarValue)
+        If actualType <> mReturnType Then
+            RaiseContractError ERROR_TYPE_MISMATCH, "Run", _
+                "Expected " & TypeNameForVarType(mReturnType) & ", received " & _
+                TypeNameForVarType(actualType) & "."
+        End If
+    End If
+    Set FinalizeDelegateResult = result
+End Function
+
+Private Function RunWorkbookProcedure( _
+    ByVal procedureName As String, _
+    ByRef values() As Variant, _
+    ByVal argumentCount As Long _
+) As Variant
+    Select Case argumentCount
+        Case 0
+            RunWorkbookProcedure = Application.Run(procedureName)
+        Case 1
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0))
+        Case 2
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1))
+        Case 3
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2))
+        Case 4
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3))
+        Case 5
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4))
+        Case 6
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5))
+        Case 7
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6))
+        Case 8
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7))
+        Case 9
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8))
+        Case 10
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9))
+        Case 11
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10))
+        Case 12
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11))
+        Case 13
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12))
+        Case 14
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13))
+        Case 15
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14))
+        Case 16
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15))
+        Case 17
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16))
+        Case 18
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17))
+        Case 19
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18))
+        Case 20
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19))
+        Case 21
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20))
+        Case 22
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21))
+        Case 23
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21), values(22))
+        Case 24
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21), values(22), _
+                values(23))
+        Case 25
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21), values(22), _
+                values(23), values(24))
+        Case 26
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21), values(22), _
+                values(23), values(24), values(25))
+        Case 27
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21), values(22), _
+                values(23), values(24), values(25), values(26))
+        Case 28
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21), values(22), _
+                values(23), values(24), values(25), values(26), values(27))
+        Case 29
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21), values(22), _
+                values(23), values(24), values(25), values(26), values(27), values(28))
+        Case 30
+            RunWorkbookProcedure = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21), values(22), _
+                values(23), values(24), values(25), values(26), values(27), values(28), _
+                values(29))
+        Case Else
+            RaiseContractError ERROR_ARITY_MISMATCH, "Run", _
+                "Workbook procedures support at most 30 arguments."
+    End Select
+End Function
+
+Private Function RunWorkbookProcedureObject( _
+    ByVal procedureName As String, _
+    ByRef values() As Variant, _
+    ByVal argumentCount As Long _
+) As Object
+    Select Case argumentCount
+        Case 0
+            Set RunWorkbookProcedureObject = Application.Run(procedureName)
+        Case 1
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0))
+        Case 2
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1))
+        Case 3
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2))
+        Case 4
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3))
+        Case 5
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4))
+        Case 6
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5))
+        Case 7
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6))
+        Case 8
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7))
+        Case 9
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8))
+        Case 10
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9))
+        Case 11
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10))
+        Case 12
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11))
+        Case 13
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12))
+        Case 14
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13))
+        Case 15
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14))
+        Case 16
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15))
+        Case 17
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16))
+        Case 18
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17))
+        Case 19
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18))
+        Case 20
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19))
+        Case 21
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20))
+        Case 22
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21))
+        Case 23
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21), values(22))
+        Case 24
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21), values(22), _
+                values(23))
+        Case 25
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21), values(22), _
+                values(23), values(24))
+        Case 26
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21), values(22), _
+                values(23), values(24), values(25))
+        Case 27
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21), values(22), _
+                values(23), values(24), values(25), values(26))
+        Case 28
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21), values(22), _
+                values(23), values(24), values(25), values(26), values(27))
+        Case 29
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21), values(22), _
+                values(23), values(24), values(25), values(26), values(27), values(28))
+        Case 30
+            Set RunWorkbookProcedureObject = Application.Run( _
+                procedureName, values(0), values(1), values(2), values(3), values(4), _
+                values(5), values(6), values(7), values(8), values(9), values(10), _
+                values(11), values(12), values(13), values(14), values(15), values(16), _
+                values(17), values(18), values(19), values(20), values(21), values(22), _
+                values(23), values(24), values(25), values(26), values(27), values(28), _
+                values(29))
+        Case Else
+            RaiseContractError ERROR_ARITY_MISMATCH, "Run", _
+                "Workbook procedures support at most 30 arguments."
+    End Select
+End Function
+
 
 Private Function Unwrap(ByVal wrapped As ROneCOne) As Variant
     If wrapped.InternalHasObjectValue Then
@@ -2276,13 +3708,9 @@ Private Sub RequireDelegate(ByVal candidate As ROneCOne, ByVal context As String
         RaiseContractError ERROR_INVALID_ARGUMENT, context, _
             "The delegate cannot be Nothing."
     End If
-    Select Case candidate.InternalRole
-        Case ROLE_LAMBDA, ROLE_METHOD, ROLE_COMPOSITION
-            Exit Sub
-        Case Else
-            RaiseContractError ERROR_INVALID_OPERATION, context, _
-                "This operation requires a delegate."
-    End Select
+    If IsDelegateRole(candidate.InternalRole) Then Exit Sub
+    RaiseContractError ERROR_INVALID_OPERATION, context, _
+        "This operation requires a delegate."
 End Sub
 
 Private Function CollectionContainsIdentity( _
@@ -2353,6 +3781,7 @@ Private Sub Class_Terminate()
     Set mObjectValue = Nothing
     Set mParameters = Nothing
     Set mTarget = Nothing
+    Set mInvocationList = Nothing
     Set mItems = Nothing
     Set mEnumerationValues = Nothing
     Set mSource = Nothing

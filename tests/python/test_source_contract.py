@@ -62,8 +62,15 @@ class SourceContractTests(unittest.TestCase):
             "Value",
             "Lambda",
             "AsFunc",
-            "FromMethod",
+            "Func",
+            "Action",
+            "Native",
             "Run",
+            "DynamicInvoke",
+            "Takes",
+            "Returns",
+            "Combine",
+            "GetInvocationList",
             "PipeTo",
             "Add",
             "Subtract",
@@ -82,11 +89,32 @@ class SourceContractTests(unittest.TestCase):
             "OrElse",
             "NotExpression",
             "Arity",
+            "InvocationCount",
+            "Target",
+            "MethodName",
+            "IsAction",
+            "Signature",
+            "RefOf",
+            "RefLong",
+            "RefByte",
+            "RefInteger",
+            "RefLongLong",
+            "RefSingle",
+            "RefDouble",
+            "RefCurrency",
+            "RefDate",
+            "RefBoolean",
+            "ByRefInvocationError",
+            "InvalidOperationError",
             "TypeMismatchError",
         )
         for member in required_members:
             pattern = rf"Public\s+(?:Function|Property\s+Get)\s+{member}\b"
             self.assertRegex(self.source, re.compile(pattern, re.IGNORECASE), member)
+        self.assertNotRegex(
+            self.source,
+            re.compile(r"Public\s+Function\s+FromMethod\b", re.IGNORECASE),
+        )
 
     def test_generic_list_and_linq_contract_is_present(self) -> None:
         required_members = (
@@ -161,7 +189,7 @@ class SourceContractTests(unittest.TestCase):
         for term in forbidden:
             self.assertNotIn(term, lowered)
 
-    def test_delegate_run_is_the_csharp_like_default_member(self) -> None:
+    def test_delegate_run_is_the_default_member(self) -> None:
         self.assertIn("Public Function Run(ParamArray arguments() As Variant)", self.source)
         self.assertIn("Attribute Run.VB_UserMemId = 0", self.source)
         self.assertNotRegex(self.source, re.compile(r"^Public Function Invoke\b", re.MULTILINE))

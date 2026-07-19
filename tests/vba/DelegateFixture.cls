@@ -18,6 +18,10 @@ Public Function DoubleValue(ByVal value As Variant) As Variant
     DoubleValue = value * 2
 End Function
 
+Public Function Run(ByVal value As Variant) As Variant
+    Run = value + 100
+End Function
+
 Public Sub RecordValue(ByVal value As Variant)
     mLastValue = value
 End Sub

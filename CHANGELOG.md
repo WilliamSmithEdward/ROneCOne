@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.5.0 - 2026-07-18
+
+### Added
+
+- Universal `Func` and `Action` factories for expression trees, object methods, callable objects,
+  and workbook procedures.
+- Immutable `Takes` / `Returns` signatures, C#-style `DynamicInvoke`, target/method/signature
+  metadata, and exact user-class type descriptors.
+- Immutable multicast `Combine`, `Remove`, `GetInvocationList`, deterministic invocation order,
+  and last-result semantics.
+- Fail-closed Windows x64 `Native` / `NativeAction` dispatch through `DispCallFunc`.
+- True native `ByRef` with `RefOf` and typed wrappers for VBA numeric, Boolean, Date, and Currency
+  variables.
+- Live-host contracts for callable objects, workbook procedures, object identity returns,
+  multicast removal, native function pointers, `ByRef` mutation, and rejected incomplete calls.
+- A complete universal-delegate guide and an eleven-scenario living delegate workbook.
+
+### Changed
+
+- Replaced the narrow `FromMethod` adapter with the single `Func` / `Action` construction model.
+- Routed LINQ method delegates through universal typed factories.
+- Made non-native `ByRef` fail before dispatch because `CallByName` and `Application.Run` cannot
+  preserve the original variable identity.
+- Made invalid `Action`-to-`Func` and `Action.Returns(...)` conversions fail during construction.
+- Expanded the Excel harness to report exact delegate assertion failures as well as modal VBE
+  compiler selections.
+
+The public surface remains pre-stability: demos, tests, and documentation now use the preferred
+universal model without compatibility shims.
+
 ## 0.4.0 - 2026-07-18
 
 ### Added

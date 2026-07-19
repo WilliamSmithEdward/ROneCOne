@@ -11,14 +11,15 @@ ROneCOne uses four independent gates:
 4. Microsoft Excel compiles and executes the VBA suite, records worksheet-observed assertions,
    and runs delegate and collection benchmarks.
 
-The live suite currently exercises explicit and inferred lambda creation, `Var`/`VarLike`, unary
-and binary calls, explicit and default invocation, comparisons, short-circuit behavior, typed
-failures, object-member expressions, method/action delegates, object returns, composition, and
-unbound-parameter rejection.
+The live suite exercises explicit and inferred lambda creation, `Var`/`VarLike`, unary and binary
+calls, explicit and default invocation, comparisons, short-circuit behavior, typed failures,
+object-member expressions, universal `Func`/`Action` adapters, callable objects, procedure calls,
+object returns, `DynamicInvoke`, metadata, multicast ordering/removal, native function pointers,
+true `ByRef`, fail-closed ABI boundaries, composition, and unbound-parameter rejection.
 
 The collection suite adds strict primitive/user-class lists, atomic mutation failures, zero-based
 indexing, deferred source mutation, query chaining, numeric terminals, nested enumeration, and
-enumerator refresh after mutation. The current live totals are 19 delegate and 52 collection
+enumerator refresh after mutation. The current live totals are 39 delegate and 52 collection
 assertions.
 
 The invocation benchmark has a configurable release ceiling (`-MaxBenchmarkSeconds`, default
@@ -30,6 +31,10 @@ at most `0.75` seconds. Measurements are stored in `benchmarks/v0.2.0-baseline.j
 
 The v0.3.0 baseline re-runs both gates through the concise `AsFunc` and implicit `Where` forms.
 Measurements are stored in `benchmarks/v0.3.0-baseline.json`.
+
+The v0.5.0 baseline runs the same hot paths after the universal delegate kernel, native ABI, and
+multicast changes. Measurements and live assertion totals are stored in
+`benchmarks/v0.5.0-baseline.json`.
 
 ## Popup-adaptive Excel harness
 

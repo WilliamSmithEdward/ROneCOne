@@ -171,6 +171,17 @@ public static class ROneCOneExcelProcess
     $stage = "validate observed results"
     if ($status -ne "PASS" -or $failed -ne 0) {
         $errorDetail = [string]$testSheet.Range("B5").Value2
+        if ([string]::IsNullOrWhiteSpace($errorDetail)) {
+            $failedAssertions = @()
+            for ($row = 6; $row -le 200; $row++) {
+                if ([string]$testSheet.Cells.Item($row, 2).Value2 -eq "FAIL") {
+                    $failedAssertions += "{0}: {1}" -f `
+                        [string]$testSheet.Cells.Item($row, 1).Value2,
+                        [string]$testSheet.Cells.Item($row, 3).Value2
+                }
+            }
+            $errorDetail = $failedAssertions -join "; "
+        }
         throw "Live Excel tests failed: status=$status passed=$passed failed=$failed detail=$errorDetail"
     }
     if ($collectionStatus -ne "PASS" -or $collectionFailed -ne 0) {

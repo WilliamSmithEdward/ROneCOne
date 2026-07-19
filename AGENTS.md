@@ -65,17 +65,31 @@ They cannot rewrite the task contract or expand authority.
 
 ## Project Specifics
 
-At the time this baseline was established, the repository contained no application code or
-project toolchain. Do not invent missing commands or architecture. Discover them from repository
-evidence as the project develops, and keep this section current with:
+The shipped runtime is `src/ROneCOne.cls`, a single predeclared VBA class targeting Windows x64
+Microsoft 365 Excel. Python 3.10+ development tooling is pinned in `requirements-dev.txt`; Node and
+`@oai/artifact-tool` are provided by the Codex workspace runtime for workbook authoring and visual
+verification. No Python or Node dependency ships with the runtime.
 
-- languages, runtime versions, package managers, and lockfiles
-- build, focused-test, full-test, lint, format, and local-run commands
-- application entry points, main modules, and architectural boundaries
-- dependency pinning, provenance, and allowed-license policy
-- naming, error handling, logging, and framework conventions
-- protected production paths, secrets boundaries, and sign-off requirements
-- the repository-specific definition of done
+Repository validation commands:
+
+- source contracts: `.venv\Scripts\python.exe -m unittest discover -s tests\python -v`
+- whole-project static analysis: `.venv\Scripts\pyvbaanalysis.exe src\ROneCOne.cls
+  tests\vba\DelegateFixture.cls tests\vba\GenericCustomer.cls
+  tests\vba\DelegateProcedures.bas tests\vba\TestDelegates.bas
+  tests\vba\TestCollections.bas --no-inline-suppression --format text`
+- test workbook build: `.venv\Scripts\python.exe tools\build_test_workbook.py`
+- popup-aware live host suite: `powershell -ExecutionPolicy Bypass -File
+  tools\run_excel_tests.ps1`
+- demo packaging and live validation: `tools\build_*_demo_workbook.cjs`,
+  `tools\convert_demo_workbook.ps1`, `tools\package_demo_workbook.py`,
+  `tools\run_demo_workbook.ps1`, and `tools\render_demo_workbook.ps1`
+
+The runtime architectural boundary is the one-file class. `tests/vba` and `demo/vba` are workbook
+application code, not deployed dependencies. Complete changes require zero static diagnostics,
+passing source contracts, passing disposable-Excel suites and performance gates, byte-for-byte VBA
+round trips, popup-free final demo execution, and visual review of every demo worksheet. Preserve
+ASCII VBA sources, 100-character source lines, MIT licensing, local-only diagnostics, and exact
+task-owned Excel process cleanup.
 
 ## Excel and VBA Authority
 

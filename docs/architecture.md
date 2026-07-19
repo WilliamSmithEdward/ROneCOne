@@ -20,7 +20,7 @@ discoverability, performance, privacy, or the one-file runtime contract.
 Living demos lead with the shortest clear form; deeper documentation pairs it with the canonical
 primitive it represents.
 
-## Delegate and expression slice
+## Universal delegate and expression slice
 
 The first slice is an immutable expression-tree interpreter:
 
@@ -40,14 +40,21 @@ immutable expression once and captures unique parameters in left-to-right order.
 equivalent remains `ROneCOne.Lambda(x.Multiply(x), x)`. The expression tree is evaluated only when
 the delegate is invoked.
 
-Method delegates use VBA's late-bound method-name boundary because the language exposes no general
-first-class procedure value:
+The `Func` and `Action` factories normalize expression trees, object methods, callable objects, and
+workbook procedures. Immutable `Takes` and `Returns` descriptors enforce runtime signatures, while
+`DynamicInvoke`, multicast invocation lists, removal, metadata, and composition operate on the same
+delegate representation.
 
 ```vba
-Set transform = ROneCOne.FromMethod(target, "Transform", 1)
+Set transform = ROneCOne.Func(target, "Transform")
+Set transform = transform.Takes(vbLong).Returns(vbString)
 ```
 
-That string boundary is secondary to expression-tree lambdas and remains validated at invocation.
+Native delegates add a narrower Windows x64 boundary. `Native` and `NativeAction` require complete
+signatures before `DispCallFunc` dispatch, and typed reference wrappers permit true `ByRef`
+mutation. Late-bound object and workbook-procedure paths reject `ByRef` because `CallByName` and
+`Application.Run` do not preserve variable identity. See [`delegates.md`](delegates.md) for the
+full contract and the irreducible name/address boundaries.
 
 ## Generic collection and query slice
 
@@ -75,7 +82,7 @@ one workbook, and process-global mutable state never couples workbooks.
 
 | Release status | Capability |
 |---|---|
-| Available | Delegates and expression-tree lambdas |
+| Available | Universal delegates, multicast, native calls, and expression lambdas |
 | Available | Runtime-generic `List<T>` and foundational query operators |
 | Available | Inferred `Func` and LINQ syntax sugar |
 | Scheduled | Structured `Try/Catch/Finally` over callable blocks |

@@ -35,6 +35,8 @@ def package_delegates(workbook_path: Path = DELEGATES_WORKBOOK) -> None:
             raise RuntimeError(f"Demo workbook is missing modules: {sorted(missing)}")
         if verification.get_module("ROneCOne") != runtime_source:
             raise RuntimeError("Demo ROneCOne source did not round-trip byte-for-byte")
+        if verification.get_module("DemoUsage") != demo_source:
+            raise RuntimeError("Demo usage source did not round-trip byte-for-byte")
 
 
 def package_collections(workbook_path: Path = COLLECTIONS_WORKBOOK) -> None:
@@ -76,6 +78,8 @@ def package_collections(workbook_path: Path = COLLECTIONS_WORKBOOK) -> None:
             raise RuntimeError("Collections ROneCOne source did not round-trip")
         if verification.get_module("DemoCustomer") != customer_source:
             raise RuntimeError("Collections DemoCustomer source did not round-trip")
+        if verification.get_module("CollectionsDemoUsage") != demo_source:
+            raise RuntimeError("Collections demo usage source did not round-trip")
 
 
 def parse_args() -> argparse.Namespace:

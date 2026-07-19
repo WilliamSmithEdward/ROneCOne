@@ -36,6 +36,7 @@ def build(output: Path) -> None:
     customer_source = prepare_class_source(ROOT / "tests" / "vba" / "GenericCustomer.cls")
     test_source = read_vba(ROOT / "tests" / "vba" / "TestDelegates.bas")
     collection_test_source = read_vba(ROOT / "tests" / "vba" / "TestCollections.bas")
+    procedure_source = read_vba(ROOT / "tests" / "vba" / "DelegateProcedures.bas")
 
     with ExcelFile.create_new(output) as workbook:
         project = workbook.vba_project()
@@ -45,6 +46,11 @@ def build(output: Path) -> None:
         project.add_module("DelegateFixture", fixture_source, kind=VBAModuleKind.other)
         project.add_module("GenericCustomer", customer_source, kind=VBAModuleKind.other)
         project.add_module("TestDelegates", test_source, kind=VBAModuleKind.standard)
+        project.add_module(
+            "DelegateProcedures",
+            procedure_source,
+            kind=VBAModuleKind.standard,
+        )
         project.add_module(
             "TestCollections",
             collection_test_source,
@@ -58,6 +64,7 @@ def build(output: Path) -> None:
             "DelegateFixture",
             "GenericCustomer",
             "TestDelegates",
+            "DelegateProcedures",
             "TestCollections",
         }
         actual = set(verification.module_names())

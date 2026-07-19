@@ -64,7 +64,7 @@ function tableHeader(range) {
 titleBand(
   start,
   "ROneCOne Delegates",
-  "Frictionless C#-style Func expressions in one dependency-free VBA file",
+  "Universal C#-style Func, Action, multicast, DynamicInvoke, and ByRef in one VBA file",
   "H",
 );
 start.getRange("A5:D5").merge();
@@ -92,12 +92,12 @@ section(start.getRange("F5:H5"));
 start.getRange("F6:G10").values = [
   ["Examples passing", null],
   ["Examples total", null],
-  ["Feature slice", "Delegates + expressions"],
+  ["Feature slice", "Universal delegates + expressions"],
   ["Runtime files", 1],
   ["Runtime dependencies", 0],
 ];
-start.getRange("G6").formulas = [["=COUNTIF('Examples'!F6:F11,\"PASS\")"]];
-start.getRange("G7").formulas = [["=COUNTA('Examples'!A6:A11)"]];
+start.getRange("G6").formulas = [["=COUNTIF('Examples'!F6:F16,\"PASS\")"]];
+start.getRange("G7").formulas = [["=COUNTA('Examples'!A6:A16)"]];
 start.getRange("F6:G10").format = {
   borders: { preset: "all", style: "thin", color: colors.line },
 };
@@ -154,31 +154,36 @@ examples.getRange("A5:F5").values = [[
   "Status",
 ]];
 tableHeader(examples.getRange("A5:F5"));
-examples.getRange("A6:D11").values = [
+examples.getRange("A6:D16").values = [
   ["Unary lambda", "x => x * x", "Set x = ROneCOne.Var(vbLong)\nSet square = x.Multiply(x).AsFunc\nsquare(9)", 81],
   ["Binary lambda", "(x, y) => x + y", "Set addValues = x.Add(y).AsFunc\naddValues(6, 7)", 13],
   ["Boolean expression", "x >= 10 && x < 20", "x.AtLeast(10).AndAlso(x.LessThan(20)).AsFunc", true],
   ["Short circuit", "false && (1 / 0)", "ROneCOne.Value(False).AndAlso(...).AsFunc", false],
-  ["Method delegate", "new Func<int,int,int>(Max)", "ROneCOne.FromMethod(WorksheetFunction, \"Max\", 2)", 7],
+  ["Object Func", "new Func<int,int,double>(Max)", "ROneCOne.Func(WorksheetFunction, \"Max\")\n    .Takes(vbLong, vbLong).Returns(vbDouble)", 7],
+  ["Procedure Func", "new Func<int,int,int>(Add)", "ROneCOne.Func(\"DemoUsage.DemoAddValues\")\n    .Takes(vbLong, vbLong).Returns(vbLong)", 13],
+  ["DynamicInvoke", "add.DynamicInvoke(args)", "workbookAdd.DynamicInvoke(Array(20, 22))", 42],
+  ["Multicast Action", "Delegate.Combine(first, second)", "Set combined = ROneCOne.Combine(firstAction, secondAction)\ncombined(\"value\")", "first:value|second:value|"],
+  ["True ByRef", "increment(ref value)", "Set reference = ROneCOne.RefLong(value)\nincrement(reference)", 42],
   ["Composition", "square.Then(double)", "square.PipeTo(doubleValue)(3)", 18],
+  ["Signature metadata", "delegate.GetType()", "workbookAdd.Signature", "Func<Long, Long, Long>"],
 ];
 examples.getRange("F6").formulas = [["=IF(E6=\"\",\"NOT RUN\",IF(E6=D6,\"PASS\",\"CHECK\"))"]];
-examples.getRange("F6:F11").fillDown();
-examples.getRange("A6:F11").format = {
+examples.getRange("F6:F16").fillDown();
+examples.getRange("A6:F16").format = {
   borders: { preset: "all", style: "thin", color: colors.line },
   wrapText: true,
   verticalAlignment: "top",
 };
-examples.getRange("C6:C11").format = {
+examples.getRange("C6:C16").format = {
   fill: "#F8FAFC",
   font: { name: "Consolas", color: colors.ink, size: 10 },
   wrapText: true,
 };
-examples.getRange("F6:F11").conditionalFormats.add("containsText", {
+examples.getRange("F6:F16").conditionalFormats.add("containsText", {
   text: "PASS",
   format: { fill: "#DCFCE7", font: { bold: true, color: colors.green } },
 });
-examples.getRange("F6:F11").conditionalFormats.add("containsText", {
+examples.getRange("F6:F16").conditionalFormats.add("containsText", {
   text: "CHECK",
   format: { fill: "#FEE2E2", font: { bold: true, color: "#B91C1C" } },
 });
@@ -186,7 +191,7 @@ examples.getRange("A:A").format.columnWidth = 20;
 examples.getRange("B:B").format.columnWidth = 25;
 examples.getRange("C:C").format.columnWidth = 52;
 examples.getRange("D:F").format.columnWidth = 15;
-examples.getRange("6:11").format.rowHeight = 50;
+examples.getRange("6:16").format.rowHeight = 54;
 examples.freezePanes.freezeRows(5);
 
 titleBand(
@@ -243,7 +248,7 @@ tableHeader(architecture.getRange("A5:F5"));
 architecture.getRange("A6:F11").values = [
   ["Single-file core", "ROneCOne.cls", "One import operation", "ENFORCED", 1, 0],
   ["No runtime VBIDE", "Expression trees", "Works without trusted project access", "ENFORCED", 1, 0],
-  ["Syntax sugar", "Inferred typed Func parameters", "Minimal developer ceremony", "ENFORCED", 1, 0],
+  ["Syntax sugar", "Inferred Func + universal adapters", "Minimal developer ceremony", "ENFORCED", 1, 0],
   ["One Excel process", "Single-process execution contract", "No multi-instance parallelism", "ENFORCED", 1, 0],
   ["Privacy", "Local-only opt-in logs", "Never transmits workbook data", "ENFORCED", 1, 0],
   ["Workbook formats", ".xlsm / .xlsb / .xlam", "Normal VBA remains unchanged", "SUPPORTED CONTRACT", 1, 0],
@@ -265,7 +270,7 @@ architecture.getRange("A12:D12").values = [[
 ]];
 tableHeader(architecture.getRange("A12:D12"));
 architecture.getRange("A13:D18").values = [
-  [1, "Delegates + expression lambdas", "AVAILABLE (v0.1.0)", "Tagged object kernel"],
+  [1, "Universal delegates + expression lambdas", "AVAILABLE (v0.5.0)", "Tagged object kernel"],
   [2, "Runtime-generic List<T> + LINQ", "AVAILABLE (v0.2.0)", "Delegates"],
   [3, "Inferred Func + clear LINQ syntax", "AVAILABLE (v0.4.0)", "Delegates + collections"],
   [4, "Try / Catch / Finally", "SCHEDULED", "Delegates"],
@@ -288,9 +293,9 @@ await fs.mkdir(outputDir, { recursive: true });
 const inspect = await workbook.inspect({
   kind: "table,formula",
   sheetId: "Examples",
-  range: "A1:F11",
+  range: "A1:F16",
   maxChars: 4000,
-  tableMaxRows: 12,
+  tableMaxRows: 17,
   tableMaxCols: 6,
 });
 const errors = await workbook.inspect({

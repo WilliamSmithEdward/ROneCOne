@@ -31,6 +31,29 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("Set square = x.Multiply(x).AsFunc", source)
         self.assertIn("Set addValues = x.Add(y).AsFunc", source)
 
+    def test_delegate_demo_exercises_the_universal_surface(self) -> None:
+        source = DELEGATES_DEMO.read_text(encoding="utf-8")
+        builder = (ROOT / "tools" / "build_demo_workbook.cjs").read_text(
+            encoding="utf-8"
+        )
+
+        required_syntax = (
+            'ROneCOne.Func(worksheetFunctions, "Max")',
+            'ROneCOne.Func("DemoUsage.DemoAddValues")',
+            "workbookAdd.DynamicInvoke",
+            "ROneCOne.Combine(firstAction, secondAction)",
+            "ROneCOne.NativeAction",
+            "ROneCOne.RefLong(value)",
+            "workbookAdd.Signature",
+        )
+        for syntax in required_syntax:
+            self.assertIn(syntax, source)
+        self.assertNotIn("FromMethod", source)
+        self.assertIn("DynamicInvoke", builder)
+        self.assertIn("Multicast Action", builder)
+        self.assertIn("True ByRef", builder)
+        self.assertNotIn("FromMethod", builder)
+
     def test_user_class_model_exposes_demo_fields(self) -> None:
         source = CUSTOMER.read_text(encoding="utf-8")
 

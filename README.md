@@ -1,52 +1,62 @@
 # ROneCOne
 
-ROneCOne is a one-file VBA runtime that makes ordinary Excel VBA feel more like modern C#.
-Version 0.4.0 uses `Element` as the clear, LINQ-aligned sequence-parameter name. Inferred
-`Func` expressions and concise LINQ remain dependency-free,
-with no runtime install, add-in, network access, external library, or trusted VBIDE access.
+ROneCOne is a one-file runtime that brings typed expressions, universal delegates, runtime-generic
+collections, and LINQ-style queries to ordinary Excel VBA. Version 0.5.0 unifies expression
+lambdas, object methods, callable objects, workbook procedures, multicast chains, and
+signature-bound native entry points behind one immutable `Func` / `Action` model.
+
+The deployed runtime is one [`ROneCOne.cls`](src/ROneCOne.cls) file. It requires no install,
+add-in, runtime code generation, network access, external package, or trusted VBIDE access.
 
 ## Quick start
 
-Each core capability has its own verified demo workbook:
+Each core capability has its own verified workbook:
 
-- [`ROneCOne_Delegates_Demo.xlsm`](demo/ROneCOne_Delegates_Demo.xlsm) runs six delegate and
-  expression examples through `RunROneCOneDemo`.
+- [`ROneCOne_Delegates_Demo.xlsm`](demo/ROneCOne_Delegates_Demo.xlsm) runs eleven expression,
+  object, procedure, dynamic, multicast, metadata, composition, and true-`ByRef` examples.
 - [`ROneCOne_Collections_Demo.xlsm`](demo/ROneCOne_Collections_Demo.xlsm) runs fourteen `List<T>`
-  and LINQ examples through `RunROneCOneCollectionsDemo`. Its dedicated **User Class LINQ** sheet
-  filters, projects, orders, quantifies, and aggregates `DemoCustomer` objects.
+  and LINQ examples, including a dedicated **User Class LINQ** tutorial.
 
-Both include a capability-specific 10,000-operation benchmark and execute in one Excel process.
-
-To use the runtime in another workbook, import [`src/ROneCOne.cls`](src/ROneCOne.cls) through the
-VBE's **File > Import File** command. That one class is the entire deployed runtime.
+Both include a 10,000-operation benchmark and execute in one Excel process. Import
+[`ROneCOne.cls`](src/ROneCOne.cls) through the VBE's **File > Import File** command to use the
+runtime in another workbook.
 
 ```vba
-Dim x As ROneCOne
 Dim square As ROneCOne
+Dim x As ROneCOne
 
 Set x = ROneCOne.Var(vbLong)
 Set square = x.Multiply(x).AsFunc
 
-Debug.Print square(CLng(9))      ' 81: default-member delegate call
+Debug.Print square(CLng(9))      ' 81: natural delegate call
 Debug.Print square.Run(CLng(9))  ' 81: explicit form
 ```
 
+Object methods, callable objects, and workbook procedures share the same typed contract:
+
 ```vba
-Dim numbers As ROneCOne
-Dim x As ROneCOne
+Dim maximum As ROneCOne
 
-Set numbers = ROneCOne.ListOf(vbLong)
-numbers.Add CLng(5)
-numbers.Add CLng(20)
-Set x = numbers.Element
+Set maximum = ROneCOne.Func(Application.WorksheetFunction, "Max")
+Set maximum = maximum.Takes(vbLong, vbLong).Returns(vbDouble)
 
-Set numbers = numbers _
-    .Where(x.GreaterThan(CLng(10))) _
-    .ToList
-
-Debug.Print numbers.GenericTypeName  ' List<Long>
-Debug.Print numbers(0)               ' 20
+Debug.Print maximum(CLng(4), CLng(7))
+Debug.Print maximum.DynamicInvoke(Array(CLng(4), CLng(7)))
+Debug.Print maximum.Signature  ' Func<Long, Long, Double>
 ```
+
+`Action` delegates combine and remove immutably, matching C# multicast ordering:
+
+```vba
+Dim changed As ROneCOne
+Dim ignored As Variant
+
+Set changed = ROneCOne.Combine(firstHandler, secondHandler)
+ignored = changed("ready")
+Set changed = changed.Remove(secondHandler)
+```
+
+Typed collections and user-defined classes use the same delegate kernel:
 
 ```vba
 Dim customer As ROneCOne
@@ -64,36 +74,29 @@ Set names = customers _
     .ToList
 ```
 
-## Version 0.4.0
+## Version 0.5.0
 
-- immutable expression trees and string-free anonymous lambdas
-- `Var` and `VarLike` typed argument sugar
-- automatic parameter inference through `.AsFunc` or `Lambda(body)`
-- runtime-typed parameters and deterministic contract errors
-- unary and binary arithmetic, comparisons, concatenation, and Boolean negation
-- short-circuit `AndAlso` and `OrElse` semantics
-- object method delegates through `FromMethod`
-- scalar and object return values
-- delegate composition through `PipeTo`
-- callable default-member syntax such as `square(9)`
+- universal `Func` and `Action` factories for expressions, objects, and workbook procedures
+- default callable-object binding through an object's `Run` method
+- immutable `.Takes(...)` and `.Returns(...)` signatures for primitives and user classes
+- natural call syntax, explicit `Run`, and C#-aligned `DynamicInvoke`
+- immutable multicast `Combine`, `Remove`, `GetInvocationList`, and invocation ordering
+- `Target`, `MethodName`, `Arity`, `IsAction`, `InvocationCount`, and `Signature` metadata
+- fail-closed x64 `Native` / `NativeAction` dispatch through the Windows Automation ABI
+- true native `ByRef` with typed reference descriptors and variable wrappers
+- expression lambdas, captured values, short-circuit Boolean logic, and `PipeTo` composition
 - strict primitive and exact user-defined class `List<T>` values
-- zero-based default and explicit indexers, mutation, and nested `For Each`
-- deferred `Where`, `SelectItems`, ordering, slicing, distinct, append/prepend, and reverse
-- LINQ-aligned sequence expressions through `Element`
-- concise `Map`, `Exists`, `Sorted`, `SortedDescending`, `AtLeast`, and `AtMost` forms
-- immediate query terminals, materialization, `Range`, and `Repeat`
+- deferred LINQ-style filtering, projection, ordering, slicing, quantifiers, and aggregation
 - IntelliSense descriptions embedded in the exported class
-- a living user-defined-class LINQ tutorial with six formula-verified scenarios
-- small, purpose-focused, commented procedures throughout both demo VBA projects
 
-VBA classes cannot declare a public member named `Invoke` because it collides with inherited COM
-`IDispatch.Invoke`. ROneCOne uses `Run` as the explicit name and marks it as the default member,
-which enables the more C#-like `square(9)` call form.
+VBA classes cannot declare `Invoke` because that name collides with their inherited COM dispatch
+surface. ROneCOne therefore makes `Run` the explicit member and the default member, enabling the
+closer `square(9)` form. VBA also reserves `Select` and `Any`; ROneCOne uses concise `Map` and
+`Exists` names while retaining the explicit `SelectItems` and `AnyItem` primitives.
 
-VBA reserves `Select` and `Any`. The concise surface uses `Map` and `Exists`; the canonical
-`SelectItems` and `AnyItem` members remain available. See
-[`docs/collections.md`](docs/collections.md) for concise and canonical typed user-class examples,
-semantics, and the supported collection surface.
+See [`docs/delegates.md`](docs/delegates.md) for the concise and canonical delegate forms, ABI and
+`ByRef` safety boundaries, and complete invocation model. See
+[`docs/collections.md`](docs/collections.md) for `List<T>` and LINQ semantics.
 
 ## Runtime contract
 
@@ -102,16 +105,15 @@ semantics, and the supported collection surface.
 - one imported runtime file and one Excel application process
 - no runtime code generation or VBIDE trust
 - no elevation, telemetry, or implicit network traffic
-- existing VBA remains usable unchanged
-- local diagnostics are opt-in and never transmit data
+- local diagnostics are opt-in and never transmit workbook data
 
 ## Quality gates
 
 Every release is exercised at the source, workbook, and Excel-host layers. Python contracts enforce
 the one-file API and repository invariants; pyVBAanalysis scans complete VBA projects; pyOpenVBA
-verifies module round trips; and bounded Excel workers compile and execute the live suites while a
-popup watcher prevents modal Office or VBE windows from hanging automation. Performance baselines
-run in the same Excel process as the code under test.
+verifies module round trips; and bounded Excel workers compile and execute the live suites. A
+process-scoped popup watcher records and dismisses modal Office or VBE surfaces before they can hang
+automation. Performance baselines run in the same Excel process as the code under test.
 
 ## Development
 
@@ -122,28 +124,28 @@ python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .venv\Scripts\python.exe -m unittest discover -s tests\python -v
 .venv\Scripts\pyvbaanalysis.exe src\ROneCOne.cls tests\vba\DelegateFixture.cls `
-    tests\vba\GenericCustomer.cls tests\vba\TestDelegates.bas `
-    tests\vba\TestCollections.bas --no-inline-suppression --format text
+    tests\vba\GenericCustomer.cls tests\vba\DelegateProcedures.bas `
+    tests\vba\TestDelegates.bas tests\vba\TestCollections.bas `
+    --no-inline-suppression --format text
 .venv\Scripts\python.exe tools\build_test_workbook.py
 powershell -ExecutionPolicy Bypass -File tools\run_excel_tests.ps1
 ```
 
-The Excel harness observes Win32 and UI Automation surfaces owned by its exact task process. It
-captures and dismisses modal dialogs, records selected VBE code for compiler faults, fails fast on
-break mode, and enforces a hard deadline so a hidden Excel instance cannot hang indefinitely. See
+The harness observes Win32 and UI Automation surfaces owned by its exact disposable Excel process,
+captures selected VBE code for compiler faults, fails fast on break mode, and enforces a hard
+deadline. It never enumerates or closes user-open Excel instances. See
 [`docs/development.md`](docs/development.md).
 
-The real `%USERPROFILE%\.ronecone.env` is private and optional. The committed
-`.ronecone.env.example` defines the reserved local-only diagnostics schema. Version 0.4.0 does not
-read this file or emit runtime logs.
+The optional `%USERPROFILE%\.ronecone.env` is private. The committed
+`.ronecone.env.example` defines the reserved local-only diagnostics schema; version 0.5.0 does not
+read it or emit runtime logs.
 
 ## Release roadmap
 
-Capabilities enter the supported surface only after their behavioral, live-host, and performance
-gates pass. Delegates, expression lambdas, runtime-generic `List<T>`, and foundational LINQ are
-available now. The release sequence continues with structured exceptions, additional generic
-collections, tasks and async/await, events, disposables, and native-safe parallel operations. See
-[`docs/architecture.md`](docs/architecture.md) for the governing invariants.
+Delegates, expression lambdas, runtime-generic `List<T>`, and foundational LINQ are available now.
+The release sequence continues with structured exceptions, additional generic collections, tasks
+and async/await, events, disposables, and native-safe parallel operations. See
+[`docs/architecture.md`](docs/architecture.md).
 
 ## License
 

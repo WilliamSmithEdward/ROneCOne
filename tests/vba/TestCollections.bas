@@ -130,7 +130,9 @@ Private Sub TestUserClassLinq()
     Dim fixture As DelegateFixture
     Dim grace As GenericCustomer
     Dim names As ROneCOne
+    Dim predicate As ROneCOne
     Dim prototype As GenericCustomer
+    Dim selector As ROneCOne
 
     Set prototype = New GenericCustomer
     Set customers = ROneCOne.ListOf(prototype)
@@ -144,9 +146,13 @@ Private Sub TestUserClassLinq()
     customers.Add grace
 
     Set fixture = New DelegateFixture
+    Set predicate = ROneCOne.Func(fixture, "CustomerAtLeast40")
+    Set predicate = predicate.Takes(prototype).Returns(vbBoolean)
+    Set selector = ROneCOne.Func(fixture, "GetCustomerName")
+    Set selector = selector.Takes(prototype).Returns(vbString)
     Set names = customers _
-        .Where(ROneCOne.FromMethod(fixture, "CustomerAtLeast40", 1)) _
-        .SelectItems(ROneCOne.FromMethod(fixture, "GetCustomerName", 1), vbString) _
+        .Where(predicate) _
+        .SelectItems(selector, vbString) _
         .ToList
 
     AssertEqual "class LINQ count", CLng(1), names.Count
