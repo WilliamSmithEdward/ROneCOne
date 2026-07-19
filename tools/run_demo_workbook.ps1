@@ -1,5 +1,6 @@
 param(
-    [string]$WorkbookPath = "demo\ROneCOne_Demo.xlsm",
+    [string]$WorkbookPath = "demo\ROneCOne_Delegates_Demo.xlsm",
+    [string]$MacroName = "RunROneCOneDemo",
     [ValidateRange(5, 120)]
     [int]$TimeoutSeconds = 30,
     [switch]$Worker,
@@ -66,7 +67,7 @@ public static class ROneCOneDemoProcess
 
         $workbook = $excel.Workbooks.Open($resolvedWorkbook, 0, $false)
         $macroPrefix = "'" + $workbook.Name.Replace("'", "''") + "'!"
-        $excel.Run($macroPrefix + "RunROneCOneDemo") | Out-Null
+        $excel.Run($macroPrefix + $MacroName) | Out-Null
         $excel.Calculate()
 
         if (Test-Path -LiteralPath $dialogLog) {
@@ -83,8 +84,12 @@ public static class ROneCOneDemoProcess
         }
 
         $demoStatus = [string]$workbook.Worksheets.Item("Start Here").Range("B13").Value2
+        $examplesSheet = $workbook.Worksheets.Item("Examples")
+        $exampleCount = [int]$excel.WorksheetFunction.CountA(
+            $examplesSheet.Range("A6:A100"))
+        $lastExampleRow = 5 + $exampleCount
         $statuses = @(
-            $workbook.Worksheets.Item("Examples").Range("F6:F11").Value2 |
+            $examplesSheet.Range("F6:F$lastExampleRow").Value2 |
                 ForEach-Object { [string]$_ }
         )
         $notPassing = @($statuses | Where-Object { $_ -ne "PASS" })
@@ -95,6 +100,7 @@ public static class ROneCOneDemoProcess
         $workbook.Save()
         [pscustomobject]@{
             workbook = $resolvedWorkbook
+            feature = [string]$workbook.Worksheets.Item("Start Here").Range("G8").Value2
             status = $demoStatus
             examples_passing = $statuses.Count
             benchmark_seconds = [double]$workbook.Worksheets.Item("Benchmarks").Range("C6").Value2
@@ -132,6 +138,7 @@ $arguments = @(
     "-ExecutionPolicy", "Bypass",
     "-File", "`"$PSCommandPath`"",
     "-WorkbookPath", "`"$resolvedWorkbook`"",
+    "-MacroName", "`"$MacroName`"",
     "-ProcessInfoPath", "`"$resolvedProcessInfo`"",
     "-Worker"
 )

@@ -1,4 +1,6 @@
 param(
+    [string]$WorkbookPath = "demo\ROneCOne_Delegates_Demo.xlsm",
+    [string]$OutputPrefix = "delegates",
     [ValidateRange(10, 180)]
     [int]$TimeoutSeconds = 45,
     [ValidateRange(0, 15)]
@@ -10,7 +12,10 @@ $nodePath = "C:\Users\William\.cache\codex-runtimes\codex-primary-runtime\depend
 $nodeModules = "C:\Users\William\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\node_modules"
 $scriptPath = Join-Path $PSScriptRoot "render_demo_workbook.cjs"
 $workingDirectory = Join-Path $PSScriptRoot "..\demo\.working"
-$workbookLock = Join-Path $PSScriptRoot "..\demo\~`$ROneCOne_Demo.xlsm"
+$resolvedWorkbook = (Resolve-Path -LiteralPath $WorkbookPath).Path
+$workbookLock = Join-Path `
+    (Split-Path -Parent $resolvedWorkbook) `
+    ("~`$" + (Split-Path -Leaf $resolvedWorkbook))
 $stdoutPath = Join-Path $workingDirectory "render-worker.stdout.log"
 $stderrPath = Join-Path $workingDirectory "render-worker.stderr.log"
 $beforeExcelIds = @(Get-Process EXCEL -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
@@ -76,7 +81,7 @@ $env:NODE_PATH = $nodeModules
 try {
     $nodeProcess = Start-Process `
         -FilePath $nodePath `
-        -ArgumentList "`"$scriptPath`"" `
+        -ArgumentList "`"$scriptPath`" `"$resolvedWorkbook`" `"$OutputPrefix`"" `
         -WorkingDirectory (Join-Path $PSScriptRoot "..") `
         -WindowStyle Hidden `
         -RedirectStandardOutput $stdoutPath `

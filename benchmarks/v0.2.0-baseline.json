@@ -1,0 +1,32 @@
+{
+  "schema_version": 2,
+  "ronecone_version": "0.2.0",
+  "captured_on": "2026-07-18",
+  "environment": {
+    "platform": "Windows x64",
+    "excel": "Microsoft 365 16.0.20131.20154 x64",
+    "process_model": "one fresh Excel process per sample"
+  },
+  "scenarios": [
+    {
+      "name": "square(x) expression delegate",
+      "operations_per_sample": 10000,
+      "seconds": [0.0625, 0.0703125, 0.0546875],
+      "minimum_seconds": 0.0546875,
+      "median_seconds": 0.0625,
+      "mean_seconds": 0.0625,
+      "maximum_seconds": 0.0703125,
+      "release_gate_seconds": 0.5
+    },
+    {
+      "name": "Range.Where.ToList typed sequence",
+      "operations_per_sample": 10000,
+      "seconds": [0.1171875, 0.1328125, 0.1171875],
+      "minimum_seconds": 0.1171875,
+      "median_seconds": 0.1171875,
+      "mean_seconds": 0.1223958333,
+      "maximum_seconds": 0.1328125,
+      "release_gate_seconds": 0.75
+    }
+  ]
+}

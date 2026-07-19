@@ -3,7 +3,9 @@ param(
     [ValidateRange(5, 300)]
     [int]$TimeoutSeconds = 30,
     [ValidateRange(0.01, 60)]
-    [double]$MaxBenchmarkSeconds = 0.5
+    [double]$MaxBenchmarkSeconds = 0.5,
+    [ValidateRange(0.01, 60)]
+    [double]$MaxCollectionBenchmarkSeconds = 0.75
 )
 
 $ErrorActionPreference = "Stop"
@@ -67,7 +69,8 @@ try {
         "-File", "`"$workerScript`"",
         "-WorkbookPath", "`"$resolvedWorkbook`"",
         "-ProcessInfoPath", "`"$processInfo`"",
-        "-MaxBenchmarkSeconds", $MaxBenchmarkSeconds
+        "-MaxBenchmarkSeconds", $MaxBenchmarkSeconds,
+        "-MaxCollectionBenchmarkSeconds", $MaxCollectionBenchmarkSeconds
     )
     $worker = Start-Process `
         -FilePath "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" `

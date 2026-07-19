@@ -4,7 +4,10 @@ const { FileBlob, SpreadsheetFile } = require("@oai/artifact-tool");
 
 async function main() {
   const root = path.resolve(__dirname, "..");
-  const workbookPath = path.join(root, "demo", "ROneCOne_Demo.xlsm");
+  const workbookPath = process.argv[2]
+    ? path.resolve(process.argv[2])
+    : path.join(root, "demo", "ROneCOne_Delegates_Demo.xlsm");
+  const outputPrefix = process.argv[3] || "delegates";
   const outputDir = path.join(root, "demo", ".working");
   const input = await FileBlob.load(workbookPath);
   const workbook = await SpreadsheetFile.importXlsx(input);
@@ -16,12 +19,12 @@ async function main() {
     options: { maxResults: 100 },
   });
   await fs.writeFile(
-    path.join(outputDir, "final-inspect.ndjson"),
+    path.join(outputDir, `${outputPrefix}-final-inspect.ndjson`),
     inspection.ndjson,
     "utf8",
   );
 
-  for (const sheetName of ["Start Here", "Examples"]) {
+  for (const sheetName of ["Start Here", "Examples", "Benchmarks", "Architecture"]) {
     const preview = await workbook.render({
       sheetName,
       autoCrop: "all",
@@ -30,7 +33,7 @@ async function main() {
     });
     const safeName = sheetName.toLowerCase().replaceAll(" ", "-");
     await fs.writeFile(
-      path.join(outputDir, `final-${safeName}.png`),
+      path.join(outputDir, `${outputPrefix}-final-${safeName}.png`),
       new Uint8Array(await preview.arrayBuffer()),
     );
   }

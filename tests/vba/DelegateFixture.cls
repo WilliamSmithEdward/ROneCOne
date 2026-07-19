@@ -29,3 +29,16 @@ End Property
 Public Function EchoSelf() As DelegateFixture
     Set EchoSelf = Me
 End Function
+
+Public Function CustomerAtLeast40(ByVal customer As GenericCustomer) As Boolean
+    If customer Is Nothing Then Exit Function
+    CustomerAtLeast40 = (customer.Age >= 40)
+End Function
+
+Public Function GetCustomerName(ByVal customer As GenericCustomer) As Variant
+    If customer Is Nothing Then
+        GetCustomerName = vbNullString
+    Else
+        GetCustomerName = customer.CustomerName
+    End If
+End Function

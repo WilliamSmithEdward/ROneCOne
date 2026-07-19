@@ -18,6 +18,11 @@ class SourceContractTests(unittest.TestCase):
     def test_runtime_source_exists(self) -> None:
         self.assertTrue(SOURCE.is_file(), "src/ROneCOne.cls must be the shipped runtime")
 
+    def test_runtime_embeds_the_mit_license(self) -> None:
+        self.assertIn("' MIT License", self.source)
+        self.assertIn("' Copyright (c) 2026 William Smith", self.source)
+        self.assertIn("' THE SOFTWARE IS PROVIDED \"AS IS\"", self.source)
+
     def test_runtime_is_one_predeclared_class(self) -> None:
         class_files = sorted((ROOT / "src").glob("*.cls")) if (ROOT / "src").exists() else []
         self.assertEqual([SOURCE], class_files)
@@ -62,6 +67,56 @@ class SourceContractTests(unittest.TestCase):
         for member in required_members:
             pattern = rf"Public\s+(?:Function|Property\s+Get)\s+{member}\b"
             self.assertRegex(self.source, re.compile(pattern, re.IGNORECASE), member)
+
+    def test_generic_list_and_linq_contract_is_present(self) -> None:
+        required_members = (
+            "ListOf",
+            "ListLike",
+            "AddRange",
+            "Clear",
+            "Contains",
+            "Count",
+            "IndexOf",
+            "Insert",
+            "Item",
+            "Remove",
+            "RemoveAt",
+            "Where",
+            "SelectItems",
+            "Take",
+            "Skip",
+            "Distinct",
+            "OrderBy",
+            "OrderByDescending",
+            "Append",
+            "Prepend",
+            "Reverse",
+            "AnyItem",
+            "All",
+            "First",
+            "Last",
+            "Sum",
+            "Average",
+            "Min",
+            "Max",
+            "ToList",
+            "ToArray",
+            "Range",
+            "Repeat",
+            "GenericTypeName",
+        )
+        for member in required_members:
+            pattern = (
+                rf"Public\s+(?:Function|Sub|Property\s+(?:Get|Let|Set))\s+"
+                rf"\[?{member}\]?(?![A-Za-z0-9_])"
+            )
+            self.assertRegex(self.source, re.compile(pattern, re.IGNORECASE), member)
+
+    def test_collections_expose_vba_foreach_enumeration(self) -> None:
+        self.assertRegex(
+            self.source,
+            re.compile(r"Attribute\s+NewEnum\.VB_UserMemId\s*=\s*-4", re.IGNORECASE),
+        )
 
     def test_runtime_does_not_depend_on_vbide_or_external_processes(self) -> None:
         lowered = self.source.lower()
