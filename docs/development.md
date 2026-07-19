@@ -78,3 +78,9 @@ Development-only VBIDE trust is used once during each conversion to seed an othe
 `vbaProject.bin`. pyOpenVBA replaces that seed. Neither final workbook nor the runtime uses VBIDE
 automation. Every core capability gets a separate workbook with its own macro, examples,
 benchmark, live execution gate, and all-sheet render pass.
+
+The collections workbook packages two demo-only classes: `DemoCustomer` is the user model and
+`DemoCustomerQuery` contains named predicates/selectors adapted with `FromMethod`. The public
+`RunROneCOneCollectionsDemo` macro is only an orchestrator; primitive examples, user-class LINQ,
+benchmarking, reporting, and helpers are kept in small commented procedures. The delegates demo
+uses the same organization.

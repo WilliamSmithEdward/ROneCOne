@@ -84,14 +84,37 @@ public static class ROneCOneDemoProcess
         }
 
         $demoStatus = [string]$workbook.Worksheets.Item("Start Here").Range("B13").Value2
-        $examplesSheet = $workbook.Worksheets.Item("Examples")
-        $exampleCount = [int]$excel.WorksheetFunction.CountA(
-            $examplesSheet.Range("A6:A100"))
-        $lastExampleRow = 5 + $exampleCount
-        $statuses = @(
-            $examplesSheet.Range("F6:F$lastExampleRow").Value2 |
-                ForEach-Object { [string]$_ }
-        )
+        $exampleSheetNames = @("Examples")
+        $userClassSheet = $null
+        try {
+            $userClassSheet = $workbook.Worksheets.Item("User Class LINQ")
+            $exampleSheetNames += "User Class LINQ"
+        }
+        catch {}
+        finally {
+            if ($null -ne $userClassSheet) {
+                [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject(
+                    $userClassSheet)
+            }
+        }
+
+        $statuses = @()
+        foreach ($sheetName in $exampleSheetNames) {
+            $examplesSheet = $workbook.Worksheets.Item($sheetName)
+            try {
+                $exampleCount = [int]$excel.WorksheetFunction.CountA(
+                    $examplesSheet.Range("A6:A100"))
+                $lastExampleRow = 5 + $exampleCount
+                $statuses += @(
+                    $examplesSheet.Range("F6:F$lastExampleRow").Value2 |
+                        ForEach-Object { [string]$_ }
+                )
+            }
+            finally {
+                [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject(
+                    $examplesSheet)
+            }
+        }
         $notPassing = @($statuses | Where-Object { $_ -ne "PASS" })
         if ($demoStatus -ne "PASS" -or $notPassing.Count -ne 0) {
             throw "Demo validation failed: status=$demoStatus examples=$($statuses -join ',')"

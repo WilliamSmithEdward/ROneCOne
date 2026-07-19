@@ -48,8 +48,8 @@ Debug.Print customers.GenericTypeName       ' List<Customer>
 Debug.Print customers.Item(0).CustomerName  ' Ada
 ```
 
-This prototype token is the closest dependency-free equivalent of `List<Customer>` available to
-VBA without code generation, VBIDE trust, or a second runtime class.
+This prototype token provides dependency-free `List<Customer>` semantics without code generation,
+VBIDE trust, or a second runtime class.
 
 ## List surface
 
@@ -108,12 +108,54 @@ Debug.Print result(0)  ' 60
 Debug.Print result(1)  ' 40
 ```
 
-## Deliberate VBA spellings
+## LINQ over user-defined classes
+
+The collections demo includes a normal `DemoCustomer` class with `CustomerName`, `Age`, and `City`
+properties. A small application-side `DemoCustomerQuery` class supplies named predicates and
+selectors, which `FromMethod` adapts into the unary delegate contract used by `Where`,
+`SelectItems`, ordering, and terminals.
+
+```vba
+Dim agePredicate As ROneCOne
+Dim ageSelector As ROneCOne
+Dim customers As ROneCOne
+Dim names As ROneCOne
+Dim nameSelector As ROneCOne
+Dim oldest As DemoCustomer
+Dim prototype As DemoCustomer
+Dim query As DemoCustomerQuery
+
+Set prototype = New DemoCustomer
+Set customers = ROneCOne.ListOf(prototype)
+Set query = New DemoCustomerQuery
+query.MinimumAge = 40
+
+Set agePredicate = ROneCOne.FromMethod(query, "MeetsMinimumAge", 1)
+Set nameSelector = ROneCOne.FromMethod(query, "SelectName", 1)
+Set ageSelector = ROneCOne.FromMethod(query, "SelectAge", 1)
+
+Set names = customers _
+    .Where(agePredicate) _
+    .SelectItems(nameSelector, vbString) _
+    .ToList
+Set oldest = customers.OrderByDescending(ageSelector).First
+
+Debug.Print names.GenericTypeName  ' List<String>
+Debug.Print oldest.CustomerName
+```
+
+The workbook proves six object-oriented cases: exact `List<DemoCustomer>` typing, deferred
+filtering after source mutation, projection to `List<String>`, ordering while preserving the
+customer type, `AnyItem`/`All` predicates, and an average over a projected `List<Long>`. The helper
+classes are demo application code; the deployed runtime remains the single `ROneCOne.cls` file.
+
+## VBA-compatible API names
 
 VBA reserves `Select` and `Any`, and the VBE rejects those words as class member declarations.
 ROneCOne therefore exposes `SelectItems` and `AnyItem`. These are compile-time language limits,
 not string-based aliases or runtime dispatch tricks.
 
-The long-term goal remains the standard LINQ and generic-collection surface. Operators that need
-new result abstractions, including dictionaries, lookups, groupings, joins, sets, queues, and
-stacks, will ship as their own tested vertical slices rather than weakening `List<T>` contracts.
+The compatibility roadmap covers the standard LINQ and generic-collection surface. Operators that
+need new result abstractions, including dictionaries, lookups, groupings, joins, sets, queues, and
+stacks, enter the supported surface as independently tested release slices so `List<T>` contracts
+remain stable.

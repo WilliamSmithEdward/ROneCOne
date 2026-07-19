@@ -8,6 +8,9 @@ async function main() {
     ? path.resolve(process.argv[2])
     : path.join(root, "demo", "ROneCOne_Delegates_Demo.xlsm");
   const outputPrefix = process.argv[3] || "delegates";
+  const isCollections =
+    outputPrefix.toLowerCase().includes("collections") ||
+    path.basename(workbookPath).toLowerCase().includes("collections");
   const outputDir = path.join(root, "demo", ".working");
   const input = await FileBlob.load(workbookPath);
   const workbook = await SpreadsheetFile.importXlsx(input);
@@ -24,7 +27,11 @@ async function main() {
     "utf8",
   );
 
-  for (const sheetName of ["Start Here", "Examples", "Benchmarks", "Architecture"]) {
+  const sheetNames = ["Start Here", "Examples"];
+  if (isCollections) sheetNames.push("User Class LINQ");
+  sheetNames.push("Benchmarks", "Architecture");
+
+  for (const sheetName of sheetNames) {
     const preview = await workbook.render({
       sheetName,
       autoCrop: "all",

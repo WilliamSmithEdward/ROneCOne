@@ -57,6 +57,7 @@ async function main() {
   const workbook = Workbook.create();
   const start = workbook.worksheets.add("Start Here");
   const examples = workbook.worksheets.add("Examples");
+  const userClassLinq = workbook.worksheets.add("User Class LINQ");
   const benchmarks = workbook.worksheets.add("Benchmarks");
   const architecture = workbook.worksheets.add("Architecture");
 
@@ -72,7 +73,7 @@ async function main() {
   start.getRange("A6:D9").values = [
     ["1", "Press Alt+F8", "Open Excel's Macro dialog", null],
     ["2", "Run RunROneCOneCollectionsDemo", "Executes examples and benchmark", null],
-    ["3", "Review Examples", "Formula-backed PASS checks", null],
+    ["3", "Review both example sheets", "Formula-backed PASS checks", null],
     ["4", "Import ROneCOne.cls", "The deployed runtime remains one file", null],
   ];
   start.getRange("A6:D9").format = {
@@ -95,8 +96,13 @@ async function main() {
     ["Runtime files", 1],
     ["Runtime dependencies", 0],
   ];
-  start.getRange("G6").formulas = [["=COUNTIF('Examples'!F6:F13,\"PASS\")"]];
-  start.getRange("G7").formulas = [["=COUNTA('Examples'!A6:A13)"]];
+  start.getRange("G6").formulas = [[
+    "=COUNTIF('Examples'!F6:F13,\"PASS\")+" +
+      "COUNTIF('User Class LINQ'!F6:F11,\"PASS\")",
+  ]];
+  start.getRange("G7").formulas = [[
+    "=COUNTA('Examples'!A6:A13)+COUNTA('User Class LINQ'!A6:A11)",
+  ]];
   start.getRange("F6:G10").format = {
     borders: { preset: "all", style: "thin", color: colors.line },
   };
@@ -194,6 +200,92 @@ async function main() {
   examples.freezePanes.freezeRows(5);
 
   titleBand(
+    userClassLinq,
+    "User-defined class LINQ",
+    "DemoCustomer objects flow through deferred filters, projections, ordering, and terminals.",
+    "F",
+  );
+  userClassLinq.getRange("A5:F5").values = [[
+    "Pattern",
+    "C# idea",
+    "ROneCOne VBA",
+    "Expected",
+    "Live result",
+    "Status",
+  ]];
+  tableHeader(userClassLinq.getRange("A5:F5"));
+  userClassLinq.getRange("A6:D11").values = [
+    [
+      "Typed class list",
+      "List<DemoCustomer>",
+      "Set customers = ROneCOne.ListOf(customerPrototype)",
+      "List<DemoCustomer>:4",
+    ],
+    [
+      "Deferred class Where",
+      "customers.Where(c => c.Age >= 40)",
+      "Set experienced = customers.Where(minimumAgePredicate)\n" +
+        "customers.Add margaret",
+      "3|Margaret",
+    ],
+    [
+      "Projection + ordering",
+      ".Select(c => c.Name).OrderBy(name => name)",
+      ".SelectItems(nameSelector, vbString).OrderBy(identity)",
+      "Grace|Katherine|Margaret",
+    ],
+    [
+      "Object ordering",
+      ".OrderByDescending(c => c.Age).First()",
+      "Set oldest = customers.OrderByDescending(ageSelector).First",
+      "Katherine|49",
+    ],
+    [
+      "Quantifiers",
+      ".Any(city) / .All(age)",
+      "customers.AnyItem(cityPredicate) / customers.All(agePredicate)",
+      "True|False",
+    ],
+    [
+      "Aggregate projection",
+      ".Where(age).Select(c => c.Age).Average()",
+      "experienced.SelectItems(ageSelector, vbLong).Average",
+      44.7,
+    ],
+  ];
+  userClassLinq.getRange("F6").formulas = [[
+    "=IF(E6=\"\",\"NOT RUN\",IF(E6=D6,\"PASS\",\"CHECK\"))",
+  ]];
+  userClassLinq.getRange("F6:F11").fillDown();
+  userClassLinq.getRange("A6:F11").format = {
+    borders: { preset: "all", style: "thin", color: colors.line },
+    wrapText: true,
+    verticalAlignment: "top",
+  };
+  userClassLinq.getRange("C6:C11").format = {
+    fill: "#F8FAFC",
+    font: { name: "Consolas", color: colors.ink, size: 10 },
+    wrapText: true,
+  };
+  userClassLinq.getRange("D11:E11").format.numberFormat = "0.0";
+  userClassLinq.getRange("F6:F11").conditionalFormats.add("containsText", {
+    text: "PASS",
+    format: { fill: "#DCFCE7", font: { bold: true, color: colors.green } },
+  });
+  userClassLinq.getRange("F6:F11").conditionalFormats.add("containsText", {
+    text: "CHECK",
+    format: { fill: "#FEE2E2", font: { bold: true, color: "#B91C1C" } },
+  });
+  userClassLinq.getRange("A:A").format.columnWidth = 23;
+  userClassLinq.getRange("B:B").format.columnWidth = 36;
+  userClassLinq.getRange("C:C").format.columnWidth = 58;
+  userClassLinq.getRange("D:D").format.columnWidth = 31;
+  userClassLinq.getRange("E:E").format.columnWidth = 25;
+  userClassLinq.getRange("F:F").format.columnWidth = 16;
+  userClassLinq.getRange("6:11").format.rowHeight = 58;
+  userClassLinq.freezePanes.freezeRows(5);
+
+  titleBand(
     benchmarks,
     "Typed query benchmark",
     "10,000 elements in one Excel process; no worker Excel instances are launched.",
@@ -270,12 +362,10 @@ async function main() {
 
   await fs.mkdir(outputDir, { recursive: true });
   const inspect = await workbook.inspect({
-    kind: "table,formula",
-    sheetId: "Examples",
-    range: "A1:F13",
-    maxChars: 5000,
+    kind: "workbook,sheet,table,formula",
+    maxChars: 7000,
     tableMaxRows: 15,
-    tableMaxCols: 6,
+    tableMaxCols: 8,
   });
   const errors = await workbook.inspect({
     kind: "match",
@@ -289,7 +379,13 @@ async function main() {
     "utf8",
   );
 
-  for (const sheetName of ["Start Here", "Examples", "Benchmarks", "Architecture"]) {
+  for (const sheetName of [
+    "Start Here",
+    "Examples",
+    "User Class LINQ",
+    "Benchmarks",
+    "Architecture",
+  ]) {
     const preview = await workbook.render({
       sheetName,
       autoCrop: "all",

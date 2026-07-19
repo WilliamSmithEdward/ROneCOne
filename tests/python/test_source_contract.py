@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "src" / "ROneCOne.cls"
 BUILD_TOOL = ROOT / "tools" / "build_test_workbook.py"
+GITIGNORE = ROOT / ".gitignore"
 
 
 class SourceContractTests(unittest.TestCase):
@@ -17,6 +18,22 @@ class SourceContractTests(unittest.TestCase):
 
     def test_runtime_source_exists(self) -> None:
         self.assertTrue(SOURCE.is_file(), "src/ROneCOne.cls must be the shipped runtime")
+
+    def test_repository_ignores_local_and_generated_state(self) -> None:
+        ignored = GITIGNORE.read_text(encoding="utf-8").splitlines()
+        required_rules = (
+            ".ronecone.env",
+            ".venv/",
+            "node_modules/",
+            "tests/output/",
+            "demo/.working/",
+            "*.candidate.xls*",
+            "*.jsonl",
+            "~$*",
+        )
+        for rule in required_rules:
+            self.assertIn(rule, ignored)
+        self.assertIn("!.ronecone.env.example", ignored)
 
     def test_runtime_embeds_the_mit_license(self) -> None:
         self.assertIn("' MIT License", self.source)
