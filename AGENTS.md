@@ -51,6 +51,80 @@ evidence as the project develops, and keep this section current with:
 - protected production paths, secrets boundaries, and sign-off requirements
 - the repository-specific definition of done
 
+## Excel and VBA Authority
+
+The user has authorized project-scoped use of these tools for Excel workbook and VBA work:
+
+- `pyVBAanalysis`, inspected at version 1.2.0 and commit
+  `5fd8f6b5e7ccbbae5f18bf1ca96824fa25d3aa15`
+- `pyOpenVBA`, inspected at version 3.0.1 and commit
+  `9e4fdd85cfa9e7a7813d8d90046f248219506302`
+- the installed Microsoft Excel desktop application
+- Excel's VBA object model; trusted programmatic access is user-reported as enabled
+
+Source repositories:
+
+- https://github.com/WilliamSmithEdward/pyVBAanalysis
+- https://github.com/WilliamSmithEdward/pyOpenVBA
+
+This authorization permits installing the Python packages into a project-scoped environment when
+a concrete task requires them. Pin versions or source revisions and record the installation in the
+project dependency files. Do not install globally unless the user explicitly requests it.
+
+### Tool roles
+
+- Use `pyVBAanalysis` for static analysis of Excel VBA in `.xlsm`, `.xlsb`, `.xlam`, and `.xls`
+  files or exported `.bas`, `.cls`, and `.frm` modules. It does not run macros or require Excel.
+- Use `pyOpenVBA` to list, extract, add, edit, rename, delete, and write VBA modules in supported
+  Excel formats. Prefer its pull-edit-analyze-push workflow when source-level changes are enough.
+- Use Excel and the VBA object model for host-specific behavior, calculation, compilation, object
+  model access, workbook UI behavior, and validation that pure file tooling cannot establish.
+- Do not treat a clean static-analysis result as proof that workbook behavior is correct. Validate
+  host-dependent behavior in Excel when it is material.
+
+### Workbook safety
+
+- Resolve the exact workbook path before acting. Do not inspect or modify unrelated workbooks.
+- Preserve the original and write to a new output file by default. Overwrite only when requested or
+  when a separately recoverable backup has been verified.
+- Inventory workbook format, VBA modules, protection, signatures, links, and relevant external
+  connections before mutation.
+- A VBA change invalidates a digital signature. Do not accept signature removal or invalidation
+  without explicit confirmation and a re-signing or acceptance plan.
+- Do not bypass password-protected VBA projects. `pyOpenVBA` mutation with `allow_protected=True`
+  requires explicit task-specific confirmation.
+- `pyOpenVBA` edits UserForm code-behind but not the form design surface. Do not claim
+  design-surface support or attempt unsupported edits through it.
+- Preserve workbook format and macro capability. Do not convert between `.xlsx`, `.xlsm`, `.xlsb`,
+  `.xlam`, or `.xls` unless the task explicitly requires conversion.
+
+### Excel application safety
+
+- Do not attach to, save, close, or alter an Excel instance or workbook the user already has open
+  unless the task identifies it or the user explicitly asks for live control.
+- Track and close only Excel processes, workbooks, and temporary resources opened by the task.
+- Disable automatic macro execution when opening a workbook for inspection or source mutation.
+  Running a macro requires a task need, adequate review, and separate action admission for its side
+  effects.
+- Trusted access to the VBA object model grants capability, not permission to broaden workbook
+  scope, weaken Office security settings, or execute unrelated code.
+- Make Excel automation visible to the user only when interaction or visual review is required;
+  otherwise keep task-created automation non-interactive.
+
+### Preferred workflow
+
+1. Inspect the target and create or verify a recoverable working copy.
+2. Pull or read VBA source without executing it.
+3. Run `pyVBAanalysis` on the complete project when possible; mark partial-project analysis
+   accurately.
+4. Make the smallest source change in exported, reviewable modules.
+5. Re-run static analysis and focused source-level checks.
+6. Push to a new workbook output with `pyOpenVBA`, unless Excel/VBE editing is specifically needed.
+7. Reopen the output and verify module inventory, source round-trip, file integrity, and absence of
+   repair prompts.
+8. Use Excel for material host-level validation, then report the exact workbook produced and checks
+   observed.
+
 ## Task Contract
 
 Before material reasoning or action, establish the narrowest sufficient understanding of:
@@ -195,8 +269,8 @@ build as ready.
 
 ### Dependencies and security
 
-- Before adding a dependency, verify that it exists, is maintained, fits the task, has acceptable
-  provenance and licensing, and cannot reasonably be avoided.
+- Before adding a dependency, assess supply-chain risk and verify that it exists, is maintained,
+  fits the task, has acceptable provenance and licensing, and cannot reasonably be avoided.
 - Pin and update dependencies through the repository's package manager and lockfile conventions.
 - Use secure defaults: validate untrusted input, apply least privilege, and fail closed at security
   boundaries.
