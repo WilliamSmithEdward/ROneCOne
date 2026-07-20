@@ -1,5 +1,9 @@
 # ROneCOne Architecture
 
+This document explains how one class module provides the whole runtime: the invariants that hold
+across releases, the design of each capability slice, and the state and isolation rules. Everyday
+usage lives in the [user guide](user-guide/README.md).
+
 ## Runtime invariant
 
 The deployed runtime is one imported class module, `src/ROneCOne.cls`. Test modules, fixture
@@ -162,3 +166,5 @@ contexts are keyed to one workbook, and process-global mutable state never coupl
 
 Each capability must pass its full behavioral, live-host, and performance gates before it enters
 the supported surface.
+
+[Back to the documentation index](README.md)

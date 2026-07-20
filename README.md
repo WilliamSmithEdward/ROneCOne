@@ -1,15 +1,41 @@
 # ROneCOne
 
-## Give VBA the love it deserves
+**Give VBA the love it deserves.**
 
-Excel carries serious work. ROneCOne gives its built-in language a modern programming layer
-without asking you to replace the workbooks, workflows, or skills you already trust.
+[![Latest release](https://img.shields.io/github/v/release/WilliamSmithEdward/ROneCOne)](https://github.com/WilliamSmithEdward/ROneCOne/releases/latest)
+[![MIT license](https://img.shields.io/github/license/WilliamSmithEdward/ROneCOne)](LICENSE)
+[![Microsoft 365 Excel on Windows x64](https://img.shields.io/badge/Excel-Microsoft_365_Windows_x64-217346)](docs/user-guide/getting-started.md)
+[![Single class module runtime](https://img.shields.io/badge/runtime-one_class_module-0078D4)](src/ROneCOne.cls)
 
-One class module brings generic collections, LINQ, tasks, typed data, reusable behavior, events,
-and structured failure handling into ordinary VBA. There is no add-in to deploy, no service to
-connect, and no second runtime to install.
+ROneCOne is a modern programming layer for Excel VBA. Import one class module, `ROneCOne.cls`,
+and ordinary workbook code gains typed collections, LINQ-style queries, parallel tasks, typed
+events, structured error handling, and an in-memory data layer with local database access - the
+everyday toolkit of C# and .NET, written as plain, compilable VBA.
 
-**[See it work in the latest demo release](https://github.com/WilliamSmithEdward/ROneCOne/releases/latest)**
+Everything you already built keeps working. There is no installer, no add-in, no external
+reference, and no separate runtime to manage: the entire library is one file that travels inside
+any workbook that imports it. Your macros call it like any other VBA class, and your workbook
+stays a workbook.
+
+## What it looks like
+
+```vba
+Dim scores As ROneCOne
+Dim strongScores As ROneCOne
+
+Set scores = ROneCOne.ListOf(vbLong, CLng(90), CLng(72), CLng(88), CLng(95))
+
+Set strongScores = scores _
+    .Where(scores.Element.AtLeast(CLng(85))) _
+    .OrderDescending _
+    .ToList
+
+MsgBox "Scores at or above 85: " & strongScores.JoinText(", ")
+```
+
+That is a typed list, filtered, sorted, and displayed without a loop, counter, or temporary
+array. The same fluent style carries through object queries such as `.Where("Age").AtLeast(40)`,
+parallel Tasks, typed events, and structured Try, Catch, and Finally flows.
 
 ## What becomes possible
 
@@ -23,34 +49,38 @@ connect, and no second runtime to install.
 | Handle failure deliberately | Structured Try, Catch, and Finally flows |
 | Deploy without a platform project | One importable class module with no outside dependency |
 
-ROneCOne runs locally inside one Windows x64 Microsoft 365 Excel process. It works in
-macro-enabled workbooks and add-ins, requires no runtime VBIDE access, generates no source code,
-and sends no telemetry.
+The design follows familiar C# and .NET names and behavior wherever VBA permits it, and
+IntelliSense descriptions keep the surface discoverable inside the editor.
 
-Safe calculations can use Windows worker threads. Excel, VBA procedures, workbook objects, and COM
-stay on Excel's thread. Parallel work never opens another Excel.
+## What it needs
 
-## A modern runtime for serious workbooks
+- Windows x64 Microsoft 365 Excel
+- A macro-enabled workbook or add-in: `.xlsm`, `.xlsb`, or `.xlam`
+- One imported file: [`src/ROneCOne.cls`](src/ROneCOne.cls)
 
-ROneCOne includes generic collection families, LINQ, delegates, expression lambdas, native and
-cooperative Tasks, cancellation, progress, typed events, structured exceptions, and an in-memory
-data layer with OLE DB and ODBC access. IntelliSense descriptions keep it discoverable.
+Everything runs locally inside your one Excel process. ROneCOne requires no installer, no
+external library, no network access, and no runtime VBIDE trust, and it sends no telemetry.
+Safe calculations can use Windows worker threads; Excel, VBA procedures, workbook objects, and
+COM stay on Excel's thread, and parallel work never opens another Excel.
 
-The design follows familiar C# and .NET names and behavior wherever VBA permits it. The concise
-form leads every demo; the guide also shows the underlying contract when you need to debug or
-extend it.
+## Start in three steps
 
-## Choose your starting point
+1. **[Run a demo](https://github.com/WilliamSmithEdward/ROneCOne/releases/latest)** - each
+   release ships self-contained demo workbooks with visible, worksheet-by-worksheet results.
+2. **[Follow the getting-started guide](docs/user-guide/getting-started.md)** - import one class
+   file and run your first query in about five minutes.
+3. **[Pick a recipe](docs/user-guide/README.md)** - short guides cover collections, delegates,
+   events, exceptions, tasks, and data access.
 
-1. **[Run the demos](https://github.com/WilliamSmithEdward/ROneCOne/releases/latest)** to see the
-   capabilities working in Excel.
-2. **[Follow the user guide](docs/user-guide/)** for a short, indexed path from import to useful
-   workbook code.
-3. **[Download the runtime](src/ROneCOne.cls)** when you are ready to add it to a project.
+## Documentation
 
-Technical details remain available in the
-**[architecture](docs/architecture.md)** and focused reference documents. Release history is in
-the **[changelog](CHANGELOG.md)**.
+| Surface | Where |
+|---|---|
+| Guided learning path | [User guide](docs/user-guide/README.md) |
+| Everyday operator lookup | [Practical reference](docs/user-guide/reference.md) |
+| Exact contracts and semantics | [Technical documentation index](docs/README.md) |
+| Design and runtime boundaries | [Architecture](docs/architecture.md) |
+| Release history | [Changelog](CHANGELOG.md) |
 
 ## License
 

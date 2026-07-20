@@ -258,16 +258,33 @@ class DemoContractTests(unittest.TestCase):
                 self.assertNotIn("future scheduler", source)
                 self.assertNotIn("long-term goal", source)
 
-    def test_readme_is_a_code_free_product_surface(self) -> None:
+    def test_readme_is_a_concise_code_led_product_surface(self) -> None:
         source = README.read_text(encoding="utf-8")
 
-        self.assertNotIn("```", source)
+        self.assertEqual(2, source.count("```"), "README carries exactly one code sample")
+        self.assertIn("```vba", source)
         self.assertNotIn("## Development", source)
         self.assertNotIn("## Quality gates", source)
         self.assertIn("Give VBA the love it deserves", source)
         self.assertIn("docs/user-guide/", source)
         self.assertIn("releases/latest", source)
-        self.assertLessEqual(len(source.split()), 400)
+        self.assertLessEqual(len(source.split()), 700)
+
+    def test_docs_index_orients_every_documentation_surface(self) -> None:
+        index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("user-guide/README.md", index)
+        for page_name in (
+            "architecture.md",
+            "collections.md",
+            "delegates.md",
+            "events.md",
+            "exceptions.md",
+            "tasks.md",
+            "data.md",
+            "development.md",
+        ):
+            self.assertIn(f"]({page_name})", index)
 
     def test_user_guide_is_indexed_and_code_led(self) -> None:
         guide_root = ROOT / "docs" / "user-guide"

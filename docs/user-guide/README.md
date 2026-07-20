@@ -25,8 +25,9 @@ class module, and copy the smallest example that solves your problem.
    workbook.
 4. Choose one recipe from [Collections and LINQ](collections-and-linq.md).
 
-The examples lead with the concise form you should normally use. The focused technical documents
-remain available when you need exact semantics or the canonical expansion behind that syntax.
+The examples lead with the concise form you should normally use. The focused
+[technical documents](../README.md) remain available when you need exact semantics or the
+canonical expansion behind that syntax.
 
 ## What you need
 
@@ -38,4 +39,4 @@ remain available when you need exact semantics or the canonical expansion behind
 ROneCOne itself does not require an installer, an add-in, an external library, network access, or
 trusted programmatic access to the VBIDE.
 
-[Back to the project overview](../../README.md)
+[Back to the project overview](../../README.md) | [Documentation index](../README.md)

@@ -161,4 +161,4 @@ VBA reserves several names that C# uses for LINQ. ROneCOne uses the closest lega
 - [Architecture and release capabilities](../architecture.md)
 - [Development and verification](../development.md)
 
-[Back to the guide index](README.md)
+[Back to the guide index](README.md) | [Documentation index](../README.md)

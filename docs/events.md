@@ -1,7 +1,8 @@
 # Typed events
 
-New to ROneCOne? Start with the
-[Events and exceptions user guide](user-guide/events-and-exceptions.md).
+> [!TIP]
+> New to ROneCOne? Start with the
+> [Events and exceptions user guide](user-guide/events-and-exceptions.md).
 
 ROneCOne events let one update reach several checked handlers without another class module. The
 technical model follows C# subscription and delivery rules inside the same `ROneCOne.cls` runtime.
@@ -48,3 +49,5 @@ The event facade owns its mutable handler list. Existing `Combine`, `Remove`, an
 The independently executable
 [`ROneCOne_Events_Demo.xlsm`](../demo/ROneCOne_Events_Demo.xlsm) demonstrates subscription,
 emission, removal, metadata, and the same-process dispatch benchmark.
+
+[Back to the documentation index](README.md)

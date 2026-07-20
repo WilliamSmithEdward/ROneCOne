@@ -55,8 +55,11 @@ Debug.Print ordersTask.Await
 ```
 
 `RunOnExcel` uses cooperative scheduling. It keeps composition and await-style flow, but it does
-not claim that a VBA function or workbook call is running in parallel. Passing that delegate to
-`Task.Run` raises a clear error instead of quietly changing the execution mode.
+not claim that a VBA function or workbook call is running in parallel.
+
+> [!NOTE]
+> Passing an Excel-owned delegate to `Task.Run` raises a clear error instead of quietly changing
+> the execution mode. Work never falls back to a different thread silently.
 
 ## Know what may run on a worker
 
@@ -141,5 +144,9 @@ Use it when an API must return a Task but a cache or default value already conta
 is mainly an adapter and testing tool. If ordinary code only needs the value, use the value
 directly.
 
-For exact failure, cancellation, memory, completion-source, and aggregate-error rules, see the
-[task contracts](../tasks.md). Return to the [guide index](README.md).
+## Where next
+
+- [Data and providers](data-and-providers.md) continues the learning path.
+- [Task technical reference](../tasks.md) defines exact failure, cancellation, memory,
+  completion-source, and aggregate-error rules.
+- [Guide index](README.md) returns to the full learning path.

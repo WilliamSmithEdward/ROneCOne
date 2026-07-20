@@ -82,11 +82,12 @@ that information.
 
 ### If Excel pauses before Catch
 
-The VBA editor has an **Error Trapping** preference. If it is set to **Break on All Errors**, Excel
-pauses on every error before any handler - including `Catch` - can respond. In the VBA editor, open
-**Tools > Options > General**, then choose **Break on Unhandled Errors** to test normal handled-error
-behavior. The packaged demo uses a valid sample import, so running it does not intentionally trigger
-this editor setting.
+> [!NOTE]
+> The VBA editor has an **Error Trapping** preference. If it is set to **Break on All Errors**,
+> Excel pauses on every error before any handler - including `Catch` - can respond. In the VBA
+> editor, open **Tools > Options > General**, then choose **Break on Unhandled Errors** to test
+> normal handled-error behavior. The packaged demo uses a valid sample import, so running it does
+> not intentionally trigger this editor setting.
 
 ## Catch one known error
 
@@ -108,8 +109,9 @@ Catches are checked in construction order. The one-argument form is the catch-al
 - An error raised by `Finally` takes precedence over an earlier pending error.
 - The same structured operation can be executed repeatedly or nested inside another operation.
 
-## Where to go deeper
+## Where next
 
+- [Tasks and async](tasks-and-async.md) continues the learning path.
 - [Events technical reference](../events.md) defines subscription and delivery semantics.
 - [Exceptions technical reference](../exceptions.md) defines catch ordering, rethrow behavior,
   cleanup precedence, and captured metadata.

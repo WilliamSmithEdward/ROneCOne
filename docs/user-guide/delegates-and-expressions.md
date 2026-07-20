@@ -115,14 +115,16 @@ Metadata makes dynamically bound behavior easier to diagnose without changing th
 ## Native and ByRef work
 
 ROneCOne also supports signature-bound Windows x64 native calls and true native `ByRef` variables.
-That surface is intentionally strict because an incorrect native signature can destabilize Excel.
-Use it only after reading the
-[native invocation contract](../delegates.md#native-invocation-and-true-byref).
 
-## Where to go deeper
+> [!WARNING]
+> The native surface is intentionally strict because an incorrect native signature can
+> destabilize Excel. Use it only after reading the
+> [native invocation contract](../delegates.md#native-invocation-and-true-byref).
 
-- [Delegates technical reference](../delegates.md) covers every target, signature rule, multicast
-  behavior, dynamic invocation, native safety boundary, and canonical form.
+## Where next
+
 - [Events and exceptions](events-and-exceptions.md) shows delegates coordinating real workbook
   flows.
+- [Delegates technical reference](../delegates.md) covers every target, signature rule, multicast
+  behavior, dynamic invocation, native safety boundary, and canonical form.
 - [Guide index](README.md) returns to the full learning path.

@@ -219,8 +219,9 @@ Debug.Print customers.None(customers.Match("Age", CLng(100)))
 
 Use `FirstOrDefault`, `LastOrDefault`, or `SingleOrDefault` when no match is a normal outcome.
 
-## Where to go deeper
+## Where next
 
+- [Delegates and expressions](delegates-and-expressions.md) continues the learning path.
 - [Practical reference](reference.md) lists the everyday operators.
 - [Collections technical reference](../collections.md) covers exact typing, deferred execution,
   custom comparers, canonical expansions, and edge-case semantics.

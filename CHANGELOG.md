@@ -1,5 +1,11 @@
 # Changelog
 
+All notable changes to ROneCOne are documented here. The format is based on
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and release numbering follows
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html). Downloadable assets and SHA-256
+checksums for each version are on the
+[releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
+
 ## 1.2.0 - 2026-07-19
 
 ### Added

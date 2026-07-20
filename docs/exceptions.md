@@ -1,7 +1,8 @@
 # Structured exceptions
 
-New to ROneCOne? Start with the
-[Events and exceptions user guide](user-guide/events-and-exceptions.md).
+> [!TIP]
+> New to ROneCOne? Start with the
+> [Events and exceptions user guide](user-guide/events-and-exceptions.md).
 
 ROneCOne provides structured `Try`, `Catch`, and `Finally` flow over Actions. It makes work,
 recovery, and required cleanup readable in one place. The technical operation is an immutable
@@ -71,3 +72,5 @@ documented late-bound dispatch behavior.
 The independently executable
 [`ROneCOne_Exceptions_Demo.xlsm`](../demo/ROneCOne_Exceptions_Demo.xlsm) demonstrates catch-all and
 filtered catches, rethrow behavior, successful finalization, and a same-process benchmark.
+
+[Back to the documentation index](README.md)

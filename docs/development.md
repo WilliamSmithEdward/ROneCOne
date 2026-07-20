@@ -1,5 +1,9 @@
 # Development and Excel Safety
 
+This document is for contributors and reviewers. It records how the runtime is validated: the
+four test gates, the popup-adaptive Excel harness, benchmark baselines, and the demo rebuild
+pipeline. Using the runtime requires none of this tooling.
+
 ## Test layers
 
 ROneCOne uses four independent gates:
@@ -156,3 +160,5 @@ member expressions remove the need for a predicate/selector adapter class. The p
 `RunROneCOneCollectionsDemo` macro is only an orchestrator; primitive examples, user-class LINQ,
 benchmarking, reporting, and helpers are kept in small commented procedures. The delegates demo
 uses the same organization and leads with inferred `AsFunc` expressions.
+
+[Back to the documentation index](README.md)

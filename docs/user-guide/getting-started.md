@@ -25,7 +25,8 @@ want the broadest tour of everyday features.
 
 ## Option 2: add ROneCOne to your workbook
 
-Work on a copy of the workbook until you are comfortable with the result.
+> [!TIP]
+> Work on a copy of the workbook until you are comfortable with the result.
 
 1. Download `ROneCOne.cls` from the
    [latest release](https://github.com/WilliamSmithEdward/ROneCOne/releases/latest).
@@ -77,9 +78,10 @@ Files downloaded from the internet can carry Windows' Mark of the Web. If Excel 
 3. If an **Unblock** checkbox appears, review the file source, select it, and choose **OK**.
 4. Reopen the workbook.
 
-Do not weaken Excel's global macro settings. Trust only the specific file you reviewed.
+> [!WARNING]
+> Do not weaken Excel's global macro settings. Trust only the specific file you reviewed.
 
-## Next step
+## Where next
 
-Continue with [Collections and LINQ](collections-and-linq.md), or return to the
-[guide index](README.md).
+- [Collections and LINQ](collections-and-linq.md) continues with everyday queries.
+- [Guide index](README.md) shows the full learning path.

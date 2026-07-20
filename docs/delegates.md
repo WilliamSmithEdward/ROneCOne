@@ -1,7 +1,8 @@
 # Universal delegates
 
-New to ROneCOne? Start with the
-[Delegates and expressions user guide](user-guide/delegates-and-expressions.md).
+> [!TIP]
+> New to ROneCOne? Start with the
+> [Delegates and expressions user guide](user-guide/delegates-and-expressions.md).
 
 ROneCOne represents expression lambdas, object methods, callable objects, workbook procedures,
 multicast chains, compositions, and signature-bound native entry points with one immutable type.
@@ -143,3 +144,5 @@ generate trampolines.
 - Native signatures are Windows x64 only and must match the actual procedure ABI exactly.
 - True `ByRef` is native-only because late-bound VBA dispatch loses variable identity.
 - `Invoke` cannot be declared by a VBA class; use natural call syntax, `Run`, or `DynamicInvoke`.
+
+[Back to the documentation index](README.md)

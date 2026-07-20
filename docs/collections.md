@@ -1,7 +1,8 @@
 # Runtime-generic collections and LINQ
 
-New to ROneCOne? Start with the
-[Collections and LINQ user guide](user-guide/collections-and-linq.md).
+> [!TIP]
+> New to ROneCOne? Start with the
+> [Collections and LINQ user guide](user-guide/collections-and-linq.md).
 
 ROneCOne provides strictly typed generic collection families and deferred query pipelines in
 the same single `ROneCOne.cls` runtime file. The design follows the behavior of
@@ -399,3 +400,5 @@ ordering surface.
 The supported surface includes dictionaries, lookups, groupings, joins, sets, queues, stacks,
 specialized collections, immutable collections, and concurrent-style collections. Each family
 uses the same runtime type contracts and one-file implementation as `List<T>`.
+
+[Back to the documentation index](README.md)

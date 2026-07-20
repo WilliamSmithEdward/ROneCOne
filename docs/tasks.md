@@ -1,5 +1,8 @@
 # Tasks, cancellation, and progress
 
+> [!TIP]
+> New to ROneCOne? Start with the [Tasks and async user guide](user-guide/tasks-and-async.md).
+
 A Task represents work that can finish, fail, or be canceled. ROneCOne uses the familiar .NET
 shape to coordinate that work while keeping every workbook object inside the current Excel
 process. The sections below define the exact technical contract.
@@ -18,7 +21,7 @@ process. The sections below define the exact technical contract.
 - `OpenAsync`, `ExecuteReaderAsync`, `ExecuteNonQueryAsync`, `ExecuteScalarAsync`, `ReadAsync`,
   `FillAsync`, and `UpdateAsync`
 
-## Execution contract
+## Execution modes
 
 `Task.Run` is hot: it verifies a zero-argument expression lambda, converts it to a private numeric
 bytecode, and submits it immediately to the Windows thread pool. The worker can evaluate numeric
@@ -32,6 +35,8 @@ uses the cooperative scheduler on Excel's owning thread. Delay, continuations, p
 pending completion sources also use this scheduler. Bounded waits pump Excel events and sleep
 briefly so the application remains responsive.
 
+## Coordination and failure
+
 Native cancellation is checked between bytecode instructions. Cooperative cancellation is checked
 before work and during waits. Continuations receive the antecedent task. `WhenAll` waits for every
 child, preserves result order, and allows already-started native children to progress in parallel.
@@ -43,11 +48,15 @@ every child failure in an `AggregateException`; `InnerExceptions`, `Flatten`, an
 the structured error set. `Await` rethrows the primary VBA error so ordinary error handlers remain
 natural. `Task.Exception` is nonblocking and returns `Nothing` until a task faults.
 
+## Timeouts, deadlines, and registrations
+
 `WaitAsync` adds a composable timeout and optional cancellation token without changing the source
 task. Timeouts surface as `TimeoutException`; cancellation surfaces as
 `OperationCanceledException`. Scheduler deadlines use a monotonic Windows clock, and reentrant
 waiting on the same task fails deterministically rather than deadlocking Excel. Cancellation
 registrations are disposable and invoke every callback even when another callback fails.
+
+## Memory and process safety
 
 Native code and data use separate memory regions. The worker kernel becomes read/execute only
 before submission; bytecode and context remain read/write and non-executable. Completion waits for
@@ -55,9 +64,12 @@ the callback before closing its work handle and releasing all task-owned memory.
 
 No task launches Excel, creates a second application instance, transmits data, or moves workbook
 objects to a worker thread. `ExecutionMode` reports `NativeThreadPool` or `ExcelCooperative`, and
-`WorkerThreadId` can verify native placement. Provider tasks use typed internal dispatch to avoid
-COM default-member coercion. Providers report `SupportsNativeAsync = False` and
-`AsyncMode = "Cooperative"`; the task-returning surface composes consistently without describing
-synchronous ADO calls as native asynchronous I/O.
+`WorkerThreadId` can verify native placement.
 
-[Task user guide](user-guide/tasks-and-async.md)
+## Provider tasks
+
+Provider tasks use typed internal dispatch to avoid COM default-member coercion. Providers report
+`SupportsNativeAsync = False` and `AsyncMode = "Cooperative"`; the task-returning surface composes
+consistently without describing synchronous ADO calls as native asynchronous I/O.
+
+[Back to the documentation index](README.md)

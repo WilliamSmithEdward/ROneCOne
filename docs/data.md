@@ -1,5 +1,9 @@
 # DataTable, DataSet, and providers
 
+> [!TIP]
+> New to ROneCOne? Start with the
+> [Data and providers user guide](user-guide/data-and-providers.md).
+
 The data layer gives workbook code checked tables, rows, relationships, and local database access.
 It uses the same one-class runtime as collections and Tasks. The sections below define the exact
 technical contract.
@@ -43,4 +47,4 @@ The late-bound provider layer reports its capability honestly: `SupportsNativeAs
 and `AsyncMode` is `"Cooperative"`. Task-returning provider methods integrate with the scheduler
 but execute ADO calls on Excel's owning thread.
 
-[Data user guide](user-guide/data-and-providers.md)
+[Back to the documentation index](README.md)
