@@ -14,8 +14,7 @@ access.
 
 Everything you already built keeps working. There is no installer, no add-in, no external
 reference, and no separate runtime to manage: the entire library is one file that travels inside
-any workbook that imports it. Your macros call it like any other VBA class, and your workbook
-stays a workbook.
+any workbook that imports it. Your macros call it like any other VBA class.
 
 ## What it looks like
 
