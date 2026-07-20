@@ -391,7 +391,6 @@ Private mKeySelector As ROneCOne
 Private mCollectionChanged As ROneCOne
 Private mNodePrevious As ROneCOne
 Private mNodeNext As ROneCOne
-Private mIsBuilder As Boolean
 Private mAddingCompleted As Boolean
 Private mTaskBody As ROneCOne
 Private mTaskResult As ROneCOne
@@ -429,7 +428,6 @@ Private mAutoIncrementSeed As LongLong
 Private mAutoIncrementStep As LongLong
 Private mAutoIncrementCurrent As LongLong
 Private mDefaultValue As ROneCOne
-Private mExpressionText As String
 Private mRowState As Long
 Private mProviderObject As Object
 Private mConnectionString As String
@@ -830,11 +828,6 @@ Attribute ImmutableSortedSetOf.VB_Description = _
         ROLE_IMMUTABLE, COLLECTION_IMMUTABLE_SORTED_SET, typeToken, comparer)
 End Function
 
-Public Function [Empty](ByVal typeToken As Variant) As ROneCOne
-Attribute Empty.VB_Description = "Creates an empty typed enumerable."
-    Set [Empty] = EmptyOf(typeToken)
-End Function
-
 Public Function EmptyOf(ByVal typeToken As Variant) As ROneCOne
 Attribute EmptyOf.VB_Description = "Creates an empty typed enumerable in legal VBA syntax."
     Set EmptyOf = CreateSequenceCollection( _
@@ -1010,7 +1003,7 @@ End Property
 
 Public Property Get CompletedTask() As ROneCOne
 Attribute CompletedTask.VB_Description = "Gets a successfully completed Task."
-    Set CompletedTask = TaskFromResult(Empty)
+    Set CompletedTask = FromResult(Empty)
 End Property
 
 Public Property Get CurrentThreadId() As Long
@@ -1020,7 +1013,11 @@ End Property
 
 Public Function FromResult(ByVal value As Variant) As ROneCOne
 Attribute FromResult.VB_Description = "Creates a completed Task<T> from a value."
-    Set FromResult = TaskFromResult(value)
+    Dim taskValue As ROneCOne
+
+    Set taskValue = New ROneCOne
+    taskValue.ConfigureCompletedTask WrapInvocationArgument(value)
+    Set FromResult = taskValue
 End Function
 
 Public Function Using(ByVal resource As ROneCOne) As ROneCOne
@@ -1069,15 +1066,6 @@ Attribute RunOnExcel.VB_Description = _
     Set taskValue = New ROneCOne
     taskValue.ConfigureTask TASK_WORK, work, cancellationToken
     Set RunOnExcel = taskValue
-End Function
-
-Public Function TaskFromResult(ByVal value As Variant) As ROneCOne
-Attribute TaskFromResult.VB_Description = "Creates a completed Task<T> from a value."
-    Dim taskValue As ROneCOne
-
-    Set taskValue = New ROneCOne
-    taskValue.ConfigureCompletedTask WrapInvocationArgument(value)
-    Set TaskFromResult = taskValue
 End Function
 
 Public Function Delay( _
@@ -4409,7 +4397,6 @@ Attribute ToBuilder.VB_Description = "Creates a mutable builder for an immutable
     End If
     Set result = CloneGenericCollection(Me)
     result.ConfigureCollectionRole MutableRoleForKind(mCollectionKind)
-    result.ConfigureCollectionBuilder True
     Set ToBuilder = result
 End Function
 
@@ -4423,7 +4410,6 @@ Attribute ToImmutable.VB_Description = "Creates an immutable collection snapshot
     End If
     Set result = CloneGenericCollection(Me)
     result.ConfigureCollectionRole ROLE_IMMUTABLE
-    result.ConfigureCollectionBuilder False
     Set ToImmutable = result
 End Function
 
@@ -6580,11 +6566,6 @@ Attribute InternalCollectionVersion.VB_MemberFlags = "40"
     InternalCollectionVersion = mVersion
 End Property
 
-Friend Property Get InternalIsBuilder() As Boolean
-Attribute InternalIsBuilder.VB_MemberFlags = "40"
-    InternalIsBuilder = mIsBuilder
-End Property
-
 Friend Property Get InternalName() As String
 Attribute InternalName.VB_MemberFlags = "40"
     InternalName = mName
@@ -7079,10 +7060,6 @@ End Sub
 
 Friend Sub ConfigureCollectionRole(ByVal roleValue As Long)
     mRole = roleValue
-End Sub
-
-Friend Sub ConfigureCollectionBuilder(ByVal isBuilder As Boolean)
-    mIsBuilder = isBuilder
 End Sub
 
 Friend Sub ConfigureCollectionVersion(ByVal version As Long)
@@ -11752,7 +11729,6 @@ Private Function CloneGenericCollection( _
     clone.ConfigureReadOnlySource source.InternalSource
     clone.ConfigureCollectionCapacity source.InternalCollectionCapacity
     clone.ConfigureCollectionVersion source.InternalCollectionVersion
-    clone.ConfigureCollectionBuilder source.InternalIsBuilder
     If clone.HashIndexSupported Then clone.RebuildHashIndex 8
     Set CloneGenericCollection = clone
 End Function

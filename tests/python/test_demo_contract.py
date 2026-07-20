@@ -200,12 +200,6 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn('.ThenByDescending("Age")', source)
         self.assertIn('.DistinctBy("City")', source)
 
-    def test_collections_packager_removes_obsolete_query_helper(self) -> None:
-        source = PACKAGER.read_text(encoding="utf-8")
-
-        self.assertIn('"DemoCustomerQuery"', source)
-        self.assertNotIn("query_source", source)
-
     def test_renderer_has_a_non_cim_excel_ownership_fallback(self) -> None:
         source = RENDERER.read_text(encoding="utf-8")
 

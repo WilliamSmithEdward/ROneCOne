@@ -55,7 +55,6 @@ def package_collections(workbook_path: Path = COLLECTIONS_WORKBOOK) -> None:
             "Module1",
             "ROneCOne",
             "DemoCustomer",
-            "DemoCustomerQuery",
             "CollectionsDemoUsage",
         )
         for module_name in names:

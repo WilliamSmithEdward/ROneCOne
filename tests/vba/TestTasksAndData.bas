@@ -281,8 +281,8 @@ Private Sub TestTaskCombinators()
     Dim faultNumber As Long
     Dim ignored As Variant
 
-    Set firstTask = ROneCOne.TaskFromResult(CLng(10))
-    Set secondTask = ROneCOne.TaskFromResult(CLng(20))
+    Set firstTask = ROneCOne.Task.FromResult(CLng(10))
+    Set secondTask = ROneCOne.Task.FromResult(CLng(20))
     Set tasks = ROneCOne.ListOf(ROneCOne.Task, firstTask, secondTask)
     Set allTask = ROneCOne.Task.WhenAll(tasks)
     Set results = allTask.Await

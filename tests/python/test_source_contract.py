@@ -24,7 +24,6 @@ class SourceContractTests(unittest.TestCase):
     def test_repository_ignores_local_and_generated_state(self) -> None:
         ignored = GITIGNORE.read_text(encoding="utf-8").splitlines()
         required_rules = (
-            ".ronecone.env",
             ".venv/",
             "node_modules/",
             "tests/output/",
@@ -35,7 +34,6 @@ class SourceContractTests(unittest.TestCase):
         )
         for rule in required_rules:
             self.assertIn(rule, ignored)
-        self.assertIn("!.ronecone.env.example", ignored)
 
     def test_runtime_embeds_the_mit_license(self) -> None:
         self.assertIn("' MIT License", self.source)
@@ -292,7 +290,7 @@ class SourceContractTests(unittest.TestCase):
         required_members = (
             "Task",
             "TaskRun",
-            "TaskFromResult",
+            "FromResult",
             "Delay",
             "WhenAll",
             "WhenAny",

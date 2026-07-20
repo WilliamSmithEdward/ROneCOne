@@ -2,9 +2,6 @@
 .env
 .env.*
 !.env.example
-.ronecone.env
-.ronecone.env.*
-!.ronecone.env.example
 
 # Python environments, caches, coverage, and packages
 .venv/
