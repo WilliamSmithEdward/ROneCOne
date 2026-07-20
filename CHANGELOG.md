@@ -10,6 +10,11 @@ checksums for each version are on the
 
 ### Added
 
+- A worksheet Range bridge built on single bulk `Range.Value` calls:
+  `ROneCOne.DataTableFromRange`, `DataTable.LoadFromRange`, `ROneCOne.ListFromRange`, and a
+  role-dispatched `ToRange` that writes a DataTable grid, a DataView's visible grid, or a scalar
+  sequence's column vector. Range parameters are late-bound so the runtime keeps no compile-time
+  Excel reference. See [ADR 0004](docs/decisions/0004-worksheet-range-bridge.md).
 - Lossless numeric widening at every type-admission point (list and collection elements,
   dictionary and keyed-collection keys, lambda parameters, delegate arguments and results,
   DataColumn values, primary-key `Find`, progress values, and completion results). Plain

@@ -554,6 +554,19 @@ class SourceContractTests(unittest.TestCase):
         self.assertIn("Attribute Run.VB_UserMemId = 0", self.source)
         self.assertNotRegex(self.source, re.compile(r"^Public Function Invoke\b", re.MULTILINE))
 
+    def test_worksheet_range_bridge_is_present(self) -> None:
+        for member in (
+            "DataTableFromRange",
+            "ListFromRange",
+            "LoadFromRange",
+            "ToRange",
+        ):
+            pattern = rf"Public\s+Function\s+{member}\b"
+            self.assertRegex(self.source, re.compile(pattern, re.IGNORECASE), member)
+        # Bulk single-call I/O, never a per-cell loop.
+        self.assertIn("raw = source.Value", self.source)
+        self.assertIn(".Value = output", self.source)
+
     def test_lossless_numeric_widening_is_present_and_wired(self) -> None:
         self.assertIn("Private Function IsLosslessWidening(", self.source)
         self.assertIn("Private Function WidenScalarToward(", self.source)

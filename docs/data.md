@@ -8,6 +8,22 @@ The data layer gives workbook code checked tables, rows, relationships, and loca
 It uses the same one-class runtime as collections and Tasks. The sections below define the exact
 technical contract.
 
+## Worksheet Range bridge
+
+- `ROneCOne.DataTableFromRange(range, headers, name)` reads a rectangular block into a new
+  Variant-typed DataTable in one `Range.Value` call, taking column names from the header row when
+  present.
+- `DataTable.LoadFromRange(range, headers)` appends a block into an existing typed table,
+  admitting each value through the column types with numeric widening. It requires the range and
+  table column counts to match.
+- `ROneCOne.ListFromRange(range)` reads a single row or column into a `List<Variant>`.
+- `ToRange(target, writeHeaders)` writes a DataTable grid, a DataView's visible grid, or a scalar
+  sequence's column vector to a range in one assignment; object-valued cells are refused.
+
+Range parameters are late-bound `Object` values, so the runtime keeps no compile-time Excel
+reference. Values move through `Range.Value`, preserving dates, currency, and Booleans across a
+round trip.
+
 ## In-memory data
 
 - `DataTable`, `DataColumn`, `Column`, `Row`, `NewRow`, `LoadRow`, `SelectRows`, `CloneTable`,

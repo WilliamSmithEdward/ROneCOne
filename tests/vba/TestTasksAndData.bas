@@ -34,6 +34,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestAdvancedDataTable
     mCurrentTest = "TestDataViewAndMerge"
     TestDataViewAndMerge
+    mCurrentTest = "TestRangeBridge"
+    TestRangeBridge
     mCurrentTest = "TestRelationConstraints"
     TestRelationConstraints
     mCurrentTest = "TestExistingRelationValidation"
@@ -592,6 +594,50 @@ Private Sub TestDataViewAndMerge()
     Set merged = table.CloneTable
     merged.Merge copied
     AssertEqual "DataTable Merge", 3&, merged.Rows.Count
+End Sub
+
+Private Sub TestRangeBridge()
+    Dim numbers As ROneCOne
+    Dim readBack As ROneCOne
+    Dim source As ROneCOne
+    Dim sheet As Object
+    Dim table As ROneCOne
+    Dim written As Long
+
+    Set sheet = ThisWorkbook.Worksheets("Task and Data Results")
+    sheet.Range("H1:Q100").ClearContents
+
+    ' Seed a small headered grid the way a user's worksheet would hold it.
+    sheet.Range("H1:J1").Value = Array("Name", "Score", "Active")
+    sheet.Range("H2:J2").Value = Array("Ada", 90&, True)
+    sheet.Range("H3:J3").Value = Array("Grace", 95&, False)
+
+    ' Read the whole block into a DataTable in one bulk call.
+    Set table = ROneCOne.DataTableFromRange(sheet.Range("H1:J3"))
+    AssertEqual "range table columns", 3&, table.Columns.Count
+    AssertEqual "range table rows", 2&, table.Rows.Count
+    AssertEqual "range table text cell", "Grace", table.Rows.Item(1).Item("Name")
+    AssertEqual "range table number cell", 90&, table.Rows.Item(0).Item("Score")
+
+    ' Write the table back out and read it in again: a full round trip.
+    written = table.ToRange(sheet.Range("L1"))
+    AssertEqual "table ToRange row count", 2&, written
+    Set readBack = ROneCOne.DataTableFromRange(sheet.Range("L1:N3"))
+    AssertEqual "round-trip rows", 2&, readBack.Rows.Count
+    AssertEqual "round-trip cell", "Ada", readBack.Rows.Item(0).Item("Name")
+
+    ' A single column reads into a List.
+    Set source = ROneCOne.ListFromRange(sheet.Range("I2:I3"))
+    AssertEqual "list from range count", 2&, source.Count
+    AssertEqual "list from range value", 90&, source.Item(0)
+
+    ' A scalar sequence writes itself down a column.
+    Set numbers = ROneCOne.ListOf(vbLong, 3, 1, 2)
+    written = numbers.Order.ToList.ToRange(sheet.Range("P1"))
+    AssertEqual "sequence ToRange count", 3&, written
+    AssertEqual "sequence ToRange first cell", 1&, sheet.Range("P1").Value
+
+    sheet.Range("H1:Q100").ClearContents
 End Sub
 
 Private Sub TestRelationConstraints()

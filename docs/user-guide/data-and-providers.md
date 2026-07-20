@@ -3,6 +3,29 @@
 ROneCOne provides a typed, in-memory data layer for workbook code and a late-bound provider layer
 for local OLE DB or ODBC sources.
 
+## Move data between a worksheet and a table
+
+Reading and writing worksheet cells one at a time is slow. The Range bridge moves a whole block
+in a single call in each direction.
+
+```vba
+Dim sales As ROneCOne
+Dim top As ROneCOne
+
+Set sales = ROneCOne.DataTableFromRange(Sheet1.Range("A1:C500"))
+Set top = ROneCOne.DataView(sales) _
+    .WithFilter(sales.Rows!Region.EqualTo("West")) _
+    .WithSort("Amount", True)
+top.ToRange Sheet2.Range("A1")
+```
+
+`DataTableFromRange` reads the block into a new table, using the first row as column names. To
+load into a table whose columns you already typed, use `table.LoadFromRange(range)` instead; each
+value is checked and widened against your column types. `ROneCOne.ListFromRange(range)` reads a
+single row or column into a list. `ToRange` writes a table, a filtered and sorted `DataView`, or
+any scalar sequence back to the sheet in one assignment. Every path uses one bulk call, so a few
+thousand cells cost a fraction of what a cell loop would.
+
 ## Build a typed table
 
 ```vba

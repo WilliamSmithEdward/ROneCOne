@@ -100,6 +100,7 @@ Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 | Cancellation | `CancellationTokenSource`, `Cancel`, `CancelAfter`, `Register`, `Dispose` |
 | Progress or external completion | `ProgressOf`, `TaskCompletionSourceOf` |
 | In-memory data | `DataTable`, `DataColumn`, `Row`, `DBNull`, `Find`, `DataSet`, `DataRelation`, `DataView` |
+| Worksheet range | `DataTableFromRange`, `LoadFromRange`, `ListFromRange`, `ToRange` |
 | Provider access | `DbConnection`, `DbCommand`, `DbParameter`, `DbDataAdapter` |
 | Async provider access | `OpenAsync`, `ExecuteReaderAsync`, `FillAsync`, `UpdateAsync` |
 | Provider capability | `SupportsNativeAsync`, `AsyncMode` |

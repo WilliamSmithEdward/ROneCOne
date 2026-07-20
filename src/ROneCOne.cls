@@ -1678,6 +1678,226 @@ Attribute SelectRows.VB_Description = "Returns DataRows matching a typed predica
     Set SelectRows = Rows.Where(predicate).ToList
 End Function
 
+Public Function DataTableFromRange( _
+    ByVal source As Object, _
+    Optional ByVal headers As Boolean = True, _
+    Optional ByVal tableName As String = vbNullString _
+) As ROneCOne
+Attribute DataTableFromRange.VB_Description = _
+    "Reads a worksheet range into a new DataTable in one bulk call."
+    Dim colCount As Long
+    Dim colIndex As Long
+    Dim columnName As String
+    Dim firstDataRow As Long
+    Dim grid As Variant
+    Dim rowCount As Long
+    Dim rowIndex As Long
+    Dim table As ROneCOne
+    Dim values() As Variant
+
+    ReadRangeGrid source, grid, rowCount, colCount, "DataTableFromRange"
+    Set table = ROneCOne.DataTable(tableName)
+    For colIndex = 1 To colCount
+        columnName = vbNullString
+        If headers Then columnName = Trim$(CStr(grid(1, colIndex)))
+        If Len(columnName) = 0 Then columnName = "Column" & CStr(colIndex)
+        table.Column columnName, vbVariant
+    Next colIndex
+    firstDataRow = IIf(headers, 2, 1)
+    For rowIndex = firstDataRow To rowCount
+        ReDim values(0 To colCount - 1)
+        For colIndex = 1 To colCount
+            values(colIndex - 1) = grid(rowIndex, colIndex)
+        Next colIndex
+        table.LoadRow values
+    Next rowIndex
+    Set DataTableFromRange = table
+End Function
+
+Public Function ListFromRange(ByVal source As Object) As ROneCOne
+Attribute ListFromRange.VB_Description = _
+    "Reads a single worksheet row or column into a List in one bulk call."
+    Dim colCount As Long
+    Dim grid As Variant
+    Dim index As Long
+    Dim listValue As ROneCOne
+    Dim rowCount As Long
+
+    ReadRangeGrid source, grid, rowCount, colCount, "ListFromRange"
+    If rowCount > 1 And colCount > 1 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "ListFromRange", _
+            "ListFromRange needs a single row or column; " & _
+            "use DataTableFromRange for a block."
+    End If
+    Set listValue = ROneCOne.ListOf(vbVariant)
+    If colCount = 1 Then
+        For index = 1 To rowCount
+            listValue.Add grid(index, 1)
+        Next index
+    Else
+        For index = 1 To colCount
+            listValue.Add grid(1, index)
+        Next index
+    End If
+    Set ListFromRange = listValue
+End Function
+
+Public Function LoadFromRange( _
+    ByVal source As Object, _
+    Optional ByVal headers As Boolean = True _
+) As Long
+Attribute LoadFromRange.VB_Description = _
+    "Appends worksheet-range rows into this typed DataTable in one bulk call."
+    Dim colCount As Long
+    Dim colIndex As Long
+    Dim firstDataRow As Long
+    Dim grid As Variant
+    Dim row As ROneCOne
+    Dim rowCount As Long
+    Dim rowIndex As Long
+
+    RequireDataTable Me, "LoadFromRange"
+    ReadRangeGrid source, grid, rowCount, colCount, "LoadFromRange"
+    If colCount <> mKeys.Count Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "LoadFromRange", _
+            "The range column count does not match the table column count."
+    End If
+    firstDataRow = IIf(headers, 2, 1)
+    For rowIndex = firstDataRow To rowCount
+        Set row = NewRow
+        For colIndex = 1 To colCount
+            row.Item(colIndex - 1) = grid(rowIndex, colIndex)
+        Next colIndex
+        AddRow row
+        LoadFromRange = LoadFromRange + 1
+    Next rowIndex
+End Function
+
+Public Function ToRange( _
+    ByVal target As Object, _
+    Optional ByVal writeHeaders As Boolean = True _
+) As Long
+Attribute ToRange.VB_Description = _
+    "Writes a DataTable grid or a scalar sequence to a worksheet range."
+    If mRole = ROLE_DATA_TABLE Then
+        ToRange = WriteDataTableToRange(target, writeHeaders)
+    ElseIf mRole = ROLE_DATA_VIEW Then
+        ToRange = ToTable.ToRange(target, writeHeaders)
+    ElseIf mRole = ROLE_LIST Or mRole = ROLE_QUERY Or _
+        IsGenericCollectionRole(mRole) Then
+        ToRange = WriteSequenceToRange(target)
+    Else
+        RaiseContractError ERROR_INVALID_OPERATION, "ToRange", _
+            "ToRange requires a DataTable, DataView, or typed sequence."
+    End If
+End Function
+
+Private Sub ReadRangeGrid( _
+    ByVal source As Object, _
+    ByRef grid As Variant, _
+    ByRef rowCount As Long, _
+    ByRef colCount As Long, _
+    ByVal memberName As String _
+)
+    Dim raw As Variant
+    Dim scalarGrid(1 To 1, 1 To 1) As Variant
+
+    If source Is Nothing Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "The worksheet range cannot be Nothing."
+    End If
+    raw = source.Value
+    If IsArray(raw) Then
+        grid = raw
+        rowCount = UBound(raw, 1) - LBound(raw, 1) + 1
+        colCount = UBound(raw, 2) - LBound(raw, 2) + 1
+    Else
+        scalarGrid(1, 1) = raw
+        grid = scalarGrid
+        rowCount = 1
+        colCount = 1
+    End If
+End Sub
+
+Private Function WriteDataTableToRange( _
+    ByVal target As Object, _
+    ByVal writeHeaders As Boolean _
+) As Long
+    Dim colCount As Long
+    Dim colIndex As Long
+    Dim column As ROneCOne
+    Dim liveRows As Collection
+    Dim output() As Variant
+    Dim outputRows As Long
+    Dim row As ROneCOne
+    Dim rowOffset As Long
+    Dim writtenRow As Long
+
+    RequireRangeTarget target, "ToRange"
+    colCount = mKeys.Count
+    Set liveRows = New Collection
+    For Each row In mItems
+        If row.RowState <> "Deleted" Then liveRows.Add row
+    Next row
+    outputRows = liveRows.Count
+    If writeHeaders Then outputRows = outputRows + 1
+    If outputRows = 0 Or colCount = 0 Then Exit Function
+    ReDim output(1 To outputRows, 1 To colCount)
+    If writeHeaders Then
+        For colIndex = 1 To colCount
+            Set column = mKeys.Item(colIndex)
+            output(1, colIndex) = column.ColumnName
+        Next colIndex
+        rowOffset = 1
+    End If
+    For writtenRow = 1 To liveRows.Count
+        Set row = liveRows.Item(writtenRow)
+        For colIndex = 1 To colCount
+            output(writtenRow + rowOffset, colIndex) = _
+                RangeCellValue(row.InternalDataRows.Item(colIndex))
+        Next colIndex
+    Next writtenRow
+    target.Resize(outputRows, colCount).Value = output
+    WriteDataTableToRange = liveRows.Count
+End Function
+
+Private Function WriteSequenceToRange(ByVal target As Object) As Long
+    Dim index As Long
+    Dim output() As Variant
+    Dim values As Collection
+    Dim wrapped As ROneCOne
+
+    RequireRangeTarget target, "ToRange"
+    Set values = MaterializeWrapped
+    If values.Count = 0 Then Exit Function
+    ReDim output(1 To values.Count, 1 To 1)
+    index = 1
+    For Each wrapped In values
+        output(index, 1) = RangeCellValue(wrapped)
+        index = index + 1
+    Next wrapped
+    target.Resize(values.Count, 1).Value = output
+    WriteSequenceToRange = values.Count
+End Function
+
+Private Function RangeCellValue(ByVal wrapped As ROneCOne) As Variant
+    If wrapped.InternalHasObjectValue Then
+        RaiseContractError ERROR_TYPE_MISMATCH, "ToRange", _
+            "ToRange cannot write an object-valued cell to a worksheet."
+    End If
+    RangeCellValue = wrapped.InternalScalarValue
+End Function
+
+Private Sub RequireRangeTarget( _
+    ByVal target As Object, _
+    ByVal memberName As String _
+)
+    If target Is Nothing Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "The worksheet range cannot be Nothing."
+    End If
+End Sub
+
 Public Function CloneTable() As ROneCOne
 Attribute CloneTable.VB_Description = "Copies a DataTable schema without rows."
     RequireDataTable Me, "CloneTable"
