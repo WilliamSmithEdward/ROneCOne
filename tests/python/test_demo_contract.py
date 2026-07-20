@@ -17,6 +17,7 @@ COLLECTIONS_BUILDER = ROOT / "tools" / "build_collections_demo_workbook.cjs"
 CAPABILITY_BUILDER = ROOT / "tools" / "build_capability_demo_workbooks.cjs"
 PACKAGER = ROOT / "tools" / "package_demo_workbook.py"
 RENDERER = ROOT / "tools" / "render_demo_workbook.ps1"
+DEMO_RUNNER = ROOT / "tools" / "run_demo_workbook.ps1"
 README = ROOT / "README.md"
 USER_GUIDE = ROOT / "docs" / "user-guide" / "README.md"
 
@@ -30,12 +31,12 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("Private Sub RunCollectionBenchmark()", source)
         self.assertIn('Private Const USER_CLASS_SHEET As String = "User Class LINQ"', source)
 
-    def test_delegate_demo_leads_with_inferred_func_syntax(self) -> None:
+    def test_delegate_demo_leads_with_a_practical_pricing_rule(self) -> None:
         source = DELEGATES_DEMO.read_text(encoding="utf-8")
 
-        self.assertIn("Set x = ROneCOne.Var(vbLong)", source)
-        self.assertIn("Set square = x.Multiply(x).AsFunc", source)
-        self.assertIn("Set addValues = x.Add(y).AsFunc", source)
+        self.assertIn("Set price = ROneCOne.Var(vbDouble)", source)
+        self.assertIn("Set applyDiscount = price.Multiply(0.9).AsFunc", source)
+        self.assertIn("Set orderTotal = amount.Add(shipping).AsFunc", source)
 
     def test_delegate_demo_exercises_the_universal_surface(self) -> None:
         source = DELEGATES_DEMO.read_text(encoding="utf-8")
@@ -45,26 +46,26 @@ class DemoContractTests(unittest.TestCase):
 
         required_syntax = (
             'ROneCOne.Func(worksheetFunctions, "Max")',
-            'ROneCOne.Func("DemoUsage.DemoAddValues")',
-            "workbookAdd.DynamicInvoke",
-            "ROneCOne.Combine(firstAction, secondAction)",
+            'ROneCOne.Func("DemoUsage.CalculateOrderTotal")',
+            "calculateTotal.DynamicInvoke",
+            "ROneCOne.Combine(updateDashboard, writeAudit)",
             "ROneCOne.NativeAction",
-            "ROneCOne.RefLong(value)",
-            "workbookAdd.Signature",
+            "ROneCOne.RefLong(orderNumber)",
+            "calculateTotal.Signature",
         )
         for syntax in required_syntax:
             self.assertIn(syntax, source)
         self.assertNotIn("FromMethod", source)
         self.assertIn("DynamicInvoke", builder)
-        self.assertIn("Multicast Action", builder)
-        self.assertIn("True ByRef", builder)
+        self.assertIn("Notify two features", builder)
+        self.assertIn("Update the original number", builder)
         self.assertNotIn("FromMethod", builder)
 
     def test_delegate_demo_uses_execute_and_inline_byref_sugar(self) -> None:
         source = DELEGATES_DEMO.read_text(encoding="utf-8")
 
-        self.assertIn('combined.Execute "value"', source)
-        self.assertIn("increment.Execute ROneCOne.RefLong(value)", source)
+        self.assertIn('notify.Execute "Order 1042 approved"', source)
+        self.assertIn("increment.Execute ROneCOne.RefLong(orderNumber)", source)
         self.assertNotIn("Dim ignored As Variant", source)
 
     def test_user_class_model_exposes_demo_fields(self) -> None:
@@ -111,28 +112,54 @@ class DemoContractTests(unittest.TestCase):
         source = EVENTS_DEMO.read_text(encoding="utf-8")
 
         self.assertIn("ROneCOne.EventOf(vbString)", source)
-        self.assertIn(".Subscribe(firstHandler)", source)
-        self.assertIn('changed.Emit "ready"', source)
-        self.assertIn("changed.Unsubscribe(secondHandler)", source)
+        self.assertIn(".Subscribe(updateDashboard)", source)
+        self.assertIn('orderStatusChanged.Emit "Order 1042 shipped"', source)
+        self.assertIn("orderStatusChanged.Unsubscribe(writeAudit)", source)
 
     def test_exception_demo_leads_with_structured_flow(self) -> None:
         source = EXCEPTIONS_DEMO.read_text(encoding="utf-8")
 
-        self.assertIn("ROneCOne.Try(failingWork)", source)
-        self.assertIn(".Catch(errorHandler)", source)
-        self.assertIn(".Finally(cleanup)", source)
-        self.assertIn("attempt.Execute", source)
+        self.assertIn("ROneCOne.Try(importWork)", source)
+        self.assertIn(".Catch(INVALID_AMOUNT_ERROR, skipBadRow)", source)
+        self.assertIn(".Finally(closeImportFile)", source)
+        self.assertIn("importAttempt.Execute", source)
+        self.assertIn("errorInfo.ErrorNumber = INVALID_AMOUNT_ERROR", source)
+        self.assertNotIn("Err.Raise", source)
+        self.assertNotIn("On Error Resume Next", source)
 
     def test_task_demo_leads_with_task_coordination(self) -> None:
         source = TASKS_DEMO.read_text(encoding="utf-8")
 
-        self.assertIn("ROneCOne.Task.WhenAll(firstTask, secondTask).Await", source)
-        self.assertIn("ignored = delayed.Await", source)
+        self.assertIn("ROneCOne.Task.Run(forecastWork)", source)
+        self.assertIn("ROneCOne.Task.Run(reorderWork)", source)
+        self.assertIn("ROneCOne.Task.WhenAll(forecastTask, reorderTask)", source)
+        self.assertIn("ROneCOne.Task.RunOnExcel(countOpenOrders)", source)
+        self.assertIn("WorkerThreadId <> ROneCOne.CurrentThreadId", source)
+        self.assertIn("Set results = allWork.Await", source)
         self.assertIn(".WaitAsync(100&)", source)
         self.assertIn("ROneCOne.Task.YieldOnce.Await", source)
-        self.assertIn("firstTask.ContinueWith(continuation).Await", source)
+        self.assertIn("allWork.ContinueWith(buildSummary)", source)
         self.assertIn("ROneCOne.CancellationTokenSource", source)
         self.assertIn("ROneCOne.TaskCompletionSourceOf(vbLong)", source)
+        self.assertNotIn("FromResult", source)
+
+    def test_public_guides_lead_with_practical_workflows(self) -> None:
+        guide_root = ROOT / "docs" / "user-guide"
+        tasks = (guide_root / "tasks-and-async.md").read_text(encoding="utf-8")
+        delegates = (guide_root / "delegates-and-expressions.md").read_text(
+            encoding="utf-8"
+        )
+        events = (guide_root / "events-and-exceptions.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("CountOpenOrders", tasks)
+        self.assertIn("Task.Run", tasks)
+        self.assertLess(tasks.index("Task.Run"), tasks.index("Task.FromResult"))
+        self.assertIn("applyDiscount", delegates)
+        self.assertIn("Order 1042 approved", delegates)
+        self.assertIn("Order 1042 shipped", events)
+        self.assertIn("ImportSales", events)
 
     def test_data_demo_leads_with_typed_data_and_provider_sugar(self) -> None:
         source = DATA_DEMO.read_text(encoding="utf-8")
@@ -163,10 +190,10 @@ class DemoContractTests(unittest.TestCase):
         source = COLLECTIONS_BUILDER.read_text(encoding="utf-8")
 
         self.assertIn('workbook.worksheets.add("User Class LINQ")', source)
-        self.assertIn("Deferred class Where", source)
-        self.assertIn("Composite ordering", source)
-        self.assertIn("Quantifiers", source)
-        self.assertIn("Aggregate projection", source)
+        self.assertIn("Include customers added later", source)
+        self.assertIn("Sort by city, then age", source)
+        self.assertIn("Ask yes-or-no questions", source)
+        self.assertIn("Calculate the average age", source)
         self.assertIn('.Where("Age").AtLeast(40)', source)
         self.assertIn('.Map("CustomerName", vbString)', source)
         self.assertIn('.OrderBy("City")', source)
@@ -185,6 +212,14 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("Get-Process EXCEL", source)
         self.assertIn("CreationTimeUtc", source)
         self.assertIn("lock-matched Excel process", source)
+
+    def test_demo_runner_fails_fast_after_dismissing_a_blocking_popup(self) -> None:
+        source = DEMO_RUNNER.read_text(encoding="utf-8")
+
+        self.assertIn("Get-BlockingDemoDialog", source)
+        self.assertIn('dismissal_action -ne "none"', source)
+        self.assertIn("Stop-OwnedDemoProcesses", source)
+        self.assertIn("A blocking Excel or VBE dialog was observed", source)
 
     def test_demo_modules_are_ascii_explicit_and_readable(self) -> None:
         for path in (

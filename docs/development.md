@@ -66,6 +66,13 @@ The composite-ordering gate is 2.0 seconds to cover directly observed fresh-proc
 its implementation and 10,000-element workload are unchanged. Three samples and all 414 live
 assertions are recorded in `benchmarks/v1.1.0-baseline.json`.
 
+The v1.2.0 baseline adds 1,000 complete native `Task.Run(...).Await` lifecycles, including
+expression verification, bytecode marshaling, Windows thread-pool dispatch, typed result recovery,
+and deterministic resource cleanup. Its 1.5-second release gate is based on three fresh-process
+samples with a 0.5234375-second median. The same three processes repeat every established
+performance gate and all 425 live assertions. Measurements are recorded in
+`benchmarks/v1.2.0-baseline.json`.
+
 pyVBAanalysis 1.2.0 treats a VBA bang identifier such as `!Age` as an ordinary variable token.
 Live bang examples therefore declare the token name in their local scope even though VBA uses it
 as a default-member name, not a variable value. This keeps both the normal and

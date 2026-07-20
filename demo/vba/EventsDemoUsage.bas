@@ -1,7 +1,8 @@
 Attribute VB_Name = "EventsDemoUsage"
 Option Explicit
 
-' This executable tutorial demonstrates typed events over multicast Actions.
+' This tutorial shows one order update reaching several workbook features.
+' The event checks every handler before anything is subscribed or run.
 
 Private Const BENCHMARK_ITERATIONS As Long = 10000
 Private Const BENCHMARKS_SHEET As String = "Benchmarks"
@@ -29,41 +30,45 @@ DemoFailure:
 End Sub
 
 Private Sub WriteEventExamples()
-    Dim changed As ROneCOne
-    Dim firstHandler As ROneCOne
+    Dim orderStatusChanged As ROneCOne
     Dim removed As Boolean
-    Dim secondHandler As ROneCOne
+    Dim updateDashboard As ROneCOne
+    Dim writeAudit As ROneCOne
 
-    Set firstHandler = ROneCOne.Action( _
-        "EventsDemoUsage.DemoRecordFirst").Takes(vbString)
-    Set secondHandler = ROneCOne.Action( _
-        "EventsDemoUsage.DemoRecordSecond").Takes(vbString)
-    Set changed = ROneCOne.EventOf(vbString) _
-        .Subscribe(firstHandler) _
-        .Subscribe(secondHandler)
+    ' Turn two ordinary procedures into checked String event handlers.
+    Set updateDashboard = ROneCOne.Action( _
+        "EventsDemoUsage.UpdateDashboard").Takes(vbString)
+    Set writeAudit = ROneCOne.Action( _
+        "EventsDemoUsage.WriteAudit").Takes(vbString)
+
+    ' Every Emit now updates the dashboard and records the same message.
+    Set orderStatusChanged = ROneCOne.EventOf(vbString) _
+        .Subscribe(updateDashboard) _
+        .Subscribe(writeAudit)
 
     mTrace = vbNullString
-    changed.Emit "ready"
+    orderStatusChanged.Emit "Order 1042 shipped"
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
         .Range("E6").Value2 = mTrace
-        .Range("E7").Value2 = changed.HandlerCount
+        .Range("E7").Value2 = orderStatusChanged.HandlerCount
     End With
 
-    removed = changed.Unsubscribe(secondHandler)
+    ' Stop auditing future messages without changing the dashboard handler.
+    removed = orderStatusChanged.Unsubscribe(writeAudit)
     mTrace = vbNullString
-    changed.Emit "again"
+    orderStatusChanged.Emit "Order 1043 delayed"
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
         .Range("E8").Value2 = removed
         .Range("E9").Value2 = mTrace
     End With
 End Sub
 
-Public Sub DemoRecordFirst(ByVal value As Variant)
-    mTrace = mTrace & "first:" & CStr(value) & "|"
+Public Sub UpdateDashboard(ByVal message As Variant)
+    mTrace = "Dashboard updated"
 End Sub
 
-Public Sub DemoRecordSecond(ByVal value As Variant)
-    mTrace = mTrace & "second:" & CStr(value) & "|"
+Public Sub WriteAudit(ByVal message As Variant)
+    mTrace = mTrace & "; audit written"
 End Sub
 
 Public Sub DemoCountEvent(ByVal value As Variant)

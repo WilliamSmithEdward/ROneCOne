@@ -1,8 +1,8 @@
 # DataTable, DataSet, and providers
 
-The data layer uses the same tagged one-class kernel as collections and tasks. Tables own typed
-columns and rows; datasets own tables and relations; adapters bridge provider records into those
-objects.
+The data layer gives workbook code checked tables, rows, relationships, and local database access.
+It uses the same one-class runtime as collections and Tasks. The sections below define the exact
+technical contract.
 
 ## In-memory data
 

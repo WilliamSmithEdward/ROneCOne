@@ -46,20 +46,27 @@ Create a standard module, paste this procedure, and run it with `F5`:
 Option Explicit
 
 Public Sub TryROneCOne()
-    Dim numbers As ROneCOne
+    Dim strongScores As ROneCOne
+    Dim scores As ROneCOne
 
-    Set numbers = ROneCOne.ListOf( _
-        vbLong, CLng(10), CLng(20), CLng(30))
+    Set scores = ROneCOne.ListOf(vbLong, _
+        CLng(90), CLng(72), CLng(88), CLng(95))
 
-    MsgBox numbers.Where( _
-        numbers.Element.AtLeast(CLng(20))).Count
+    Set strongScores = scores _
+        .Where(scores.Element.AtLeast(CLng(85))) _
+        .OrderDescending _
+        .ToList
+
+    MsgBox "Scores at or above 85: " & strongScores.JoinText(", ")
 End Sub
 ```
 
-The message should display `2`.
-
-For objects such as customers or invoices, the clearest form is usually a named member such as
+The message should display `Scores at or above 85: 95, 90, 88`. `Element` means "the current
+number" while the list is being filtered. The same pattern works with object properties such as
 `Where("Age").AtLeast(40)`.
+
+You have created a checked list, filtered it, sorted it, and displayed the result without writing a
+loop, counter, or temporary array.
 
 ## If Excel blocks the file
 

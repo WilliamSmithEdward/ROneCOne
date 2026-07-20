@@ -3,30 +3,31 @@
 New to ROneCOne? Start with the
 [Events and exceptions user guide](user-guide/events-and-exceptions.md).
 
-ROneCOne provides structured `Try`, `Catch`, and `Finally` flow over universal Actions. The
-operation is an immutable builder inside `ROneCOne.cls`; executing it does not generate source,
-access the VBIDE, or change Excel security settings.
+ROneCOne provides structured `Try`, `Catch`, and `Finally` flow over Actions. It makes work,
+recovery, and required cleanup readable in one place. The technical operation is an immutable
+builder inside `ROneCOne.cls`; it does not generate source, access the VBIDE, or change Excel
+security settings.
 
 ## Catch and finally
 
 ```vba
-Dim attempt As ROneCOne
+Dim importAttempt As ROneCOne
 
-Set attempt = ROneCOne.Try(work) _
-    .Catch(errorHandler) _
-    .Finally(cleanup)
+Set importAttempt = ROneCOne.Try(importSales) _
+    .Catch(INVALID_AMOUNT_ERROR, skipBadRow) _
+    .Finally(closeFile)
 
-attempt.Execute
+importAttempt.Execute
 ```
 
-`work` and `cleanup` are zero-argument Actions. A Catch Action may take no argument or one captured
+`importSales` and `closeFile` are zero-argument Actions. A Catch Action may take no argument or one captured
 exception. `ROneCOne.Exception` is the readable type prototype for that signature:
 
 ```vba
-Set errorHandler = ROneCOne.Action("Demo.HandleError") _
+Set skipBadRow = ROneCOne.Action("SalesImport.SkipBadRow") _
     .Takes(ROneCOne.Exception)
 
-Public Sub HandleError(ByVal errorInfo As Variant)
+Public Sub SkipBadRow(ByVal errorInfo As Variant)
     Debug.Print errorInfo.ErrorNumber
     Debug.Print errorInfo.Message
 End Sub
@@ -35,15 +36,20 @@ End Sub
 Captured exceptions expose `ErrorNumber`, `ErrorSource`, `Message`, `HelpFile`, and `HelpContext`.
 They contain only the local VBA `Err` state and are never logged or transmitted by the runtime.
 
+If the VBA editor's **Error Trapping** preference is **Break on All Errors**, the editor pauses
+before any error handler can run. Choose **Tools > Options > General > Break on Unhandled Errors**
+when testing handled errors. The packaged demo does not deliberately raise an error during its
+automatic run.
+
 ## Filtered catches
 
 The two-argument form matches an exact VBA error number:
 
 ```vba
-Set attempt = ROneCOne.Try(work) _
-    .Catch(vbObjectError + 100, expectedHandler) _
-    .Catch(fallbackHandler) _
-    .Finally(cleanup)
+Set importAttempt = ROneCOne.Try(importSales) _
+    .Catch(INVALID_AMOUNT_ERROR, skipBadRow) _
+    .Catch(reportUnexpectedError) _
+    .Finally(closeFile)
 ```
 
 Catches are tested in construction order. The one-argument form is catch-all. A filtered miss

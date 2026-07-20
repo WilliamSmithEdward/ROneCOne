@@ -64,17 +64,17 @@ function tableHeader(range) {
 titleBand(
   start,
   "ROneCOne Delegates",
-  "Universal C#-style Func, Action, multicast, DynamicInvoke, and ByRef in one VBA file",
+  "Build reusable pricing rules and send one update to several workbook features",
   "H",
 );
 start.getRange("A5:D5").merge();
-start.getRange("A5").values = [["Run the living demo"]];
+start.getRange("A5").values = [["Run this demo"]];
 section(start.getRange("A5:D5"));
 start.getRange("A6:D9").values = [
   ["1", "Press Alt+F8", "Open Excel's Macro dialog", null],
-  ["2", "Run RunROneCOneDemo", "Executes every example and benchmark", null],
-  ["3", "Review Examples", "Live results recalculate their PASS status", null],
-  ["4", "Import ROneCOne.cls", "The runtime itself is still one file", null],
+  ["2", "Run RunROneCOneDemo", "Fills in every result for you", null],
+  ["3", "Review Examples", "PASS confirms that each result worked", null],
+  ["4", "Import ROneCOne.cls", "Add the entire runtime to your own workbook", null],
 ];
 start.getRange("A6:D9").format = {
   borders: { preset: "all", style: "thin", color: colors.line },
@@ -122,7 +122,7 @@ start.getRange("B13").format = {
 };
 start.getRange("A16:H16").merge();
 start.getRange("A16").values = [[
-  "Privacy invariant: no telemetry, no network transmission, and no runtime VBIDE access.",
+  "Your data stays local: no telemetry, network transmission, or runtime VBIDE access.",
 ]];
 start.getRange("A16:H16").format = {
   fill: "#FFF4E8",
@@ -135,7 +135,8 @@ start.getRange("B:B").format.columnWidth = 22;
 start.getRange("C:D").format.columnWidth = 28;
 start.getRange("E:E").format.columnWidth = 3;
 start.getRange("F:F").format.columnWidth = 22;
-start.getRange("G:H").format.columnWidth = 19;
+start.getRange("G:G").format.columnWidth = 28;
+start.getRange("H:H").format.columnWidth = 10;
 start.getRange("6:10").format.rowHeight = 28;
 start.freezePanes.freezeRows(3);
 
@@ -146,8 +147,8 @@ titleBand(
   "F",
 );
 examples.getRange("A5:F5").values = [[
-  "Pattern",
-  "C# idea",
+  "What it does",
+  "C# equivalent (optional)",
   "ROneCOne VBA",
   "Expected",
   "Live result",
@@ -155,17 +156,17 @@ examples.getRange("A5:F5").values = [[
 ]];
 tableHeader(examples.getRange("A5:F5"));
 examples.getRange("A6:D16").values = [
-  ["Unary lambda", "x => x * x", "Set x = ROneCOne.Var(vbLong)\nSet square = x.Multiply(x).AsFunc\nsquare(9)", 81],
-  ["Binary lambda", "(x, y) => x + y", "Set addValues = x.Add(y).AsFunc\naddValues(6, 7)", 13],
-  ["Boolean expression", "x >= 10 && x < 20", "x.AtLeast(10).AndAlso(x.LessThan(20)).AsFunc", true],
-  ["Short circuit", "false && (1 / 0)", "ROneCOne.Value(False).AndAlso(...).AsFunc", false],
-  ["Object Func", "new Func<int,int,double>(Max)", "ROneCOne.Func(WorksheetFunction, \"Max\")\n    .Takes(vbLong, vbLong).Returns(vbDouble)", 7],
-  ["Procedure Func", "new Func<int,int,int>(Add)", "ROneCOne.Func(\"DemoUsage.DemoAddValues\")\n    .Takes(vbLong, vbLong).Returns(vbLong)", 13],
-  ["DynamicInvoke", "add.DynamicInvoke(args)", "workbookAdd.DynamicInvoke(Array(20, 22))", 42],
-  ["Multicast Action", "Delegate.Combine(first, second)", "Set combined = ROneCOne.Combine(firstAction, secondAction)\ncombined.Execute \"value\"", "first:value|second:value|"],
-  ["True ByRef", "increment(ref value)", "increment.Execute ROneCOne.RefLong(value)", 42],
-  ["Composition", "square.Then(double)", "square.PipeTo(doubleValue)(3)", 18],
-  ["Signature metadata", "delegate.GetType()", "workbookAdd.Signature", "Func<Long, Long, Long>"],
+  ["Apply a discount", "price => price * 0.9", "Set price = ROneCOne.Var(vbDouble)\nSet applyDiscount = price.Multiply(0.9).AsFunc", 90],
+  ["Add shipping", "(amount, shipping) => amount + shipping", "Set orderTotal = amount.Add(shipping).AsFunc\norderTotal(100, 5)", 105],
+  ["Check an approval range", "amount >= 100 && amount < 1000", "Set approvalRule = amount.AtLeast(100)\n    .AndAlso(amount.LessThan(1000)).AsFunc", true],
+  ["Avoid unsafe work", "false && unsafeOperation", "ROneCOne.Value(False).AndAlso(...).AsFunc", false],
+  ["Reuse an Excel function", "new Func<int,int,double>(Max)", "ROneCOne.Func(WorksheetFunction, \"Max\")\n    .Takes(vbLong, vbLong).Returns(vbDouble)", 7],
+  ["Reuse workbook code", "new Func<int,int,int>(CalculateOrderTotal)", "ROneCOne.Func(\"DemoUsage.CalculateOrderTotal\")\n    .Takes(vbLong, vbLong).Returns(vbLong)", 105],
+  ["Call with an input array", "calculateTotal.DynamicInvoke(args)", "calculateTotal.DynamicInvoke(Array(100, 5))", 105],
+  ["Notify two features", "Delegate.Combine(dashboard, audit)", "Set notify = ROneCOne.Combine(updateDashboard, writeAudit)\nnotify.Execute \"Order 1042 approved\"", "Dashboard updated; audit written"],
+  ["Update the original number", "increment(ref orderNumber)", "increment.Execute ROneCOne.RefLong(orderNumber)", 1042],
+  ["Build a pricing pipeline", "discount.Then(addHandling)", "applyDiscount.PipeTo(addHandling)(100)", 95],
+  ["Inspect the contract", "delegate.GetType()", "calculateTotal.Signature", "Func<Long, Long, Long>"],
 ];
 examples.getRange("F6").formulas = [["=IF(E6=\"\",\"NOT RUN\",IF(E6=D6,\"PASS\",\"CHECK\"))"]];
 examples.getRange("F6:F16").fillDown();
@@ -208,7 +209,7 @@ benchmarks.getRange("A5:E5").values = [[
   "Invocations / second",
 ]];
 tableHeader(benchmarks.getRange("A5:E5"));
-benchmarks.getRange("A6").values = [["square(x) inferred AsFunc delegate"]];
+benchmarks.getRange("A6").values = [["applyDiscount(amount) inferred AsFunc delegate"]];
 benchmarks.getRange("E6").formulas = [["=IF(C6=0,0,B6/C6)"]];
 benchmarks.getRange("A6:E6").format = {
   borders: { preset: "all", style: "thin", color: colors.line },
@@ -232,8 +233,8 @@ benchmarks.freezePanes.freezeRows(5);
 
 titleBand(
   architecture,
-  "One-file architecture",
-  "One tagged object kernel represents factory, value, expression, delegate, and collection roles.",
+  "Why deployment stays simple",
+  "Every capability is contained in ROneCOne.cls.",
   "F",
 );
 architecture.getRange("A5:F5").values = [[
@@ -248,7 +249,7 @@ tableHeader(architecture.getRange("A5:F5"));
 architecture.getRange("A6:F11").values = [
   ["Single-file core", "ROneCOne.cls", "One import operation", "ENFORCED", 1, 0],
   ["No runtime VBIDE", "Expression trees", "Works without trusted project access", "ENFORCED", 1, 0],
-  ["Syntax sugar", "Inferred Func + universal adapters", "Minimal developer ceremony", "ENFORCED", 1, 0],
+  ["Concise code", "Inferred Func + reusable adapters", "Less VBA ceremony", "ENFORCED", 1, 0],
   ["One Excel process", "Single-process execution contract", "No multi-instance parallelism", "ENFORCED", 1, 0],
   ["Privacy", "Local-only opt-in logs", "Never transmits workbook data", "ENFORCED", 1, 0],
   ["Workbook formats", ".xlsm / .xlsb / .xlam", "Normal VBA remains unchanged", "SUPPORTED CONTRACT", 1, 0],

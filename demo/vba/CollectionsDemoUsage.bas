@@ -1,8 +1,8 @@
 Attribute VB_Name = "CollectionsDemoUsage"
 Option Explicit
 
-' This module is intentionally organized as a small executable tutorial.
-' The public macro coordinates the demo; each private procedure owns one topic.
+' This tutorial filters, sorts, and summarizes numbers and Customer objects.
+' Run the public macro first, then read each small procedure from top to bottom.
 
 Private Const BASIC_EXAMPLES_SHEET As String = "Examples"
 Private Const BENCHMARK_ELEMENT_COUNT As Long = 10000
@@ -36,7 +36,7 @@ DemoFailure:
 End Sub
 
 ' -----------------------------------------------------------------------------
-' Primitive List<T> and scalar LINQ
+' Checked number lists and simple queries
 ' -----------------------------------------------------------------------------
 
 Private Sub WritePrimitiveCollectionExamples()
@@ -61,7 +61,7 @@ Private Sub WritePrimitiveCollectionExamples()
     Set grace = CreateCustomer("Grace", CLng(40), "Arlington")
     Set customers = ROneCOne.ListFrom(ada, grace)
 
-    ' Deferred execution means this query observes the later Add operation.
+    ' The query runs when ToList asks for results, so it sees the later Add.
     Set numbers = ROneCOne.ListOf(vbLong, CLng(5), CLng(20))
     Set x = numbers.Element
     Set filtered = numbers.Where(x.GreaterThan(CLng(10)))
@@ -93,20 +93,21 @@ Private Sub WritePrimitiveCollectionExamples()
     With ThisWorkbook.Worksheets(BASIC_EXAMPLES_SHEET)
         .Range("E6").Value2 = numbers.GenericTypeName
         .Range("E7").Value2 = strictTypeRejected
-        .Range("E8").Value2 = customers.GenericTypeName & ":" & _
-            customers.Item(1).CustomerName
-        .Range("E9").Value2 = CStr(filtered.Count) & "|" & CStr(filtered.Last)
-        .Range("E10").Value2 = projected.JoinText(",")
-        .Range("E11").Value2 = sequence.JoinText(",")
-        .Range("E12").Value2 = CStr(numbers.Sum) & "|" & _
-            CStr(numbers.Average) & "|" & CStr(numbers.Min) & "|" & _
-            CStr(numbers.Max)
+        .Range("E8").Value2 = customers.GenericTypeName & _
+            "; second customer: " & customers.Item(1).CustomerName
+        .Range("E9").Value2 = CStr(filtered.Count) & _
+            " matches; last: " & CStr(filtered.Last)
+        .Range("E10").Value2 = "Top results: " & projected.JoinText(", ")
+        .Range("E11").Value2 = "Sequence: " & sequence.JoinText(", ")
+        .Range("E12").Value2 = "Sum " & CStr(numbers.Sum) & _
+            "; average " & CStr(numbers.Average) & _
+            "; min " & CStr(numbers.Min) & "; max " & CStr(numbers.Max)
         .Range("E13").Value2 = total
     End With
 End Sub
 
 ' -----------------------------------------------------------------------------
-' User-defined class LINQ
+' Query ordinary Customer objects
 ' -----------------------------------------------------------------------------
 
 Private Sub WriteUserClassLinqExamples()
@@ -143,33 +144,33 @@ Private Sub WriteUserClassLinqExamples()
     Set katherine.Manager = grace
     Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 
-    ' Build the query first, then mutate its source to prove it remains deferred.
+    ' Build the query now; it will include Margaret when results are requested.
     Set experienced = customers.Where("Age").AtLeast(CLng(40))
     Set margaret = CreateCustomer("Margaret", CLng(45), "Arlington")
     Set margaret.Manager = grace
     customers.Add margaret
     Set lastCustomer = experienced.Last
 
-    ' Member-name selectors eliminate the explicit element parameter.
+    ' Use the property name directly instead of writing a selector procedure.
     Set names = experienced _
         .Map("CustomerName", vbString) _
         .Order _
         .ToList
 
-    ' Each ThenBy level stays typed, deferred, stable, and independently directed.
+    ' Sort by city first, then by age within each city.
     Set orderedCustomers = customers _
         .OrderBy("City") _
         .ThenByDescending("Age") _
         .ToList
     Set firstCustomer = orderedCustomers.First
 
-    ' Condition creates a reusable expression when a predicate is composed.
+    ' A Condition is a reusable yes-or-no rule.
     anyLondon = customers.Exists( _
         customers.Condition("City").EqualTo("London"))
     allExperienced = customers.All( _
         customers.Condition("Age").AtLeast(CLng(40)))
 
-    ' Procedure signatures are inferred as Func<DemoCustomer, Boolean>.
+    ' An existing VBA function can also act as the yes-or-no rule.
     Set procedureFiltered = customers.WhereMethod( _
         "CollectionsDemoUsage.IsExperiencedCustomer").ToList
 
@@ -178,7 +179,7 @@ Private Sub WriteUserClassLinqExamples()
         .ToList
     Set distinctCities = customers.DistinctBy("City").ToList
 
-    ' C#-style ?. safely propagates Null when an intermediate object is Nothing.
+    ' ?. avoids an error when a customer has no Manager.
     Set managed = customers.Where("Manager?.Age").AtLeast(CLng(40)).ToList
 
     Set allowedCities = ROneCOne.ListOf( _
@@ -200,20 +201,24 @@ Private Sub WriteUserClassLinqExamples()
     Set membershipMatches = customers.Where(allowedCities.Contains(customers!City))
 
     With ThisWorkbook.Worksheets(USER_CLASS_SHEET)
-        .Range("E6").Value2 = customers.GenericTypeName & ":" & customers.Count
-        .Range("E7").Value2 = CStr(experienced.Count) & "|" & _
-            lastCustomer.CustomerName
-        .Range("E8").Value2 = names.JoinText("|")
-        .Range("E9").Value2 = firstCustomer.CustomerName & "|" & _
-            CStr(firstCustomer.Age)
-        .Range("E10").Value2 = CStr(anyLondon) & "|" & CStr(allExperienced)
+        .Range("E6").Value2 = customers.GenericTypeName & " with " & _
+            CStr(customers.Count) & " customers"
+        .Range("E7").Value2 = CStr(experienced.Count) & _
+            " customers; newest match: " & lastCustomer.CustomerName
+        .Range("E8").Value2 = names.JoinText(", ")
+        .Range("E9").Value2 = "First: " & firstCustomer.CustomerName & _
+            ", age " & CStr(firstCustomer.Age)
+        .Range("E10").Value2 = "London exists: " & CStr(anyLondon) & _
+            "; all age 40+: " & CStr(allExperienced)
         .Range("E11").Value2 = Round(CDbl( _
             experienced.Average("Age")), 1)
-        .Range("E12").Value2 = procedureFiltered.Count & "|" & _
+        .Range("E12").Value2 = CStr(procedureFiltered.Count) & _
+            " matches; " & _
             customers.Predicate( _
                 "CollectionsDemoUsage.IsExperiencedCustomer").Signature
-        .Range("E13").Value2 = stringMatches.Count & "|" & _
-            customers.Where("CustomerName").Contains("ther").Count
+        .Range("E13").Value2 = "Starts with G: " & _
+            CStr(stringMatches.Count) & "; contains ther: " & _
+            CStr(customers.Where("CustomerName").Contains("ther").Count)
         .Range("E14").Value2 = distinctCities.Count
         With customers
             Set names = .Where(!Age.AtLeast(CLng(40))) _
@@ -221,34 +226,38 @@ Private Sub WriteUserClassLinqExamples()
                 .Order _
                 .ToList
         End With
-        .Range("E15").Value2 = names.JoinText("|")
-        .Range("E16").Value2 = customers.Where("Manager").IsNothing.Count & _
-            "|" & managed.Count
-        .Range("E17").Value2 = customers.Where("City").IsIn( _
-            allowedCities).Count & "|" & _
-            membershipMatches.Count
-        .Range("E18").Value2 = customers.Where("City") _
-            .EqualToIgnoreCase("LONDON").Count & "|" & _
-            customers.Where("CustomerName") _
-                .ContainsIgnoreCase("THER").Count
-        .Range("E19").Value2 = customers.Count( _
-            customers.Condition("Age").AtLeast(CLng(40))) & "|" & _
-            singleCustomer.CustomerName & "|" & _
-            customers.None(customers.Match("Age", CLng(100)))
-        .Range("E20").Value2 = customers.WhereAny( _
-            "Reports", reportPredicate).Count & "|" & _
-            customers.WhereAll("Reports", ada.Reports.Condition("Age") _
-                .AtLeast(CLng(36))).Count & "|" & _
-            customers.WhereNone("Reports", reportPredicate).Count
-        .Range("E21").Value2 = strings.Distinct( _
-            equalityComparer).Count & "|" & _
-            strings.Contains("ada", equalityComparer) & "|" & _
-            strings.Order(comparer).First
-        .Range("E22").Value2 = customers.Where( _
+        .Range("E15").Value2 = names.JoinText(", ")
+        .Range("E16").Value2 = "No manager: " & _
+            CStr(customers.Where("Manager").IsNothing.Count) & _
+            "; manager age 40+: " & CStr(managed.Count)
+        .Range("E17").Value2 = "Allowed city matches: " & _
+            CStr(customers.Where("City").IsIn(allowedCities).Count) & _
+            "; expression matches: " & CStr(membershipMatches.Count)
+        .Range("E18").Value2 = "City matches: " & _
+            CStr(customers.Where("City") _
+                .EqualToIgnoreCase("LONDON").Count) & _
+            "; name contains: " & CStr(customers.Where("CustomerName") _
+                .ContainsIgnoreCase("THER").Count)
+        .Range("E19").Value2 = "Count: " & CStr(customers.Count( _
+            customers.Condition("Age").AtLeast(CLng(40)))) & _
+            "; single: " & singleCustomer.CustomerName & _
+            "; none age 100: " & _
+            CStr(customers.None(customers.Match("Age", CLng(100))))
+        .Range("E20").Value2 = "Any: " & CStr(customers.WhereAny( _
+            "Reports", reportPredicate).Count) & "; all: " & _
+            CStr(customers.WhereAll("Reports", ada.Reports.Condition("Age") _
+                .AtLeast(CLng(36))).Count) & "; none: " & _
+            CStr(customers.WhereNone("Reports", reportPredicate).Count)
+        .Range("E21").Value2 = "Distinct: " & CStr(strings.Distinct( _
+            equalityComparer).Count) & "; contains Ada: " & _
+            CStr(strings.Contains("ada", equalityComparer)) & _
+            "; first: " & CStr(strings.Order(comparer).First)
+        .Range("E22").Value2 = "Both: " & CStr(customers.Where( _
             customers.Condition("Age").AtLeast(CLng(40)).Both( _
-                customers.Match("City", "Arlington"))).Count & "|" & _
-            customers.Where(customers.Match("City", "London").Either( _
-                customers.Match("City", "Cleveland"))).Count
+                customers.Match("City", "Arlington"))).Count) & _
+            "; either: " & CStr(customers.Where(customers.Match( _
+                "City", "London").Either(customers.Match( _
+                    "City", "Cleveland"))).Count)
     End With
 End Sub
 

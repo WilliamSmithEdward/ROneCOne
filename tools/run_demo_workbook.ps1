@@ -5,6 +5,8 @@ param(
     [int]$TimeoutSeconds = 30,
     [ValidateRange(0.01, 60)]
     [double]$MaxOrderingBenchmarkSeconds = 2.5,
+    [ValidateRange(0.01, 60)]
+    [double]$MaxNativeTaskBenchmarkSeconds = 1.5,
     [switch]$Worker,
     [string]$ProcessInfoPath = "demo\.working\demo-processes.json"
 )
@@ -107,6 +109,7 @@ public static class ROneCOneDemoProcess
             }
         }
 
+        $mismatches = @()
         $statuses = @()
         foreach ($sheetName in $exampleSheetNames) {
             $examplesSheet = $workbook.Worksheets.Item($sheetName)
@@ -114,10 +117,19 @@ public static class ROneCOneDemoProcess
                 $exampleCount = [int]$excel.WorksheetFunction.CountA(
                     $examplesSheet.Range("A6:A100"))
                 $lastExampleRow = 5 + $exampleCount
-                $statuses += @(
-                    $examplesSheet.Range("F6:F$lastExampleRow").Value2 |
-                        ForEach-Object { [string]$_ }
-                )
+                for ($row = 6; $row -le $lastExampleRow; $row++) {
+                    $status = [string]$examplesSheet.Cells.Item($row, 6).Value2
+                    $statuses += $status
+                    if ($status -ne "PASS") {
+                        $mismatches += [pscustomobject]@{
+                            sheet = $sheetName
+                            row = $row
+                            expected = $examplesSheet.Cells.Item($row, 4).Value2
+                            actual = $examplesSheet.Cells.Item($row, 5).Value2
+                            status = $status
+                        }
+                    }
+                }
             }
             finally {
                 [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject(
@@ -129,12 +141,15 @@ public static class ROneCOneDemoProcess
             $errorDetail = [string]$workbook.Worksheets.Item(
                 "Start Here").Range("B14").Value2
             throw "Demo validation failed: status=$demoStatus " + `
-                "examples=$($statuses -join ',') detail=$errorDetail"
+                "examples=$($statuses -join ',') detail=$errorDetail " + `
+                "mismatches=$($mismatches | ConvertTo-Json -Compress)"
         }
 
         $workbook.Save()
         $featureName = [string]$workbook.Worksheets.Item(
             "Start Here").Range("G8").Value2
+        $benchmarkSeconds = [double]$workbook.Worksheets.Item(
+            "Benchmarks").Range("C6").Value2
         $memberDispatchSeconds = [double]$workbook.Worksheets.Item(
             "Benchmarks").Range("C7").Value2
         $orderingSeconds = [double]$workbook.Worksheets.Item(
@@ -147,12 +162,18 @@ public static class ROneCOneDemoProcess
                 $orderingSeconds -gt $MaxOrderingBenchmarkSeconds)) {
             throw "Composite ordering benchmark exceeded the $MaxOrderingBenchmarkSeconds-second gate."
         }
+        if ($featureName -eq "Tasks + async" -and `
+            ($benchmarkSeconds -le 0 -or `
+                $benchmarkSeconds -gt $MaxNativeTaskBenchmarkSeconds)) {
+            throw "Native Task benchmark exceeded the $MaxNativeTaskBenchmarkSeconds-second gate."
+        }
         [pscustomobject]@{
             workbook = $resolvedWorkbook
             feature = $featureName
             status = $demoStatus
             examples_passing = $statuses.Count
-            benchmark_seconds = [double]$workbook.Worksheets.Item("Benchmarks").Range("C6").Value2
+            benchmark_seconds = $benchmarkSeconds
+            native_task_gate_seconds = $MaxNativeTaskBenchmarkSeconds
             member_dispatch_seconds = $memberDispatchSeconds
             ordering_seconds = $orderingSeconds
             ordering_gate_seconds = $MaxOrderingBenchmarkSeconds
@@ -193,6 +214,7 @@ $arguments = @(
     "-MacroName", "`"$MacroName`"",
     "-ProcessInfoPath", "`"$resolvedProcessInfo`"",
     "-MaxOrderingBenchmarkSeconds", $MaxOrderingBenchmarkSeconds,
+    "-MaxNativeTaskBenchmarkSeconds", $MaxNativeTaskBenchmarkSeconds,
     "-Worker"
 )
 $process = Start-Process `
@@ -203,17 +225,52 @@ $process = Start-Process `
     -RedirectStandardError $stderrPath `
     -PassThru
 
-try {
-    if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
-        if (Test-Path -LiteralPath $resolvedProcessInfo) {
-            try {
-                $owned = Get-Content -Raw -LiteralPath $resolvedProcessInfo | ConvertFrom-Json
-                Stop-Process -Id $owned.excel_process_id -Force -ErrorAction SilentlyContinue
-                Stop-Process -Id $owned.watcher_process_id -Force -ErrorAction SilentlyContinue
-            }
-            catch {}
+function Stop-OwnedDemoProcesses {
+    if (Test-Path -LiteralPath $resolvedProcessInfo) {
+        try {
+            $owned = Get-Content -Raw -LiteralPath $resolvedProcessInfo | ConvertFrom-Json
+            Stop-Process -Id $owned.excel_process_id -Force -ErrorAction SilentlyContinue
+            Stop-Process -Id $owned.watcher_process_id -Force -ErrorAction SilentlyContinue
         }
-        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        catch {}
+    }
+    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+}
+
+function Get-BlockingDemoDialog {
+    if (-not (Test-Path -LiteralPath $dialogLog)) {
+        return $null
+    }
+    foreach ($line in @(Get-Content -LiteralPath $dialogLog -Tail 20)) {
+        try {
+            $record = $line | ConvertFrom-Json
+            if ($record.dismissal_action -and $record.dismissal_action -ne "none") {
+                return $record
+            }
+        }
+        catch {
+            continue
+        }
+    }
+    return $null
+}
+
+try {
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $blockingDialog = $null
+    while (-not $process.HasExited -and [DateTime]::UtcNow -lt $deadline) {
+        $blockingDialog = Get-BlockingDemoDialog
+        if ($null -ne $blockingDialog) {
+            Start-Sleep -Milliseconds 250
+            Stop-OwnedDemoProcesses
+            $dialogText = @($blockingDialog.child_text) -join " "
+            throw "A blocking Excel or VBE dialog was observed and the task-owned " +
+                "Excel process was closed: $($blockingDialog.title) $dialogText"
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    if (-not $process.HasExited) {
+        Stop-OwnedDemoProcesses
         throw "Demo execution exceeded the hard $TimeoutSeconds-second deadline."
     }
     $process.WaitForExit()

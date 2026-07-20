@@ -35,6 +35,65 @@ Private Declare PtrSafe Sub Sleep Lib "kernel32" ( _
     ByVal milliseconds As Long _
 )
 
+Private Declare PtrSafe Function CreateThreadpoolWork Lib "kernel32" ( _
+    ByVal callbackAddress As LongPtr, _
+    ByVal contextAddress As LongPtr, _
+    ByVal callbackEnvironment As LongPtr _
+) As LongPtr
+
+Private Declare PtrSafe Sub SubmitThreadpoolWork Lib "kernel32" ( _
+    ByVal workAddress As LongPtr _
+)
+
+Private Declare PtrSafe Sub WaitForThreadpoolWorkCallbacks Lib "kernel32" ( _
+    ByVal workAddress As LongPtr, _
+    ByVal cancelPendingCallbacks As Long _
+)
+
+Private Declare PtrSafe Sub CloseThreadpoolWork Lib "kernel32" ( _
+    ByVal workAddress As LongPtr _
+)
+
+Private Declare PtrSafe Function VirtualAlloc Lib "kernel32" ( _
+    ByVal requestedAddress As LongPtr, _
+    ByVal allocationSize As LongPtr, _
+    ByVal allocationType As Long, _
+    ByVal protection As Long _
+) As LongPtr
+
+Private Declare PtrSafe Function VirtualProtect Lib "kernel32" ( _
+    ByVal address As LongPtr, _
+    ByVal regionSize As LongPtr, _
+    ByVal newProtection As Long, _
+    ByRef oldProtection As Long _
+) As Long
+
+Private Declare PtrSafe Function VirtualFree Lib "kernel32" ( _
+    ByVal address As LongPtr, _
+    ByVal regionSize As LongPtr, _
+    ByVal freeType As Long _
+) As Long
+
+Private Declare PtrSafe Function FlushInstructionCache Lib "kernel32" ( _
+    ByVal processHandle As LongPtr, _
+    ByVal baseAddress As LongPtr, _
+    ByVal regionSize As LongPtr _
+) As Long
+
+Private Declare PtrSafe Function GetCurrentProcess Lib "kernel32" () As LongPtr
+
+Private Declare PtrSafe Function GetCurrentThreadId Lib "kernel32" () As Long
+
+Private Declare PtrSafe Function GetModuleHandle Lib "kernel32" _
+    Alias "GetModuleHandleA" ( _
+    ByVal moduleName As String _
+) As LongPtr
+
+Private Declare PtrSafe Function GetProcAddress Lib "kernel32" ( _
+    ByVal moduleHandle As LongPtr, _
+    ByVal procedureName As String _
+) As LongPtr
+
 ' MIT License
 '
 ' Copyright (c) 2026 William Smith
@@ -113,12 +172,40 @@ Private Const TASK_PROMISE As Long = 7
 Private Const TASK_PROVIDER_CALL As Long = 8
 Private Const TASK_YIELD As Long = 9
 Private Const TASK_WAIT_ASYNC As Long = 10
+Private Const TASK_NATIVE_WORK As Long = 11
 
 Private Const TASK_STATUS_CREATED As Long = 0
 Private Const TASK_STATUS_RUNNING As Long = 1
 Private Const TASK_STATUS_COMPLETED As Long = 2
 Private Const TASK_STATUS_CANCELED As Long = 3
 Private Const TASK_STATUS_FAULTED As Long = 4
+
+Private Const MEM_COMMIT As Long = &H1000
+Private Const MEM_RESERVE As Long = &H2000
+Private Const MEM_RELEASE As Long = &H8000&
+Private Const PAGE_READWRITE As Long = &H4
+Private Const PAGE_EXECUTE_READ As Long = &H20
+
+Private Const NATIVE_STATUS_PENDING As Long = 0
+Private Const NATIVE_STATUS_RUNNING As Long = 1
+Private Const NATIVE_STATUS_COMPLETED As Long = 2
+Private Const NATIVE_STATUS_FAULTED As Long = 3
+Private Const NATIVE_STATUS_CANCELED As Long = 4
+
+Private Const NATIVE_OPCODE_PUSH As Long = 0
+Private Const NATIVE_OPCODE_JUMP_IF_FALSE As Long = 100
+Private Const NATIVE_OPCODE_JUMP_IF_TRUE As Long = 101
+Private Const NATIVE_OPCODE_TO_BOOLEAN As Long = 102
+Private Const NATIVE_CONTEXT_SIZE As Long = 592
+Private Const NATIVE_INSTRUCTION_SIZE As Long = 16
+Private Const NATIVE_STACK_CAPACITY As Long = 64
+Private Const NATIVE_MAX_INSTRUCTIONS As Long = 4096
+
+Private Const NATIVE_ERROR_INVALID_OPCODE As Long = 1
+Private Const NATIVE_ERROR_STACK_UNDERFLOW As Long = 2
+Private Const NATIVE_ERROR_STACK_OVERFLOW As Long = 3
+Private Const NATIVE_ERROR_DIVISION_BY_ZERO As Long = 4
+Private Const NATIVE_ERROR_INVALID_STACK As Long = 5
 
 Private Const ROW_STATE_DETACHED As Long = 0
 Private Const ROW_STATE_UNCHANGED As Long = 1
@@ -314,6 +401,15 @@ Private mTaskStatus As Long
 Private mTaskDeadline As LongLong
 Private mTaskAdvancing As Boolean
 Private mTaskWaitActive As Boolean
+Private mNativeCodeAddress As LongPtr
+Private mNativeCodeSize As Long
+Private mNativeContextAddress As LongPtr
+Private mNativeBytecodeAddress As LongPtr
+Private mNativeBytecodeSize As Long
+Private mNativeWorkAddress As LongPtr
+Private mNativeReturnType As VbVarType
+Private mNativeWorkerThreadId As Long
+Private mNativeSubmitted As Boolean
 Private mCancellationSource As ROneCOne
 Private mCancellationRequested As Boolean
 Private mName As String
@@ -917,6 +1013,11 @@ Attribute CompletedTask.VB_Description = "Gets a successfully completed Task."
     Set CompletedTask = TaskFromResult(Empty)
 End Property
 
+Public Property Get CurrentThreadId() As Long
+Attribute CurrentThreadId.VB_Description = "Gets the calling Windows thread identifier."
+    CurrentThreadId = GetCurrentThreadId()
+End Property
+
 Public Function FromResult(ByVal value As Variant) As ROneCOne
 Attribute FromResult.VB_Description = "Creates a completed Task<T> from a value."
     Set FromResult = TaskFromResult(value)
@@ -943,14 +1044,31 @@ Public Function TaskRun( _
     ByVal work As ROneCOne, _
     Optional ByVal cancellationToken As ROneCOne _
 ) As ROneCOne
-Attribute TaskRun.VB_Description = "Creates a cooperatively scheduled Task."
+Attribute TaskRun.VB_Description = "Starts verified pure work on the native thread pool."
     Dim taskValue As ROneCOne
 
-    ValidateTaskWork work, "TaskRun"
-    ValidateCancellationToken cancellationToken, "TaskRun"
+    ValidateNativeTaskWork work, "Task.Run"
+    ValidateCancellationToken cancellationToken, "Task.Run"
+    Set taskValue = New ROneCOne
+    taskValue.ConfigureTask TASK_NATIVE_WORK, work, cancellationToken
+    taskValue.ConfigureNativeTaskReturnType NativeTaskReturnType(work)
+    taskValue.InternalStartNativeTask
+    Set TaskRun = taskValue
+End Function
+
+Public Function RunOnExcel( _
+    ByVal work As ROneCOne, _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute RunOnExcel.VB_Description = _
+    "Schedules VBA or Excel work cooperatively on Excel's thread."
+    Dim taskValue As ROneCOne
+
+    ValidateTaskWork work, "Task.RunOnExcel"
+    ValidateCancellationToken cancellationToken, "Task.RunOnExcel"
     Set taskValue = New ROneCOne
     taskValue.ConfigureTask TASK_WORK, work, cancellationToken
-    Set TaskRun = taskValue
+    Set RunOnExcel = taskValue
 End Function
 
 Public Function TaskFromResult(ByVal value As Variant) As ROneCOne
@@ -1073,6 +1191,8 @@ End Function
 Public Property Get Status() As String
 Attribute Status.VB_Description = "Gets the .NET-aligned Task status name."
     RequireTask Me, "Status"
+    If IsNativeTaskKind(mOperator) And _
+        mTaskStatus < TASK_STATUS_COMPLETED Then AdvanceTask
     Select Case mTaskStatus
         Case TASK_STATUS_CREATED
             Status = "Created"
@@ -1090,6 +1210,8 @@ End Property
 Public Property Get IsCompleted() As Boolean
 Attribute IsCompleted.VB_Description = "Reports terminal Task or blocking-collection state."
     If mRole = ROLE_TASK Then
+        If IsNativeTaskKind(mOperator) And _
+            mTaskStatus < TASK_STATUS_COMPLETED Then AdvanceTask
         IsCompleted = (mTaskStatus >= TASK_STATUS_COMPLETED)
     ElseIf mCollectionKind = COLLECTION_BLOCKING Then
         IsCompleted = (mAddingCompleted And mItems.Count = 0)
@@ -1102,13 +1224,38 @@ End Property
 Public Property Get IsCanceled() As Boolean
 Attribute IsCanceled.VB_Description = "Reports whether a Task was canceled."
     RequireTask Me, "IsCanceled"
+    If IsNativeTaskKind(mOperator) And _
+        mTaskStatus < TASK_STATUS_COMPLETED Then AdvanceTask
     IsCanceled = (mTaskStatus = TASK_STATUS_CANCELED)
 End Property
 
 Public Property Get IsFaulted() As Boolean
 Attribute IsFaulted.VB_Description = "Reports whether a Task faulted."
     RequireTask Me, "IsFaulted"
+    If IsNativeTaskKind(mOperator) And _
+        mTaskStatus < TASK_STATUS_COMPLETED Then AdvanceTask
     IsFaulted = (mTaskStatus = TASK_STATUS_FAULTED)
+End Property
+
+Public Property Get ExecutionMode() As String
+Attribute ExecutionMode.VB_Description = "Gets where the Task body executes."
+    RequireTask Me, "ExecutionMode"
+    Select Case mOperator
+        Case TASK_NATIVE_WORK
+            ExecutionMode = "NativeThreadPool"
+        Case TASK_COMPLETED
+            ExecutionMode = "AlreadyCompleted"
+        Case Else
+            ExecutionMode = "ExcelCooperative"
+    End Select
+End Property
+
+Public Property Get WorkerThreadId() As Long
+Attribute WorkerThreadId.VB_Description = "Gets the native worker thread identifier."
+    RequireTask Me, "WorkerThreadId"
+    If Not IsNativeTaskKind(mOperator) Then Exit Property
+    If mTaskStatus < TASK_STATUS_COMPLETED Then AdvanceTask
+    WorkerThreadId = mNativeWorkerThreadId
 End Property
 
 Public Property Get Result() As Variant
@@ -4902,12 +5049,18 @@ Attribute WhereMethod.VB_Description = "Filters with an inferred method or proce
     Set WhereMethod = Where(Predicate(callable, memberName))
 End Function
 
-Public Function Where(ByVal predicateOrMember As Variant) As ROneCOne
+Public Function Where(Optional ByVal predicateOrMember As Variant) As ROneCOne
 Attribute Where.VB_Description = "Defers filtering or begins a fluent member condition."
     Dim builder As ROneCOne
     Dim predicateDelegate As ROneCOne
 
     RequireSequence Me, "Where"
+    If IsMissing(predicateOrMember) Then
+        Set builder = New ROneCOne
+        builder.ConfigureWhereBuilder Me, vbNullString
+        Set Where = builder
+        Exit Function
+    End If
     If Not IsObject(predicateOrMember) Then
         If VarType(predicateOrMember) = vbString Then
             Set builder = New ROneCOne
@@ -4989,10 +5142,14 @@ End Function
 
 Public Function Map( _
     ByVal selector As Variant, _
-    ByVal resultTypeToken As Variant _
+    Optional ByVal resultTypeToken As Variant _
 ) As ROneCOne
 Attribute Map.VB_Description = "Concise sugar for a strongly typed SelectItems projection."
-    Set Map = SelectItems(selector, resultTypeToken)
+    If IsMissing(resultTypeToken) Then
+        Set Map = SelectItems(selector, vbVariant)
+    Else
+        Set Map = SelectItems(selector, resultTypeToken)
+    End If
 End Function
 
 Public Function Take(ByVal count As Long) As ROneCOne
@@ -5454,12 +5611,12 @@ Attribute Sum.VB_Description = "Sums numeric elements or selected numeric values
     Dim selectorValue As ROneCOne
     Dim total As Variant
 
-    Set values = MaterializeWrapped
     total = 0
     If Not IsMissing(selector) Then
         Set selectorValue = NormalizeContextUnary( _
             selector, "Sum", False)
     End If
+    Set values = MaterializeWrapped
     For Each wrapped In values
         Set selected = SelectTerminalValue(wrapped, selectorValue)
         total = total + RequireScalar(selected, "Sum")
@@ -5472,15 +5629,16 @@ Attribute Average.VB_Description = "Averages numeric elements or selected numeri
     Dim selected As ROneCOne
     Dim selectorValue As ROneCOne
     Dim total As Double
+    Dim valueCount As Long
     Dim values As Collection
     Dim wrapped As ROneCOne
 
-    Set values = MaterializeWrapped
-    If values.Count = 0 Then RaiseEmptySequence "Average"
     If Not IsMissing(selector) Then
         Set selectorValue = NormalizeContextUnary( _
             selector, "Average", False)
     End If
+    Set values = MaterializeWrapped
+    If values.Count = 0 Then RaiseEmptySequence "Average"
     For Each wrapped In values
         Set selected = SelectTerminalValue(wrapped, selectorValue)
         total = total + CDbl(RequireScalar(selected, "Average"))
@@ -6974,6 +7132,15 @@ Friend Sub ConfigureTaskDeadline(ByVal deadline As LongLong)
     mTaskDeadline = deadline
 End Sub
 
+Friend Sub ConfigureNativeTaskReturnType(ByVal returnType As VbVarType)
+    mNativeReturnType = returnType
+End Sub
+
+Friend Sub InternalStartNativeTask()
+Attribute InternalStartNativeTask.VB_MemberFlags = "40"
+    StartNativeTask
+End Sub
+
 Friend Sub ConfigureProviderTask( _
     ByVal providerTarget As ROneCOne, _
     ByVal methodName As String, _
@@ -7505,7 +7672,11 @@ Friend Sub ConfigureWhereBuilder( _
 )
     mRole = ROLE_WHERE_BUILDER
     Set mSource = source
-    mContextMemberPath = NormalizeMemberPath(memberPath, "Where")
+    If Len(Trim$(memberPath)) = 0 Then
+        mContextMemberPath = vbNullString
+    Else
+        mContextMemberPath = NormalizeMemberPath(memberPath, "Where")
+    End If
 End Sub
 
 Friend Sub InternalAddWrapped(ByVal wrapped As ROneCOne)
@@ -9394,6 +9565,608 @@ Private Sub ValidateTaskWork( _
     End If
 End Sub
 
+Private Sub ValidateNativeTaskWork( _
+    ByVal work As ROneCOne, _
+    ByVal memberName As String _
+)
+    Dim instructionCount As Long
+    Dim stackDepth As Long
+
+    If work Is Nothing Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "The Task body cannot be Nothing."
+    End If
+    If work.InternalRole <> ROLE_LAMBDA Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "Task.Run accepts a pure expression lambda. Use Task.RunOnExcel " & _
+            "for VBA procedures, Excel, or COM work."
+    End If
+    If work.Arity <> 0 Then
+        RaiseContractError ERROR_ARITY_MISMATCH, memberName, _
+            "The native Task body must accept no arguments."
+    End If
+    If Not IsNativeTaskScalarType(NativeTaskReturnType(work)) Then
+        RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
+            "Use Byte, Integer, Long, Single, Double, Boolean, or Date."
+    End If
+    ValidateNativeExpression work.InternalLeft, Nothing, instructionCount, _
+        stackDepth, memberName
+    If stackDepth <> 1 Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            "The native expression did not produce exactly one result."
+    End If
+End Sub
+
+Private Function NativeTaskReturnType(ByVal work As ROneCOne) As VbVarType
+    If work.InternalHasReturnSignature Then
+        NativeTaskReturnType = work.InternalReturnType
+    Else
+        NativeTaskReturnType = InferNativeExpressionType(work.InternalLeft)
+    End If
+End Function
+
+Private Function InferNativeExpressionType( _
+    ByVal node As ROneCOne _
+) As VbVarType
+    Dim leftType As VbVarType
+    Dim rightType As VbVarType
+
+    Select Case node.InternalRole
+        Case ROLE_VALUE
+            InferNativeExpressionType = VarType(node.InternalScalarValue)
+            Exit Function
+        Case ROLE_PARAMETER
+            InferNativeExpressionType = node.InternalExpectedType
+            Exit Function
+    End Select
+    Select Case node.InternalOperator
+        Case OP_EQUAL, OP_NOT_EQUAL
+            InferNativeExpressionType = vbBoolean
+        Case OP_LESS_THAN, OP_LESS_THAN_OR_EQUAL
+            InferNativeExpressionType = vbBoolean
+        Case OP_GREATER_THAN, OP_GREATER_THAN_OR_EQUAL
+            InferNativeExpressionType = vbBoolean
+        Case OP_AND_ALSO, OP_OR_ELSE, OP_NOT
+            InferNativeExpressionType = vbBoolean
+        Case OP_NEGATE
+            InferNativeExpressionType = _
+                InferNativeExpressionType(node.InternalLeft)
+        Case OP_ADD, OP_SUBTRACT, OP_MULTIPLY
+            leftType = InferNativeExpressionType(node.InternalLeft)
+            rightType = InferNativeExpressionType(node.InternalRight)
+            If leftType = rightType Then
+                InferNativeExpressionType = leftType
+            Else
+                InferNativeExpressionType = vbDouble
+            End If
+        Case Else
+            InferNativeExpressionType = vbDouble
+    End Select
+End Function
+
+Private Sub ValidateNativeExpression( _
+    ByVal node As ROneCOne, _
+    ByVal inputParameter As ROneCOne, _
+    ByRef instructionCount As Long, _
+    ByRef stackDepth As Long, _
+    ByVal memberName As String _
+)
+    Dim operatorCode As Long
+
+    If node Is Nothing Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "The native expression contains an empty node."
+    End If
+    Select Case node.InternalRole
+        Case ROLE_VALUE
+            If node.InternalHasObjectValue Or _
+                Not IsNativeTaskScalarValue(node.InternalScalarValue) Then
+                RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
+                    "This constant type is not supported by native Task.Run."
+            End If
+            instructionCount = instructionCount + 1
+            stackDepth = stackDepth + 1
+        Case ROLE_PARAMETER
+            If inputParameter Is Nothing Or _
+                Not node Is inputParameter Then
+                RaiseContractError ERROR_UNBOUND_PARAMETER, memberName, _
+                    "The native expression contains an unbound parameter."
+            End If
+            instructionCount = instructionCount + 1
+            stackDepth = stackDepth + 1
+        Case ROLE_EXPRESSION
+            operatorCode = node.InternalOperator
+            If Not IsNativeTaskOperator(operatorCode) Then
+                RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+                    "This expression operator is not native-thread safe."
+            End If
+            ValidateNativeExpression node.InternalLeft, inputParameter, _
+                instructionCount, stackDepth, memberName
+            If operatorCode <> OP_NEGATE And operatorCode <> OP_NOT Then
+                If node.InternalRight Is Nothing Then
+                    RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+                        "A binary native expression is missing its right value."
+                End If
+                ValidateNativeExpression node.InternalRight, inputParameter, _
+                    instructionCount, stackDepth, memberName
+                stackDepth = stackDepth - 1
+            End If
+            If operatorCode = OP_AND_ALSO Or operatorCode = OP_OR_ELSE Then
+                instructionCount = instructionCount + 2
+            Else
+                instructionCount = instructionCount + 1
+            End If
+        Case Else
+            RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+                "Native Task.Run expressions cannot access VBA, Excel, COM, or objects."
+    End Select
+    If stackDepth < 1 Or stackDepth > NATIVE_STACK_CAPACITY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            "The native expression exceeds the safe evaluation stack."
+    End If
+    If instructionCount > NATIVE_MAX_INSTRUCTIONS Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            "The native expression is too large for one Task.Run operation."
+    End If
+End Sub
+
+Private Function IsNativeTaskOperator(ByVal operatorCode As Long) As Boolean
+    Select Case operatorCode
+        Case OP_ADD, OP_SUBTRACT, OP_MULTIPLY, OP_DIVIDE
+            IsNativeTaskOperator = True
+        Case OP_NEGATE, OP_EQUAL, OP_NOT_EQUAL
+            IsNativeTaskOperator = True
+        Case OP_LESS_THAN, OP_LESS_THAN_OR_EQUAL
+            IsNativeTaskOperator = True
+        Case OP_GREATER_THAN, OP_GREATER_THAN_OR_EQUAL
+            IsNativeTaskOperator = True
+        Case OP_AND_ALSO, OP_OR_ELSE, OP_NOT
+            IsNativeTaskOperator = True
+    End Select
+End Function
+
+Private Function IsNativeTaskScalarType( _
+    ByVal valueType As VbVarType _
+) As Boolean
+    Select Case valueType
+        Case vbByte, vbInteger, vbLong
+            IsNativeTaskScalarType = True
+        Case vbSingle, vbDouble
+            IsNativeTaskScalarType = True
+        Case vbBoolean, vbDate
+            IsNativeTaskScalarType = True
+    End Select
+End Function
+
+Private Function IsNativeTaskScalarValue(ByVal value As Variant) As Boolean
+    If IsArray(value) Or IsNull(value) Or IsError(value) Then Exit Function
+    IsNativeTaskScalarValue = IsNativeTaskScalarType(VarType(value))
+End Function
+
+Private Sub StartNativeTask()
+    Dim bytecodeAddress As LongPtr
+    Dim capturedDescription As String
+    Dim capturedNumber As Long
+    Dim capturedSource As String
+    Dim instructionCount As Long
+    Dim kernelBytes() As Byte
+    Dim moduleHandle As LongPtr
+    Dim oldProtection As Long
+    Dim opcodes As Collection
+    Dim operands As Collection
+    Dim threadIdAddress As LongPtr
+
+    If TaskCancellationRequested Then
+        mTaskStatus = TASK_STATUS_CANCELED
+        Exit Sub
+    End If
+    On Error GoTo StartFailed
+    Set opcodes = New Collection
+    Set operands = New Collection
+    CompileNativeExpression mTaskBody.InternalLeft, Nothing, _
+        opcodes, operands
+    instructionCount = opcodes.Count
+    mNativeBytecodeSize = instructionCount * NATIVE_INSTRUCTION_SIZE
+    mNativeBytecodeAddress = AllocateNativeMemory( _
+        mNativeBytecodeSize, "Task.Run bytecode")
+    WriteNativeBytecode opcodes, operands
+
+    mNativeContextAddress = AllocateNativeMemory( _
+        NATIVE_CONTEXT_SIZE, "Task.Run context")
+    WriteNativeLong 8, instructionCount
+    bytecodeAddress = mNativeBytecodeAddress
+    WriteNativePointer 16, bytecodeAddress
+    moduleHandle = GetModuleHandle("kernel32.dll")
+    If moduleHandle = 0 Then RaiseNativeApiError "GetModuleHandle"
+    threadIdAddress = GetProcAddress(moduleHandle, "GetCurrentThreadId")
+    If threadIdAddress = 0 Then RaiseNativeApiError "GetProcAddress"
+    WriteNativePointer 40, threadIdAddress
+
+    kernelBytes = NativeTaskKernelBytes()
+    mNativeCodeSize = UBound(kernelBytes) - LBound(kernelBytes) + 1
+    mNativeCodeAddress = AllocateNativeMemory( _
+        mNativeCodeSize, "Task.Run worker kernel")
+    CopyMemory ByVal mNativeCodeAddress, kernelBytes(LBound(kernelBytes)), _
+        mNativeCodeSize
+    If VirtualProtect( _
+        mNativeCodeAddress, mNativeCodeSize, PAGE_EXECUTE_READ, _
+        oldProtection) = 0 Then RaiseNativeApiError "VirtualProtect"
+    If FlushInstructionCache( _
+        GetCurrentProcess(), mNativeCodeAddress, mNativeCodeSize) = 0 Then
+        RaiseNativeApiError "FlushInstructionCache"
+    End If
+
+    mNativeWorkAddress = CreateThreadpoolWork( _
+        mNativeCodeAddress, mNativeContextAddress, 0)
+    If mNativeWorkAddress = 0 Then RaiseNativeApiError "CreateThreadpoolWork"
+    mNativeSubmitted = True
+    mTaskStatus = TASK_STATUS_RUNNING
+    SubmitThreadpoolWork mNativeWorkAddress
+    On Error GoTo 0
+    Exit Sub
+
+StartFailed:
+    capturedNumber = Err.Number
+    capturedSource = Err.Source
+    capturedDescription = Err.Description
+    On Error GoTo 0
+    ReleaseNativeTaskResources True
+    Err.Raise capturedNumber, capturedSource, capturedDescription
+End Sub
+
+Private Function AllocateNativeMemory( _
+    ByVal allocationSize As Long, _
+    ByVal purpose As String _
+) As LongPtr
+    AllocateNativeMemory = VirtualAlloc( _
+        0, allocationSize, MEM_COMMIT Or MEM_RESERVE, PAGE_READWRITE)
+    If AllocateNativeMemory = 0 Then
+        RaiseNativeApiError "VirtualAlloc for " & purpose
+    End If
+End Function
+
+Private Sub CompileNativeExpression( _
+    ByVal node As ROneCOne, _
+    ByVal inputParameter As ROneCOne, _
+    ByVal opcodes As Collection, _
+    ByVal operands As Collection _
+)
+    Dim instructionIndex As Long
+    Dim operatorCode As Long
+    Dim rightOpcodes As Collection
+    Dim rightOperands As Collection
+
+    Select Case node.InternalRole
+        Case ROLE_VALUE
+            opcodes.Add NATIVE_OPCODE_PUSH
+            operands.Add CDbl(node.InternalScalarValue)
+            Exit Sub
+    End Select
+    operatorCode = node.InternalOperator
+    CompileNativeExpression node.InternalLeft, inputParameter, opcodes, operands
+    If operatorCode = OP_AND_ALSO Or operatorCode = OP_OR_ELSE Then
+        Set rightOpcodes = New Collection
+        Set rightOperands = New Collection
+        CompileNativeExpression node.InternalRight, inputParameter, _
+            rightOpcodes, rightOperands
+        If operatorCode = OP_AND_ALSO Then
+            opcodes.Add NATIVE_OPCODE_JUMP_IF_FALSE
+        Else
+            opcodes.Add NATIVE_OPCODE_JUMP_IF_TRUE
+        End If
+        operands.Add CDbl(rightOpcodes.Count + 1)
+        For instructionIndex = 1 To rightOpcodes.Count
+            opcodes.Add rightOpcodes.Item(instructionIndex)
+            operands.Add rightOperands.Item(instructionIndex)
+        Next instructionIndex
+        opcodes.Add NATIVE_OPCODE_TO_BOOLEAN
+        operands.Add 0#
+        Exit Sub
+    End If
+    If operatorCode <> OP_NEGATE And operatorCode <> OP_NOT Then
+        CompileNativeExpression node.InternalRight, inputParameter, _
+            opcodes, operands
+    End If
+    opcodes.Add operatorCode
+    operands.Add 0#
+End Sub
+
+Private Sub WriteNativeBytecode( _
+    ByVal opcodes As Collection, _
+    ByVal operands As Collection _
+)
+    Dim instructionAddress As LongPtr
+    Dim instructionIndex As Long
+    Dim opcode As Long
+    Dim operand As Double
+
+    For instructionIndex = 1 To opcodes.Count
+        instructionAddress = mNativeBytecodeAddress + _
+            (instructionIndex - 1) * NATIVE_INSTRUCTION_SIZE
+        opcode = CLng(opcodes.Item(instructionIndex))
+        operand = CDbl(operands.Item(instructionIndex))
+        CopyMemory ByVal instructionAddress, opcode, 4
+        CopyMemory ByVal instructionAddress + 8, operand, 8
+    Next instructionIndex
+End Sub
+
+Private Sub AdvanceNativeTask()
+    Dim capturedDescription As String
+    Dim capturedNumber As Long
+    Dim capturedSource As String
+    Dim nativeError As Long
+    Dim nativeResult As Double
+    Dim nativeStatus As Long
+    Dim typedResult As Variant
+
+    If mNativeContextAddress = 0 Then
+        RaiseContractError ERROR_NATIVE_INVOCATION, "Task.Run", _
+            "The native Task context is unavailable."
+    End If
+    On Error GoTo AdvanceFailed
+    If TaskCancellationRequested Then WriteNativeLong 32, 1
+    nativeStatus = ReadNativeLong(0)
+    If nativeStatus = NATIVE_STATUS_PENDING Or _
+        nativeStatus = NATIVE_STATUS_RUNNING Then Exit Sub
+
+    WaitForThreadpoolWorkCallbacks mNativeWorkAddress, 0
+    nativeStatus = ReadNativeLong(0)
+    mNativeWorkerThreadId = ReadNativeLong(36)
+    If nativeStatus = NATIVE_STATUS_COMPLETED Then
+        nativeResult = ReadNativeDouble(24)
+        typedResult = ConvertNativeTaskResult(nativeResult)
+        Set mTaskResult = CreateScalarResult(typedResult)
+    ElseIf nativeStatus = NATIVE_STATUS_FAULTED Then
+        nativeError = ReadNativeLong(4)
+    End If
+    ReleaseNativeTaskResources False
+
+    Select Case nativeStatus
+        Case NATIVE_STATUS_COMPLETED
+            mTaskStatus = TASK_STATUS_COMPLETED
+        Case NATIVE_STATUS_CANCELED
+            mTaskStatus = TASK_STATUS_CANCELED
+        Case NATIVE_STATUS_FAULTED
+            Set mTaskException = CreateNativeTaskException(nativeError)
+            mTaskStatus = TASK_STATUS_FAULTED
+        Case Else
+            RaiseContractError ERROR_NATIVE_INVOCATION, "Task.Run", _
+                "The native worker returned an invalid status."
+    End Select
+    On Error GoTo 0
+    Exit Sub
+
+AdvanceFailed:
+    capturedNumber = Err.Number
+    capturedSource = Err.Source
+    capturedDescription = Err.Description
+    On Error GoTo 0
+    ReleaseNativeTaskResources True
+    Err.Raise capturedNumber, capturedSource, capturedDescription
+End Sub
+
+Private Function ConvertNativeTaskResult( _
+    ByVal nativeResult As Double _
+) As Variant
+    Select Case mNativeReturnType
+        Case vbByte
+            ConvertNativeTaskResult = CByte(nativeResult)
+        Case vbInteger
+            ConvertNativeTaskResult = CInt(nativeResult)
+        Case vbLong
+            ConvertNativeTaskResult = CLng(nativeResult)
+        Case vbSingle
+            ConvertNativeTaskResult = CSng(nativeResult)
+        Case vbDouble
+            ConvertNativeTaskResult = nativeResult
+        Case vbBoolean
+            ConvertNativeTaskResult = CBool(nativeResult)
+        Case vbDate
+            ConvertNativeTaskResult = CDate(nativeResult)
+        Case Else
+            RaiseContractError ERROR_TYPE_MISMATCH, "Task.Run", _
+                "The native result type is not supported."
+    End Select
+End Function
+
+Private Function CreateNativeTaskException( _
+    ByVal nativeError As Long _
+) As ROneCOne
+    Dim description As String
+    Dim errorNumber As Long
+    Dim exceptionType As String
+    Dim errorValue As ROneCOne
+
+    If nativeError = NATIVE_ERROR_DIVISION_BY_ZERO Then
+        errorNumber = 11
+        exceptionType = "DivideByZeroException"
+        description = "The native Task attempted to divide by zero."
+    Else
+        errorNumber = ERROR_NATIVE_INVOCATION
+        exceptionType = "NativeTaskException"
+        Select Case nativeError
+            Case NATIVE_ERROR_INVALID_OPCODE
+                description = "The native Task encountered an invalid instruction."
+            Case NATIVE_ERROR_STACK_UNDERFLOW
+                description = "The native Task evaluation stack underflowed."
+            Case NATIVE_ERROR_STACK_OVERFLOW
+                description = "The native Task evaluation stack overflowed."
+            Case NATIVE_ERROR_INVALID_STACK
+                description = "The native Task produced an invalid result stack."
+            Case Else
+                description = "The native Task failed with an unknown worker error."
+        End Select
+    End If
+    Set errorValue = New ROneCOne
+    errorValue.ConfigureError errorNumber, "ROneCOne.Task.Run", _
+        description, vbNullString, 0
+    errorValue.ConfigureExceptionType exceptionType
+    Set CreateNativeTaskException = errorValue
+End Function
+
+Private Function ReadNativeLong(ByVal offset As Long) As Long
+    CopyMemory ReadNativeLong, ByVal mNativeContextAddress + offset, 4
+End Function
+
+Private Function ReadNativeDouble(ByVal offset As Long) As Double
+    CopyMemory ReadNativeDouble, ByVal mNativeContextAddress + offset, 8
+End Function
+
+Private Sub WriteNativeLong(ByVal offset As Long, ByVal value As Long)
+    CopyMemory ByVal mNativeContextAddress + offset, value, 4
+End Sub
+
+Private Sub WriteNativePointer( _
+    ByVal offset As Long, _
+    ByVal value As LongPtr _
+)
+    CopyMemory ByVal mNativeContextAddress + offset, value, 8
+End Sub
+
+Private Sub ReleaseNativeTaskResources(ByVal waitForWorker As Boolean)
+    Dim ignored As Long
+
+    If mNativeWorkAddress <> 0 Then
+        If mNativeSubmitted And waitForWorker Then
+            If mNativeContextAddress <> 0 Then WriteNativeLong 32, 1
+            WaitForThreadpoolWorkCallbacks mNativeWorkAddress, 0
+        End If
+        CloseThreadpoolWork mNativeWorkAddress
+        mNativeWorkAddress = 0
+    End If
+    mNativeSubmitted = False
+    If mNativeBytecodeAddress <> 0 Then
+        ignored = VirtualFree(mNativeBytecodeAddress, 0, MEM_RELEASE)
+        mNativeBytecodeAddress = 0
+    End If
+    If mNativeContextAddress <> 0 Then
+        ignored = VirtualFree(mNativeContextAddress, 0, MEM_RELEASE)
+        mNativeContextAddress = 0
+    End If
+    If mNativeCodeAddress <> 0 Then
+        ignored = VirtualFree(mNativeCodeAddress, 0, MEM_RELEASE)
+        mNativeCodeAddress = 0
+    End If
+End Sub
+
+Private Sub RaiseNativeApiError(ByVal apiName As String)
+    Dim nativeError As Long
+
+    nativeError = Err.LastDllError
+    RaiseContractError ERROR_NATIVE_INVOCATION, "Task.Run", _
+        apiName & " failed with Windows error " & CStr(nativeError) & "."
+End Sub
+
+Private Function NativeTaskKernelBytes() As Byte()
+    Dim byteIndex As Long
+    Dim hexValue As String
+    Dim output() As Byte
+
+    hexValue = NativeTaskKernelHex()
+    ReDim output(0 To Len(hexValue) \ 2 - 1)
+    For byteIndex = 0 To UBound(output)
+        output(byteIndex) = CByte("&H" & _
+            Mid$(hexValue, byteIndex * 2 + 1, 2))
+    Next byteIndex
+    NativeTaskKernelBytes = output
+End Function
+
+Private Function NativeTaskKernelHex() As String
+    Dim kernelHex As String
+
+    kernelHex = _
+        "534883EC204889D3C70301000000488B4328FFD08943244883C4204C8B4310448B4B0845"
+    kernelHex = kernelHex & _
+        "31D2837B20000F850F0600004585C90F84E4040000418B004983C01041FFC983F8000F84"
+    kernelHex = kernelHex & _
+        "A700000083F8010F84E500000083F8020F840B01000083F8030F843101000083F8040F84"
+    kernelHex = kernelHex & _
+        "5701000083F8060F848B01000083F8080F84B101000083F8090F84E301000083F80A0F84"
+    kernelHex = kernelHex & _
+        "1502000083F80B0F844702000083F80C0F847902000083F80D0F84AB02000083F80E0F84"
+    kernelHex = kernelHex & _
+        "DD02000083F80F0F841C03000083F8100F845B03000083F8640F84C003000083F8650F84"
+    kernelHex = kernelHex & _
+        "DE03000083F8660F847703000083F8670F8424000000E9F20400004183FA400F830C0500"
+    kernelHex = kernelHex & _
+        "00F2410F1040F8F2420F1144D34041FFC2E914FFFFFF4183FA400F83ED040000488B4330"
+    kernelHex = kernelHex & _
+        "8B8B44020000F20F1004C8F2420F1144D34041FFC2E9ECFEFFFF4183FA020F82B3040000"
+    kernelHex = kernelHex & _
+        "4183EA02F2420F1044D340F2420F104CD348F20F58C1F2420F1144D34041FFC2E9BDFEFF"
+    kernelHex = kernelHex & _
+        "FF4183FA020F82840400004183EA02F2420F1044D340F2420F104CD348F20F5CC1F2420F"
+    kernelHex = kernelHex & _
+        "1144D34041FFC2E98EFEFFFF4183FA020F82550400004183EA02F2420F1044D340F2420F"
+    kernelHex = kernelHex & _
+        "104CD348F20F59C1F2420F1144D34041FFC2E95FFEFFFF4183FA020F82260400004183EA"
+    kernelHex = kernelHex & _
+        "02F2420F1044D340F2420F104CD348660F57D2660F2ECA0F842A040000F20F5EC1F2420F"
+    kernelHex = kernelHex & _
+        "1144D34041FFC2E922FEFFFF4183FA010F82E903000041FFCAF2420F1044D340660F57C9"
+    kernelHex = kernelHex & _
+        "F20F5CC8660F28C1F2420F1144D34041FFC2E9F3FDFFFF4183FA020F82BA0300004183EA"
+    kernelHex = kernelHex & _
+        "02F2420F1044D340F2420F104CD348660F2EC10F94C00FB6C0F7D8F20F2AC0F2420F1144"
+    kernelHex = kernelHex & _
+        "D34041FFC2E9B8FDFFFF4183FA020F827F0300004183EA02F2420F1044D340F2420F104C"
+    kernelHex = kernelHex & _
+        "D348660F2EC10F95C00FB6C0F7D8F20F2AC0F2420F1144D34041FFC2E97DFDFFFF4183FA"
+    kernelHex = kernelHex & _
+        "020F82440300004183EA02F2420F1044D340F2420F104CD348660F2EC10F92C00FB6C0F7"
+    kernelHex = kernelHex & _
+        "D8F20F2AC0F2420F1144D34041FFC2E942FDFFFF4183FA020F82090300004183EA02F242"
+    kernelHex = kernelHex & _
+        "0F1044D340F2420F104CD348660F2EC10F96C00FB6C0F7D8F20F2AC0F2420F1144D34041"
+    kernelHex = kernelHex & _
+        "FFC2E907FDFFFF4183FA020F82CE0200004183EA02F2420F1044D340F2420F104CD34866"
+    kernelHex = kernelHex & _
+        "0F2EC10F97C00FB6C0F7D8F20F2AC0F2420F1144D34041FFC2E9CCFCFFFF4183FA020F82"
+    kernelHex = kernelHex & _
+        "930200004183EA02F2420F1044D340F2420F104CD348660F2EC10F93C00FB6C0F7D8F20F"
+    kernelHex = kernelHex & _
+        "2AC0F2420F1144D34041FFC2E991FCFFFF4183FA020F82580200004183EA02F2420F1044"
+    kernelHex = kernelHex & _
+        "D340F2420F104CD348660F57D2660F2EC20F95C0660F2ECA0F95C220D00FB6C0F7D8F20F"
+    kernelHex = kernelHex & _
+        "2AC0F2420F1144D34041FFC2E949FCFFFF4183FA020F82100200004183EA02F2420F1044"
+    kernelHex = kernelHex & _
+        "D340F2420F104CD348660F57D2660F2EC20F95C0660F2ECA0F95C208D00FB6C0F7D8F20F"
+    kernelHex = kernelHex & _
+        "2AC0F2420F1144D34041FFC2E901FCFFFF4183FA010F82C801000041FFCAF2420F1044D3"
+    kernelHex = kernelHex & _
+        "40660F57C9660F2EC10F94C00FB6C0F7D8F20F2AC0F2420F1144D34041FFC2E9CAFBFFFF"
+    kernelHex = kernelHex & _
+        "4183FA010F829101000041FFCAF2420F1044D340660F57C9660F2EC10F95C00FB6C0F7D8"
+    kernelHex = kernelHex & _
+        "F20F2AC0F2420F1144D34041FFC2E993FBFFFF4183FA010F825A01000041FFCAF2420F10"
+    kernelHex = kernelHex & _
+        "44D340660F57C9660F2EC10F8441000000E96CFBFFFF4183FA010F823301000041FFCAF2"
+    kernelHex = kernelHex & _
+        "420F1044D340660F57C9660F2EC10F8505000000E945FBFFFFB8FFFFFFFFF20F2AC0F242"
+    kernelHex = kernelHex & _
+        "0F1144D340E90B000000660F57C0F2420F1144D34041FFC2F2410F1040F8F20F2CC04129"
+    kernelHex = kernelHex & _
+        "C148C1E0044901C0E909FBFFFF4183FA010F8506010000F20F10434083BB40020000000F"
+    kernelHex = kernelHex & _
+        "849C0000008B8B4802000085C90F85150000008B83440200004C8B5B38F2410F1104C3E9"
+    kernelHex = kernelHex & _
+        "540000008B834402000085C00F844100000083F9010F841700000083F9020F8418000000"
+    kernelHex = kernelHex & _
+        "83F9030F841D000000E95B000000F20F584318E917000000F20F104B18F20F5DC1E90900"
+    kernelHex = kernelHex & _
+        "0000F20F104B18F20F5FC1F20F1143188B8344020000FFC08983440200003B8340020000"
+    kernelHex = kernelHex & _
+        "0F8251FAFFFFC70302000000E970000000F20F114318C70302000000E960000000C74304"
+    kernelHex = kernelHex & _
+        "01000000C70303000000E94E000000C7430402000000C70303000000E93C000000C74304"
+    kernelHex = kernelHex & _
+        "03000000C70303000000E92A000000C7430404000000C70303000000E918000000C74304"
+    kernelHex = kernelHex & _
+        "05000000C70303000000E906000000C703040000005BC3"
+    NativeTaskKernelHex = kernelHex
+End Function
+
 Private Sub ValidateProgressHandler( _
     ByVal handler As ROneCOne, _
     ByVal valueType As VbVarType, _
@@ -9518,6 +10291,10 @@ Friend Sub EnsureTaskCompleted()
     Call WaitForTaskCompletion(-1)
 End Sub
 
+Friend Sub InternalRaiseTaskTerminalState(ByVal memberName As String)
+    RaiseTaskTerminalState memberName
+End Sub
+
 Friend Sub AdvanceTask()
 Attribute AdvanceTask.VB_MemberFlags = "40"
     Dim capturedDescription As String
@@ -9561,6 +10338,10 @@ Private Sub AdvanceTaskCore()
     Dim results As ROneCOne
     Dim sawCanceled As Boolean
 
+    If IsNativeTaskKind(mOperator) Then
+        AdvanceNativeTask
+        Exit Sub
+    End If
     If TaskCancellationRequested Then
         mTaskStatus = TASK_STATUS_CANCELED
         Exit Sub
@@ -13096,8 +13877,12 @@ Private Function ContextMemberExpression( _
         RaiseContractError ERROR_INVALID_OPERATION, "Where", _
             "A contextual member condition must begin with Where(memberName)."
     End If
-    Set ContextMemberExpression = mSource.Condition( _
-        mContextMemberPath, returnsObject)
+    If Len(mContextMemberPath) = 0 Then
+        Set ContextMemberExpression = mSource.Element
+    Else
+        Set ContextMemberExpression = mSource.Condition( _
+            mContextMemberPath, returnsObject)
+    End If
 End Function
 
 Private Function ConditionReceiver( _
@@ -14445,6 +15230,10 @@ Private Function IsOrderingOperator(ByVal operatorCode As Long) As Boolean
     End Select
 End Function
 
+Private Function IsNativeTaskKind(ByVal taskKind As Long) As Boolean
+    IsNativeTaskKind = (taskKind = TASK_NATIVE_WORK)
+End Function
+
 Private Function IsDescendingOrderingOperator( _
     ByVal operatorCode As Long _
 ) As Boolean
@@ -14827,6 +15616,9 @@ Private Sub RaiseContractError( _
 End Sub
 
 Private Sub Class_Terminate()
+    If IsNativeTaskKind(mOperator) Then
+        ReleaseNativeTaskResources True
+    End If
     Set mLeft = Nothing
     Set mRight = Nothing
     Set mNext = Nothing

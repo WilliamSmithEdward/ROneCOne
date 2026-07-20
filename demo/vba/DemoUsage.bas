@@ -1,8 +1,8 @@
 Attribute VB_Name = "DemoUsage"
 Option Explicit
 
-' This executable tutorial leads with the least-ceremony delegate surface.
-' The deeper examples expose the universal invocation kernel and its metadata.
+' This tutorial uses delegates to build reusable pricing and notification rules.
+' Read the comments from top to bottom; each example starts with the useful result.
 
 #If Win64 Then
 Private Declare PtrSafe Sub CopyPointer Lib "kernel32" Alias "RtlMoveMemory" ( _
@@ -42,80 +42,86 @@ DemoFailure:
 End Sub
 
 ' -----------------------------------------------------------------------------
-' Frictionless delegate examples
+' Practical delegate examples
 ' -----------------------------------------------------------------------------
 
 Private Sub WriteDelegateExamples()
-    Dim addValues As ROneCOne
-    Dim between As ROneCOne
-    Dim combined As ROneCOne
-    Dim doubleValue As ROneCOne
-    Dim firstAction As ROneCOne
+    Dim addHandling As ROneCOne
+    Dim amount As ROneCOne
+    Dim applyDiscount As ROneCOne
+    Dim approvalRule As ROneCOne
+    Dim calculateTotal As ROneCOne
     Dim increment As ROneCOne
     Dim maximum As ROneCOne
+    Dim notify As ROneCOne
+    Dim orderNumber As Long
+    Dim orderTotal As ROneCOne
     Dim pipeline As ROneCOne
+    Dim price As ROneCOne
     Dim safeFalse As ROneCOne
-    Dim secondAction As ROneCOne
-    Dim square As ROneCOne
-    Dim value As Long
-    Dim workbookAdd As ROneCOne
+    Dim shipping As ROneCOne
+    Dim updateDashboard As ROneCOne
     Dim worksheetFunctions As Object
-    Dim x As ROneCOne
-    Dim y As ROneCOne
+    Dim writeAudit As ROneCOne
 
-    ' Var creates typed arguments; AsFunc infers them from the expression tree.
-    Set x = ROneCOne.Var(vbLong)
-    Set y = ROneCOne.Var(vbLong)
-    Set square = x.Multiply(x).AsFunc
-    Set addValues = x.Add(y).AsFunc
-    Set between = x.AtLeast(CLng(10)) _
-        .AndAlso(x.LessThan(CLng(20))) _
+    ' Build pricing rules in place. No extra helper procedure is needed.
+    Set amount = ROneCOne.Var(vbLong)
+    Set shipping = ROneCOne.Var(vbLong)
+    Set price = ROneCOne.Var(vbDouble)
+    Set applyDiscount = price.Multiply(0.9).AsFunc
+    Set orderTotal = amount.Add(shipping).AsFunc
+    Set approvalRule = amount.AtLeast(CLng(100)) _
+        .AndAlso(amount.LessThan(CLng(1000))) _
         .AsFunc
+
+    ' AndAlso stops after False, so the unsafe division is never attempted.
     Set safeFalse = ROneCOne.Value(False) _
         .AndAlso(ROneCOne.Value(1).Divide(0)) _
         .AsFunc
 
-    ' Func adapts an object method or a standard-module procedure.
+    ' Existing Excel methods and workbook procedures use the same Func shape.
     Set worksheetFunctions = Application.WorksheetFunction
     Set maximum = ROneCOne.Func(worksheetFunctions, "Max") _
         .Takes(vbLong, vbLong) _
         .Returns(vbDouble)
-    Set workbookAdd = ROneCOne.Func("DemoUsage.DemoAddValues") _
+    Set calculateTotal = ROneCOne.Func("DemoUsage.CalculateOrderTotal") _
         .Takes(vbLong, vbLong) _
         .Returns(vbLong)
 
-    ' Combine creates an immutable multicast Action in invocation order.
-    Set firstAction = ROneCOne.Action("DemoUsage.DemoRecordFirst") _
+    ' One notification can update the dashboard and write an audit entry.
+    Set updateDashboard = ROneCOne.Action("DemoUsage.UpdateDashboard") _
         .Takes(vbString)
-    Set secondAction = ROneCOne.Action("DemoUsage.DemoRecordSecond") _
+    Set writeAudit = ROneCOne.Action("DemoUsage.WriteAudit") _
         .Takes(vbString)
-    Set combined = ROneCOne.Combine(firstAction, secondAction)
+    Set notify = ROneCOne.Combine(updateDashboard, writeAudit)
     mTrace = vbNullString
-    combined.Execute "value"
+    notify.Execute "Order 1042 approved"
 
-    ' NativeAction supplies true ByRef semantics when identity must be preserved.
-    value = 41
+    ' ByRef lets the delegate update the original order number in place.
+    orderNumber = 1041
 #If Win64 Then
-    Set increment = ROneCOne.NativeAction(DemoNativeIncrementLongAddress) _
+    Set increment = ROneCOne.NativeAction(NextOrderNumberAddress) _
         .Takes(ROneCOne.RefOf(vbLong))
-    increment.Execute ROneCOne.RefLong(value)
+    increment.Execute ROneCOne.RefLong(orderNumber)
 #End If
 
-    Set doubleValue = x.Add(x).AsFunc
-    Set pipeline = square.PipeTo(doubleValue)
+    ' PipeTo applies the discount first, then adds the handling charge.
+    Set addHandling = price.Add(5#).AsFunc
+    Set pipeline = applyDiscount.PipeTo(addHandling)
 
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
-        .Range("E6").Value2 = square(CLng(9))
-        .Range("E7").Value2 = addValues(CLng(6), CLng(7))
-        .Range("E8").Value2 = between(CLng(15))
+        .Range("E6").Value2 = applyDiscount(CDbl(100))
+        .Range("E7").Value2 = orderTotal(CLng(100), CLng(5))
+        .Range("E8").Value2 = approvalRule(CLng(250))
         .Range("E9").Value2 = safeFalse.Run()
         .Range("E10").Value2 = maximum(CLng(4), CLng(7))
-        .Range("E11").Value2 = workbookAdd(CLng(6), CLng(7))
-        .Range("E12").Value2 = workbookAdd.DynamicInvoke(Array(CLng(20), CLng(22)))
+        .Range("E11").Value2 = calculateTotal(CLng(100), CLng(5))
+        .Range("E12").Value2 = calculateTotal.DynamicInvoke( _
+            Array(CLng(100), CLng(5)))
         .Range("E13").Value2 = mTrace
-        .Range("E14").Value2 = value
-        .Range("E15").Value2 = pipeline(CLng(3))
-        .Range("E16").Value2 = workbookAdd.Signature
+        .Range("E14").Value2 = orderNumber
+        .Range("E15").Value2 = pipeline(CDbl(100))
+        .Range("E16").Value2 = calculateTotal.Signature
     End With
 End Sub
 
@@ -123,32 +129,32 @@ End Sub
 ' Demo call targets
 ' -----------------------------------------------------------------------------
 
-Public Function DemoAddValues( _
-    ByVal leftValue As Variant, _
-    ByVal rightValue As Variant _
+Public Function CalculateOrderTotal( _
+    ByVal subtotal As Variant, _
+    ByVal shipping As Variant _
 ) As Variant
-    DemoAddValues = leftValue + rightValue
+    CalculateOrderTotal = subtotal + shipping
 End Function
 
-Public Sub DemoRecordFirst(ByVal value As Variant)
-    mTrace = mTrace & "first:" & CStr(value) & "|"
+Public Sub UpdateDashboard(ByVal message As Variant)
+    mTrace = "Dashboard updated"
 End Sub
 
-Public Sub DemoRecordSecond(ByVal value As Variant)
-    mTrace = mTrace & "second:" & CStr(value) & "|"
+Public Sub WriteAudit(ByVal message As Variant)
+    mTrace = mTrace & "; audit written"
 End Sub
 
 #If Win64 Then
-Public Sub DemoNativeIncrementLong(ByRef value As Long)
-    value = value + 1
+Public Sub NextOrderNumber(ByRef orderNumber As Long)
+    orderNumber = orderNumber + 1
 End Sub
 
-Public Function DemoNativeIncrementLongAddress() As LongPtr
+Public Function NextOrderNumberAddress() As LongPtr
     Dim procedureAddress As LongPtr
 
-    CopyPointer procedureAddress, AddressOf DemoNativeIncrementLong, _
+    CopyPointer procedureAddress, AddressOf NextOrderNumber, _
         LenB(procedureAddress)
-    DemoNativeIncrementLongAddress = procedureAddress
+    NextOrderNumberAddress = procedureAddress
 End Function
 #End If
 
@@ -157,17 +163,17 @@ End Function
 ' -----------------------------------------------------------------------------
 
 Private Sub RunDelegateBenchmark()
+    Dim applyDiscount As ROneCOne
     Dim index As Long
     Dim lastResult As Variant
-    Dim square As ROneCOne
+    Dim price As ROneCOne
     Dim started As Double
-    Dim x As ROneCOne
 
-    Set x = ROneCOne.Var(vbLong)
-    Set square = x.Multiply(x).AsFunc
+    Set price = ROneCOne.Var(vbDouble)
+    Set applyDiscount = price.Multiply(0.9).AsFunc
     started = Timer
     For index = 1 To BENCHMARK_ITERATIONS
-        lastResult = square(CLng(index))
+        lastResult = applyDiscount(CDbl(index))
     Next index
 
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)

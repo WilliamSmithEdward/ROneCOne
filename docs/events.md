@@ -3,20 +3,20 @@
 New to ROneCOne? Start with the
 [Events and exceptions user guide](user-guide/events-and-exceptions.md).
 
-ROneCOne events provide C#-style typed subscription and deterministic multicast delivery without
-another class module. An event is a mutable publisher role inside the same `ROneCOne.cls` runtime.
+ROneCOne events let one update reach several checked handlers without another class module. The
+technical model follows C# subscription and delivery rules inside the same `ROneCOne.cls` runtime.
 
 ## Frictionless form
 
 ```vba
-Dim changed As ROneCOne
+Dim orderStatusChanged As ROneCOne
 
-Set changed = ROneCOne.EventOf(vbString) _
-    .Subscribe(firstHandler) _
-    .Subscribe(secondHandler)
+Set orderStatusChanged = ROneCOne.EventOf(vbString) _
+    .Subscribe(updateDashboard) _
+    .Subscribe(writeAudit)
 
-changed.Emit "ready"
-changed.Unsubscribe secondHandler
+orderStatusChanged.Emit "Order 1042 shipped"
+orderStatusChanged.Unsubscribe writeAudit
 ```
 
 `EventOf` accepts the same primitive and exact-class type tokens as delegate `Takes`. Every handler
@@ -41,7 +41,7 @@ through `NativeAction` and `RefOf` when that narrower boundary is required.
 - A handler error stops the remaining snapshot and propagates to the caller.
 - Emitting an event with no handlers is a valid no-op.
 
-The event façade owns its mutable handler list. Existing `Combine`, `Remove`, and
+The event facade owns its mutable handler list. Existing `Combine`, `Remove`, and
 `GetInvocationList` remain the immutable delegate primitives documented in
 [`delegates.md`](delegates.md).
 

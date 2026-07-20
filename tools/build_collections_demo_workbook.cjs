@@ -64,17 +64,17 @@ async function main() {
   titleBand(
     start,
     "ROneCOne Collections + LINQ",
-    "Frictionless List<T>, user-defined classes, and deferred LINQ-style pipelines",
+    "Filter, sort, and summarize ordinary VBA objects without writing loop after loop",
     "H",
   );
   start.getRange("A5:D5").merge();
-  start.getRange("A5").values = [["Run this capability demo"]];
+  start.getRange("A5").values = [["Run this demo"]];
   section(start.getRange("A5:D5"));
   start.getRange("A6:D9").values = [
     ["1", "Press Alt+F8", "Open Excel's Macro dialog", null],
-    ["2", "Run RunROneCOneCollectionsDemo", "Executes examples and benchmark", null],
-    ["3", "Review both example sheets", "Formula-backed PASS checks", null],
-    ["4", "Import ROneCOne.cls", "The deployed runtime remains one file", null],
+    ["2", "Run RunROneCOneCollectionsDemo", "Fills in every result for you", null],
+    ["3", "Review both example sheets", "PASS confirms that each result worked", null],
+    ["4", "Import ROneCOne.cls", "Add the entire runtime to your own workbook", null],
   ];
   start.getRange("A6:D9").format = {
     borders: { preset: "all", style: "thin", color: colors.line },
@@ -127,7 +127,7 @@ async function main() {
   };
   start.getRange("A16:H16").merge();
   start.getRange("A16").values = [[
-    "Privacy invariant: no telemetry, no network transmission, and no runtime VBIDE access.",
+    "Your data stays local: no telemetry, network transmission, or runtime VBIDE access.",
   ]];
   start.getRange("A16:H16").format = {
     fill: "#FFF4E8",
@@ -150,8 +150,8 @@ async function main() {
     "F",
   );
   examples.getRange("A5:F5").values = [[
-    "Pattern",
-    "C# idea",
+    "What it does",
+    "C# equivalent (optional)",
     "ROneCOne VBA",
     "Expected",
     "Live result",
@@ -159,14 +159,14 @@ async function main() {
   ]];
   tableHeader(examples.getRange("A5:F5"));
   examples.getRange("A6:D13").values = [
-    ["Primitive list", "new List<long> { 5, 10, 15 }", "ROneCOne.ListOf(vbLong, CLng(5), CLng(10), CLng(15))", "List<Long>"],
-    ["Strict T", "Compile-time element type", "values.Add \"not a Long\"", true],
-    ["User class", "new List<DemoCustomer> { ada, grace }", "ROneCOne.ListFrom(ada, grace)", "List<DemoCustomer>:Grace"],
-    ["Deferred Where", "query observes later mutation", "Set element = values.Element\nSet query = values.Where(element.AtLeast(10))\nvalues.Add 30", "2|30"],
-    ["LINQ pipeline", "Where.Select.OrderBy.Take", ".Where(...).Map(...).OrderDescending.Take(2)", "60,40"],
-    ["Sequence ops", "Distinct.Prepend.Append.Reverse.Skip", "values.Distinct.Prepend(1).Append(4).Reverse.Skip(1)", "3,2,1"],
-    ["Terminals", "Sum/Average/Min/Max", "Range(1, 5).Sum / Average / Min / Max", "15|3|1|5"],
-    ["ForEach Action", "values.ForEach(action)", "values.ForEach ROneCOne.Action(...)", 10],
+    ["Create a checked number list", "new List<long> { 5, 10, 15 }", "ROneCOne.ListOf(vbLong, CLng(5), CLng(10), CLng(15))", "List<Long>"],
+    ["Reject the wrong data type", "Compile-time element type", "values.Add \"not a Long\"", true],
+    ["Use existing Customer objects", "new List<DemoCustomer> { ada, grace }", "ROneCOne.ListFrom(ada, grace)", "List<DemoCustomer>; second customer: Grace"],
+    ["See newly added matches", "query observes later mutation", "Set element = values.Element\nSet query = values.Where(element.AtLeast(10))\nvalues.Add 30", "2 matches; last: 30"],
+    ["Filter and rank values", "Where.Select.OrderBy.Take", ".Where(...).Map(...).OrderDescending.Take(2)", "Top results: 60, 40"],
+    ["Clean and reshape values", "Distinct.Prepend.Append.Reverse.Skip", "values.Distinct.Prepend(1).Append(4).Reverse.Skip(1)", "Sequence: 3, 2, 1"],
+    ["Summarize numbers", "Sum/Average/Min/Max", "Range(1, 5).Sum / Average / Min / Max", "Sum 15; average 3; min 1; max 5"],
+    ["Run work for every item", "values.ForEach(action)", "values.ForEach ROneCOne.Action(...)", 10],
   ];
   examples.getRange("F6").formulas = [
     ["=IF(E6=\"\",\"NOT RUN\",IF(E6=D6,\"PASS\",\"CHECK\"))"],
@@ -202,12 +202,12 @@ async function main() {
   titleBand(
     userClassLinq,
     "User-defined class LINQ",
-    "Typed object queries with contextual members, inferred predicates, and native VBA sugar.",
+    "Query ordinary Customer objects with readable property names and no adapter class.",
     "F",
   );
   userClassLinq.getRange("A5:F5").values = [[
-    "Pattern",
-    "C# idea",
+    "What it does",
+    "C# equivalent (optional)",
     "ROneCOne VBA",
     "Expected",
     "Live result",
@@ -216,116 +216,116 @@ async function main() {
   tableHeader(userClassLinq.getRange("A5:F5"));
   userClassLinq.getRange("A6:D22").values = [
     [
-      "Typed class list",
+      "Use Customer objects directly",
       "List<DemoCustomer>",
       "Set customers = ROneCOne.ListFrom(ada, grace, katherine)",
-      "List<DemoCustomer>:4",
+      "List<DemoCustomer> with 4 customers",
     ],
     [
-      "Deferred class Where",
+      "Include customers added later",
       "customers.Where(c => c.Age >= 40)",
       'Set experienced = customers.Where("Age").AtLeast(40)\n' +
         "customers.Add margaret",
-      "3|Margaret",
+      "3 customers; newest match: Margaret",
     ],
     [
-      "Projection + ordering",
+      "Get and alphabetize names",
       ".Select(c => c.Name).OrderBy(name => name)",
       'Set names = experienced.Map("CustomerName", vbString).Order.ToList',
-      "Grace|Katherine|Margaret",
+      "Grace, Katherine, Margaret",
     ],
     [
-      "Composite ordering",
+      "Sort by city, then age",
       ".OrderBy(c => c.City).ThenByDescending(c => c.Age).First()",
       'Set first = customers.OrderBy("City").ThenByDescending("Age").First',
-      "Margaret|45",
+      "First: Margaret, age 45",
     ],
     [
-      "Quantifiers",
+      "Ask yes-or-no questions",
       ".Any(city) / .All(age)",
       'customers.Exists(customers.Condition("City").EqualTo("London"))',
-      "True|False",
+      "London exists: True; all age 40+: False",
     ],
     [
-      "Aggregate projection",
+      "Calculate the average age",
       ".Where(age).Average(c => c.Age)",
       'averageAge = experienced.Average("Age")',
       44.7,
     ],
     [
-      "Inferred predicate",
+      "Reuse an existing VBA rule",
       "customers.Where(IsExperienced)",
       'customers.WhereMethod("CollectionsDemoUsage.IsExperiencedCustomer")',
-      "3|Func<DemoCustomer, Boolean>",
+      "3 matches; Func<DemoCustomer, Boolean>",
     ],
     [
-      "String conditions",
+      "Search within names",
       "StartsWith / Contains",
       '.Where("CustomerName").StartsWith("G")\n' +
         '.Where("CustomerName").Contains("ther")',
-      "1|1",
+      "Starts with G: 1; contains ther: 1",
     ],
     [
-      "Distinct keys",
+      "Count unique cities",
       ".DistinctBy(c => c.City)",
       'customers.DistinctBy("City")',
       3,
     ],
     [
-      "Native bang member",
+      "Use concise !Age syntax",
       "c => c.Age >= 40",
       'With customers\n  Set q = .Where(!Age.AtLeast(40))\nEnd With',
-      "Grace|Katherine|Margaret",
+      "Grace, Katherine, Margaret",
     ],
     [
-      "Safe object path",
+      "Handle a missing manager",
       "c.Manager?.Age >= 40",
       '.Where("Manager?.Age").AtLeast(40)',
-      "1|2",
+      "No manager: 1; manager age 40+: 2",
     ],
     [
-      "Collection membership",
+      "Filter by an allowed-city list",
       "allowedCities.Contains(c.City)",
       '.Where("City").IsIn(allowedCities)\n' +
         ".Where(allowedCities.Contains(customers!City))",
-      "2|2",
+      "Allowed city matches: 2; expression matches: 2",
     ],
     [
-      "Ignore case",
+      "Match text without case",
       "StringComparison.OrdinalIgnoreCase",
       '.Where("City").EqualToIgnoreCase("LONDON")\n' +
         '.Where("CustomerName").ContainsIgnoreCase("THER")',
-      "1|1",
+      "City matches: 1; name contains: 1",
     ],
     [
-      "Predicate terminals",
+      "Count or find exact matches",
       "Count(predicate) / Single() / None()",
       'customers.Count(agePredicate)\n' +
         'customers.SingleItem(customers.Match("CustomerName", "Grace"))',
-      "3|Grace|True",
+      "Count: 3; single: Grace; none age 100: True",
     ],
     [
-      "Nested quantifiers",
+      "Check each manager's reports",
       "Reports.Any / All / !Any",
       'customers.WhereAny("Reports", reportPredicate)\n' +
         'customers.WhereAll("Reports", allPredicate)\n' +
         'customers.WhereNone("Reports", reportPredicate)',
-      "2|4|2",
+      "Any: 2; all: 4; none: 2",
     ],
     [
-      "Custom comparers",
+      "Customize text matching",
       "IEqualityComparer<T> / IComparer<T>",
       "strings.Distinct(equalityComparer)\n" +
         "strings.Contains(\"ada\", equalityComparer)\n" +
         "strings.Order(comparer)",
-      "2|True|Ada",
+      "Distinct: 2; contains Ada: True; first: Ada",
     ],
     [
-      "Boolean algebra",
+      "Combine yes-or-no rules",
       "predicate && predicate / predicate || predicate",
       "customers.Where(agePredicate.Both(cityPredicate))\n" +
         "customers.Where(london.Either(cleveland))",
-      "2|2",
+      "Both: 2; either: 2",
     ],
   ];
   userClassLinq.getRange("F6").formulas = [[
@@ -404,8 +404,8 @@ async function main() {
 
   titleBand(
     architecture,
-    "Collection architecture",
-    "The same ROneCOne class represents typed storage and immutable deferred query nodes.",
+    "How collections stay safe and fast",
+    "One ROneCOne class checks values, builds queries, and keeps lookups responsive.",
     "F",
   );
   architecture.getRange("A5:F5").values = [[
@@ -418,13 +418,13 @@ async function main() {
   ]];
   tableHeader(architecture.getRange("A5:F5"));
   architecture.getRange("A6:F15").values = [
-    ["Concrete T", "VarType or exact class name", "Reject before mutation", "ENFORCED", 1, 0],
-    ["User classes", "ListFrom or prototype token", "Exact class identity", "ENFORCED", 1, 0],
-    ["Deferred LINQ", "Immutable query nodes", "Evaluate on consumption", "ENFORCED", 1, 0],
-    ["Syntax sugar", "Contextual members + native bang", "Canonical API remains available", "ENFORCED", 1, 0],
-    ["Predicate algebra", "Composable immutable nodes", "Membership, null-safe paths, quantifiers", "ENFORCED", 1, 0],
-    ["Stable ordering", "OrderBy + ThenBy chain", "Cached keys and O(n log n) merge sort", "ENFORCED", 1, 0],
-    ["Hash indexing", "Open addressing + direct value slots", "Average O(1) keyed lookup", "ENFORCED", 1, 0],
+    ["One element type", "VarType or exact class name", "Reject before mutation", "ENFORCED", 1, 0],
+    ["Existing VBA classes", "ListFrom or prototype token", "Preserve exact class identity", "ENFORCED", 1, 0],
+    ["Up-to-date queries", "Immutable query nodes", "Evaluate when results are requested", "ENFORCED", 1, 0],
+    ["Concise syntax", "Contextual members + native bang", "Full API remains available", "ENFORCED", 1, 0],
+    ["Combined filter rules", "Composable immutable nodes", "Lists, missing values, and child records", "ENFORCED", 1, 0],
+    ["Predictable sorting", "OrderBy + ThenBy chain", "Cached keys and O(n log n) merge sort", "ENFORCED", 1, 0],
+    ["Fast key lookup", "Open addressing + direct value slots", "Average O(1) keyed lookup", "ENFORCED", 1, 0],
     ["Enumeration", "Persistent list mirror", "Nested For Each works", "ENFORCED", 1, 0],
     ["One process", "In-process execution", "Never launches Excel", "ENFORCED", 1, 0],
     ["Privacy", "No transmission", "Workbook data stays local", "ENFORCED", 1, 0],

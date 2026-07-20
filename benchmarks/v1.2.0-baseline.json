@@ -1,0 +1,84 @@
+{
+  "schema_version": 7,
+  "ronecone_version": "1.2.0",
+  "captured_on": "2026-07-19",
+  "environment": {
+    "platform": "Windows x64",
+    "excel": "Microsoft 365 16.0.20131.20154 x64",
+    "process_model": "one fresh Excel process per sample"
+  },
+  "live_contracts": {
+    "delegate_event_exception_assertions": 58,
+    "collection_linq_assertions": 187,
+    "advanced_collection_assertions": 77,
+    "task_data_provider_assertions": 103,
+    "assertions_per_sample": 425,
+    "demo_workbooks": 6,
+    "demo_examples": 63,
+    "office_or_vbe_popups": 0
+  },
+  "scenarios": [
+    {
+      "name": "square(x) universal delegate kernel",
+      "operations_per_sample": 10000,
+      "seconds": [0.15625, 0.0859375, 0.0859375],
+      "minimum_seconds": 0.0859375,
+      "median_seconds": 0.0859375,
+      "mean_seconds": 0.109375,
+      "maximum_seconds": 0.15625,
+      "release_gate_seconds": 0.5
+    },
+    {
+      "name": "Range.Where.ToList live contract",
+      "operations_per_sample": 10000,
+      "seconds": [0.3359375, 0.140625, 0.140625],
+      "minimum_seconds": 0.140625,
+      "median_seconds": 0.140625,
+      "mean_seconds": 0.2057291667,
+      "maximum_seconds": 0.3359375,
+      "release_gate_seconds": 0.75
+    },
+    {
+      "name": "OrderBy.ThenByDescending.ToList live contract",
+      "operations_per_sample": 10000,
+      "seconds": [0.9609375, 0.5546875, 0.5546875],
+      "minimum_seconds": 0.5546875,
+      "median_seconds": 0.5546875,
+      "mean_seconds": 0.6901041667,
+      "maximum_seconds": 0.9609375,
+      "release_gate_seconds": 2.0
+    },
+    {
+      "name": "Dictionary Add and Item live contract",
+      "operations_per_sample": 20000,
+      "source_items": 10000,
+      "seconds": [0.3203125, 0.1328125, 0.1328125],
+      "minimum_seconds": 0.1328125,
+      "median_seconds": 0.1328125,
+      "mean_seconds": 0.1953125,
+      "maximum_seconds": 0.3203125,
+      "release_gate_seconds": 1.5
+    },
+    {
+      "name": "Dictionary indexed Item live contract",
+      "operations_per_sample": 100000,
+      "source_items": 10000,
+      "seconds": [0.21875, 0.234375, 0.234375],
+      "minimum_seconds": 0.21875,
+      "median_seconds": 0.234375,
+      "mean_seconds": 0.2291666667,
+      "maximum_seconds": 0.234375,
+      "release_gate_seconds": 2.0
+    },
+    {
+      "name": "Native Task.Run startup and Await",
+      "operations_per_sample": 1000,
+      "seconds": [0.7109375, 0.5234375, 0.484375],
+      "minimum_seconds": 0.484375,
+      "median_seconds": 0.5234375,
+      "mean_seconds": 0.5729166667,
+      "maximum_seconds": 0.7109375,
+      "release_gate_seconds": 1.5
+    }
+  ]
+}

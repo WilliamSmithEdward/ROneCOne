@@ -1,9 +1,10 @@
 Attribute VB_Name = "TasksDemoUsage"
 Option Explicit
 
-' This executable tutorial demonstrates cooperative Task workflows in one Excel process.
+' This tutorial runs safe calculations in parallel without opening another Excel.
+' Workbook and VBA work uses RunOnExcel so Excel objects never cross threads.
 
-Private Const BENCHMARK_ITERATIONS As Long = 10000
+Private Const BENCHMARK_ITERATIONS As Long = 1000
 Private Const BENCHMARKS_SHEET As String = "Benchmarks"
 Private Const EXAMPLES_SHEET As String = "Examples"
 Private Const START_SHEET As String = "Start Here"
@@ -29,28 +30,48 @@ DemoFailure:
 End Sub
 
 Private Sub WriteTaskExamples()
+    Dim allWork As ROneCOne
     Dim bounded As ROneCOne
+    Dim buildSummary As ROneCOne
     Dim completion As ROneCOne
-    Dim continuation As ROneCOne
+    Dim countOpenOrders As ROneCOne
     Dim delayed As ROneCOne
-    Dim firstTask As ROneCOne
+    Dim forecastTask As ROneCOne
+    Dim forecastWork As ROneCOne
+    Dim openOrdersTask As ROneCOne
     Dim progress As ROneCOne
+    Dim reorderTask As ROneCOne
+    Dim reorderWork As ROneCOne
     Dim results As ROneCOne
-    Dim secondTask As ROneCOne
     Dim source As ROneCOne
+    Dim summaryTask As ROneCOne
     Dim ignored As Variant
     Dim registration As ROneCOne
 
-    Set firstTask = ROneCOne.Task.FromResult(10&)
-    Set secondTask = ROneCOne.Task.FromResult(20&)
-    Set results = ROneCOne.Task.WhenAll(firstTask, secondTask).Await
+    ' These expression lambdas are pure: they cannot touch Excel, VBA, or COM.
+    ' That makes it safe for Task.Run to move them onto Windows worker threads.
+    Set forecastWork = ROneCOne.Value(125000#).Multiply(1.08).AsFunc
+    Set reorderWork = ROneCOne.Value(80#).Multiply(1.65).Add(20#).AsFunc
 
-    Set delayed = ROneCOne.Task.Delay(5&)
-    Set continuation = ROneCOne.Func( _
-        "TasksDemoUsage.TaskPlusOne") _
+    ' Task.Run starts immediately. WhenAll keeps results in the original order.
+    Set forecastTask = ROneCOne.Task.Run(forecastWork)
+    Set reorderTask = ROneCOne.Task.Run(reorderWork)
+    Set allWork = ROneCOne.Task.WhenAll(forecastTask, reorderTask)
+
+    ' A continuation turns the two raw counts into a readable summary.
+    Set buildSummary = ROneCOne.Func( _
+        "TasksDemoUsage.BuildForecastSummary") _
         .Takes(ROneCOne.Task) _
-        .Returns(vbLong)
+        .Returns(vbString)
+    Set summaryTask = allWork.ContinueWith(buildSummary)
+    Set results = allWork.Await
 
+    ' This function reads VBA data, so it deliberately stays on Excel's thread.
+    Set countOpenOrders = ROneCOne.Func( _
+        "TasksDemoUsage.CountOpenOrders").Takes().Returns(vbLong)
+    Set openOrdersTask = ROneCOne.Task.RunOnExcel(countOpenOrders)
+
+    ' Cancellation lets a button or timeout ask cooperative work to stop.
     Set source = ROneCOne.CancellationTokenSource
     mTrace = vbNullString
     Set registration = source.Token.Register(ROneCOne.Action( _
@@ -58,35 +79,53 @@ Private Sub WriteTaskExamples()
     source.Cancel
     registration.Dispose
 
+    ' Progress reports are checked to contain Long values.
     mProgressTotal = 0
     Set progress = ROneCOne.ProgressOf( _
         vbLong, ROneCOne.Action( _
             "TasksDemoUsage.RecordProgress").Takes(vbLong))
     progress.Report 7&
 
+    ' A completion source lets an event or callback finish a Task later.
     Set completion = ROneCOne.TaskCompletionSourceOf(vbLong)
     completion.SetResult 99&
 
+    ' Delay yields to Excel, while WaitAsync puts a time limit around waiting.
+    Set delayed = ROneCOne.Task.Delay(5&)
     Set bounded = ROneCOne.Task.Delay(5&).WaitAsync(100&)
+    ignored = delayed.Await
     ignored = bounded.Await
     ignored = ROneCOne.Task.YieldOnce.Await
 
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
-        .Range("E6").Value2 = ROneCOne.Task.FromResult(42&).Await
-        ignored = delayed.Await
-        .Range("E7").Value2 = delayed.IsCompleted
-        .Range("E8").Value2 = results.JoinText(",")
-        .Range("E9").Value2 = firstTask.ContinueWith(continuation).Await
-        .Range("E10").Value2 = source.Token.IsCancellationRequested
-        .Range("E11").Value2 = mProgressTotal
-        .Range("E12").Value2 = completion.Task.Await
-        .Range("E13").Value2 = bounded.IsCompleted
-        .Range("E14").Value2 = True
+        .Range("E6").Value2 = results.JoinText(" | ")
+        .Range("E7").Value2 = summaryTask.Await
+        .Range("E8").Value2 = _
+            forecastTask.WorkerThreadId <> ROneCOne.CurrentThreadId
+        .Range("E9").Value2 = openOrdersTask.Await
+        .Range("E10").Value2 = delayed.IsCompleted
+        .Range("E11").Value2 = source.Token.IsCancellationRequested
+        .Range("E12").Value2 = mProgressTotal
+        .Range("E13").Value2 = completion.Task.Await
+        .Range("E14").Value2 = bounded.IsCompleted
     End With
 End Sub
 
-Public Function TaskPlusOne(ByVal antecedent As Variant) As Variant
-    TaskPlusOne = CLng(antecedent.Result) + 1&
+Public Function CountOpenOrders() As Variant
+    Dim status As Variant
+
+    For Each status In Array( _
+        "Open", "Shipped", "Open", "Pending", "Open", "Shipped")
+        If status = "Open" Then CountOpenOrders = CLng(CountOpenOrders) + 1&
+    Next status
+End Function
+
+Public Function BuildForecastSummary(ByVal antecedent As Variant) As Variant
+    Dim results As ROneCOne
+
+    Set results = antecedent.Result
+    BuildForecastSummary = "Forecast " & CStr(results.Item(0)) & _
+        "; reorder point " & CStr(results.Item(1))
 End Function
 
 Public Sub RecordCancellation()
@@ -101,10 +140,12 @@ Private Sub RunTaskBenchmark()
     Dim index As Long
     Dim result As Long
     Dim started As Double
+    Dim work As ROneCOne
 
     started = Timer
     For index = 1 To BENCHMARK_ITERATIONS
-        result = ROneCOne.Task.FromResult(index).Await
+        Set work = ROneCOne.Value(index).Multiply(2&).AsFunc
+        result = ROneCOne.Task.Run(work).Await
     Next index
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
         .Range("B6").Value2 = BENCHMARK_ITERATIONS

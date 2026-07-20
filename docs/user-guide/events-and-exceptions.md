@@ -1,10 +1,10 @@
 # Events and exceptions
 
-Events coordinate work that should happen in response to a change. Structured exceptions make
-success, recovery, and cleanup visible in one flow. Both use the same typed Action surface as the
-rest of ROneCOne.
+An event sends one update to every interested part of a workbook. Structured exceptions show what
+to do when work fails and what cleanup must always happen. Both use the same checked `Action`
+shape, so mistakes are caught before the workflow starts.
 
-## Publish a typed event
+## Send one order update to several features
 
 First create compatible handlers:
 
@@ -12,63 +12,65 @@ First create compatible handlers:
 Dim updateStatus As ROneCOne
 Dim writeAudit As ROneCOne
 
-Set writeAudit = ROneCOne.Action("Audit.WriteEntry") _
+Set writeAudit = ROneCOne.Action("Orders.WriteAudit") _
     .Takes(vbString)
-Set updateStatus = ROneCOne.Action("Status.Show") _
+Set updateStatus = ROneCOne.Action("Orders.UpdateDashboard") _
     .Takes(vbString)
 ```
 
 Then subscribe and emit:
 
 ```vba
-Dim changed As ROneCOne
+Dim orderStatusChanged As ROneCOne
 
-Set changed = ROneCOne.EventOf(vbString) _
+Set orderStatusChanged = ROneCOne.EventOf(vbString) _
     .Subscribe(writeAudit) _
     .Subscribe(updateStatus)
 
-changed.Emit "ready"
-changed.Unsubscribe updateStatus
+orderStatusChanged.Emit "Order 1042 shipped"
+orderStatusChanged.Unsubscribe updateStatus
 ```
 
-Handlers run in subscription order. A signature mismatch is rejected before the event's handler
-list changes.
+`Emit` sends the same text to both procedures. They run in subscription order. `Unsubscribe`
+removes one procedure from future updates. A handler expecting the wrong kind of value is rejected
+before the subscriber list changes.
 
-## Handle a failure and always clean up
+## Recover from a bad import row and always close the file
 
 Create the three actions that define the flow:
 
 ```vba
-Dim cleanup As ROneCOne
-Dim handleError As ROneCOne
-Dim work As ROneCOne
+Dim closeFile As ROneCOne
+Dim importSales As ROneCOne
+Dim skipBadRow As ROneCOne
 
-Set work = ROneCOne.Action("ImportJobs.Run")
-Set handleError = ROneCOne.Action("ImportJobs.HandleError") _
+Set importSales = ROneCOne.Action("SalesImport.ImportSales")
+Set skipBadRow = ROneCOne.Action("SalesImport.SkipBadRow") _
     .Takes(ROneCOne.Exception)
-Set cleanup = ROneCOne.Action("ImportJobs.Cleanup")
+Set closeFile = ROneCOne.Action("SalesImport.CloseFile")
 ```
 
 Build and execute the operation:
 
 ```vba
-Dim attempt As ROneCOne
+Dim importAttempt As ROneCOne
 
-Set attempt = ROneCOne.Try(work) _
-    .Catch(handleError) _
-    .Finally(cleanup)
+Set importAttempt = ROneCOne.Try(importSales) _
+    .Catch(INVALID_AMOUNT_ERROR, skipBadRow) _
+    .Finally(closeFile)
 
-attempt.Execute
+importAttempt.Execute
 ```
 
-`Finally` runs after success, a handled error, an unhandled error, or a failed catch.
+Read this as: try the import; if the amount-error occurs, skip that row; then close the file no
+matter what happened. `Finally` runs after success, a handled error, or an unhandled error.
 
 ## Read the captured error
 
 The catch procedure may accept one captured exception:
 
 ```vba
-Public Sub HandleError(ByVal errorInfo As Variant)
+Public Sub SkipBadRow(ByVal errorInfo As Variant)
     Debug.Print errorInfo.ErrorNumber
     Debug.Print errorInfo.ErrorSource
     Debug.Print errorInfo.Message
@@ -78,15 +80,23 @@ End Sub
 The captured value contains the local VBA `Err` state. ROneCOne does not transmit or implicitly log
 that information.
 
+### If Excel pauses before Catch
+
+The VBA editor has an **Error Trapping** preference. If it is set to **Break on All Errors**, Excel
+pauses on every error before any handler - including `Catch` - can respond. In the VBA editor, open
+**Tools > Options > General**, then choose **Break on Unhandled Errors** to test normal handled-error
+behavior. The packaged demo uses a valid sample import, so running it does not intentionally trigger
+this editor setting.
+
 ## Catch one known error
 
 The two-argument `Catch` form matches an exact VBA error number:
 
 ```vba
-Set attempt = ROneCOne.Try(work) _
-    .Catch(vbObjectError + 100, expectedHandler) _
-    .Catch(fallbackHandler) _
-    .Finally(cleanup)
+Set importAttempt = ROneCOne.Try(importSales) _
+    .Catch(INVALID_AMOUNT_ERROR, skipBadRow) _
+    .Catch(reportUnexpectedError) _
+    .Finally(closeFile)
 ```
 
 Catches are checked in construction order. The one-argument form is the catch-all.

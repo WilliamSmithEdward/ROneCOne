@@ -25,13 +25,13 @@ primitive it represents.
 The first slice is an immutable expression-tree interpreter:
 
 ```vba
-Dim x As ROneCOne
-Dim square As ROneCOne
+Dim applyDiscount As ROneCOne
+Dim price As ROneCOne
 
-Set x = ROneCOne.Var(vbLong)
-Set square = x.Multiply(x).AsFunc
+Set price = ROneCOne.Var(vbDouble)
+Set applyDiscount = price.Multiply(0.9).AsFunc
 
-Debug.Print square(CLng(9))
+Debug.Print applyDiscount(CDbl(100))
 ```
 
 This is ordinary compilable VBA. It does not inject source, require VBIDE trust, or ask developers
@@ -105,10 +105,14 @@ See [`collections.md`](collections.md) for the public surface and examples.
 
 ## Task, data, and provider slice
 
-Tasks are explicit cooperative state machines driven on Excel's owning thread. Deadlines use
-`GetTickCount64`; bounded waits pump events, sleep briefly, and reject same-task reentrancy.
-Combinators retain child tasks, cancellation registrations own removable callback entries, and
-fault sets are represented as AggregateException values without losing VBA error identity.
+Tasks have two explicit execution modes. `Task.Run` compiles a verified, zero-argument numeric or
+Boolean expression to a small bytecode and submits an embedded x64 interpreter to the Windows
+thread pool. Code is read/execute, task data is non-executable, and the verifier admits no VBA,
+Excel, COM, object, or arbitrary-address operation. `Task.RunOnExcel`, deadlines, continuations,
+and provider calls use cooperative state machines on Excel's owning thread. Bounded waits pump
+events, sleep briefly, and reject same-task reentrancy. Combinators retain child tasks,
+cancellation registrations own removable callback entries, and fault sets preserve VBA error
+identity in AggregateException values.
 
 Data tables maintain primary-key hash indexes. Relations cache parent and child lookup indexes and
 invalidate them from table version changes. Provider objects remain late-bound ADO wrappers;
@@ -151,10 +155,10 @@ contexts are keyed to one workbook, and process-global mutable state never coupl
 | Available | Stable composite `Order`/`OrderBy`/`ThenBy` queries with per-level comparers |
 | Available | Typed events over universal Actions |
 | Available | Structured `Try/Catch/Finally` over callable blocks |
-| Available | Tasks, await-style coordination, cancellation, progress, and completion sources |
+| Available | Native Task.Run, await-style coordination, cancellation, progress, and completion sources |
 | Available | Mutable, concurrent-style, immutable, and specialized generic collections |
 | Available | DataTable, DataSet, DataView, relations, readers, adapters, and providers |
-| Constrained by host | CPU-parallel VBA execution; COM and workbook state remain on Excel's thread |
+| Constrained by host | Arbitrary VBA, COM, and workbook state remain on Excel's thread |
 
 Each capability must pass its full behavioral, live-host, and performance gates before it enters
 the supported surface.

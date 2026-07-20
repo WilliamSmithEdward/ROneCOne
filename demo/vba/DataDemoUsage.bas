@@ -1,7 +1,8 @@
 Attribute VB_Name = "DataDemoUsage"
 Option Explicit
 
-' This executable tutorial demonstrates DataTable, DataSet, DataView, and providers.
+' This tutorial builds a checked table, relates customers to orders, and loads data.
+' The temporary source workbook is created locally and deleted after the demo.
 
 Private Const BENCHMARK_ITERATIONS As Long = 1000
 Private Const BENCHMARKS_SHEET As String = "Benchmarks"
@@ -52,6 +53,7 @@ Private Sub WriteDataExamples( _
     Dim table As ROneCOne
     Dim view As ROneCOne
 
+    ' Define the columns once, then every added row is checked against them.
     Set table = ROneCOne.DataTable("People")
     table.Column("Id", vbLong).AutoNumber(100&, 10&).AsPrimaryKey
     table.Column("Name", vbString).WithDefault "Unknown"
@@ -59,10 +61,12 @@ Private Sub WriteDataExamples( _
     table.Column "Note", vbString
     Set row = table.Row("Ada", 90&, ROneCOne.DBNull).Add
     Set row = table.Row("Grace", 95&, "Compiler pioneer").Add
+    ' A view filters and sorts the same rows without copying the table by hand.
     Set view = ROneCOne.DataView(table) _
         .WithFilter(table.Rows!Score.AtLeast(90&)) _
         .WithSort("Score", True)
 
+    ' Relate each order to its customer, then navigate in either direction.
     Set parent = ROneCOne.DataTable("Customers")
     parent.Column("Id", vbLong).AsPrimaryKey
     Set parentRow = parent.LoadRow(Array(1&))
@@ -75,9 +79,11 @@ Private Sub WriteDataExamples( _
     data.AddRelation ROneCOne.DataRelation( _
         "CustomerOrders", parent.Columns("Id"), child.Columns("CustomerId"))
 
+    ' Mark the current rows saved, then make one change for GetChanges to find.
     table.AcceptChanges
     table.Rows.Item(0).Item("Score") = 91&
 
+    ' Load another local workbook without adding an ADO reference in the VBE.
     Set connection = ROneCOne.DbConnection( _
         "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & fixturePath & _
         ";Extended Properties=""Excel 12.0 Xml;HDR=YES"";")

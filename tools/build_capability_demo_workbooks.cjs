@@ -20,7 +20,7 @@ const capabilities = [
   {
     key: "events",
     title: "ROneCOne Events",
-    subtitle: "Strongly typed C#-style events over universal multicast Actions",
+    subtitle: "Send one checked order update to several workbook features",
     macro: "RunROneCOneEventsDemo",
     feature: "Typed events",
     output: "ROneCOne_Events_Demo.xlsx",
@@ -28,80 +28,87 @@ const capabilities = [
     benchmarkResult: "Accumulated value",
     examples: [
       [
-        "Subscribe and Emit",
-        "changed += first; changed += second",
-        "Set changed = ROneCOne.EventOf(vbString)\n" +
-          "    .Subscribe(first).Subscribe(second)\nchanged.Emit \"ready\"",
-        "first:ready|second:ready|",
+        "Notify two features",
+        "orderChanged += dashboard; orderChanged += audit",
+        "Set orderChanged = ROneCOne.EventOf(vbString)\n" +
+          "    .Subscribe(dashboard).Subscribe(audit)\n" +
+          "orderChanged.Emit \"Order 1042 shipped\"",
+        "Dashboard updated; audit written",
       ],
-      ["Handler count", "invocationList.Length", "changed.HandlerCount", 2],
-      ["Unsubscribe", "changed -= second", "changed.Unsubscribe second", true],
-      ["Emit after removal", "changed?.Invoke(\"again\")", "changed.Emit \"again\"", "first:again|"],
+      ["Count listeners", "invocationList.Length", "orderChanged.HandlerCount", 2],
+      ["Stop audit updates", "orderChanged -= audit", "orderChanged.Unsubscribe audit", true],
+      [
+        "Notify remaining feature",
+        "orderChanged?.Invoke(message)",
+        "orderChanged.Emit \"Order 1043 delayed\"",
+        "Dashboard updated",
+      ],
     ],
   },
   {
     key: "exceptions",
     title: "ROneCOne Exceptions",
-    subtitle: "Structured Try, Catch, filtered Catch, Finally, and rethrow semantics",
+    subtitle: "Protect a sales import and always close the source file",
     macro: "RunROneCOneExceptionsDemo",
     feature: "Try / Catch / Finally",
     output: "ROneCOne_Exceptions_Demo.xlsx",
-    benchmark: "Successful Try.Execute",
+    benchmark: "Successful import wrapped in Try.Execute",
     benchmarkResult: "Trace characters",
     examples: [
       [
-        "Catch and Finally",
-        "try { work(); } catch (Exception e) { ... } finally { ... }",
-        "Set attempt = ROneCOne.Try(work)\n" +
-          "    .Catch(handler).Finally(cleanup)\nattempt.Execute",
-        "caught:11|finally|",
+        "Protect a sales import",
+        "try { ImportSales(); } catch (InvalidAmount) { ... } finally { ... }",
+        "Set attempt = ROneCOne.Try(importSales)\n" +
+          "    .Catch(INVALID_AMOUNT_ERROR, skipBadRow)\n" +
+          "    .Finally(closeFile)\nattempt.Execute",
+        "3 rows imported; file closed",
       ],
-      ["Filtered rethrow", "catch when error matches", ".Catch(errorNumber, handler)", 11],
-      ["Finally on rethrow", "finally always runs", "ROneCOne.Try(work).Finally(cleanup)", "finally|"],
-      ["Finally on success", "try { work(); } finally { cleanup(); }", "Set attempt = ROneCOne.Try(work).Finally(cleanup)\nattempt.Execute", "work|finally|"],
+      ["Keep recovery ready", "catch (InvalidAmount)", ".Catch(INVALID_AMOUNT_ERROR, skipBadRow)", true],
+      ["Confirm a clean import", "no exception", "The Catch handler was not needed", "No import error"],
+      ["Close after success", "try { ImportSales(); } finally { CloseFile(); }", "Set attempt = ROneCOne.Try(validImport).Finally(closeFile)\nattempt.Execute", "3 rows imported; file closed"],
     ],
   },
   {
     key: "tasks",
     title: "ROneCOne Tasks",
-    subtitle: "Task, await-style coordination, cancellation, progress, and continuations",
+    subtitle: "Run safe calculations in parallel, without opening another Excel",
     macro: "RunROneCOneTasksDemo",
     feature: "Tasks + async",
     output: "ROneCOne_Tasks_Demo.xlsx",
-    benchmark: "Task.FromResult(...).Await",
+    benchmark: "Native Task.Run startup + Await",
     benchmarkResult: "Last result",
     examples: [
-      ["Completed task", "await Task.FromResult(42)", "ROneCOne.Task.FromResult(42&).Await", 42],
-      ["Cooperative delay", "await Task.Delay(5)", "ignored = ROneCOne.Task.Delay(5&).Await", true],
-      ["Wait for all", "await Task.WhenAll(first, second)", "ROneCOne.Task.WhenAll(firstTask, secondTask).Await.JoinText(\",\")", "10,20"],
-      ["Continuation", "task.ContinueWith(next)", "firstTask.ContinueWith(continuation).Await", 11],
-      ["Cancellation", "source.Cancel()", "source.Cancel: source.Token.IsCancellationRequested", true],
-      ["Typed progress", "progress.Report(7)", "ROneCOne.ProgressOf(vbLong, handler).Report 7&", 7],
-      ["Completion source", "source.SetResult(99)", "completion.SetResult 99&: completion.Task.Await", 99],
-      ["Bounded await", "await task.WaitAsync(timeout)", "task.WaitAsync(100&).Await", true],
-      ["Yield once", "await Task.Yield()", "ROneCOne.Task.YieldOnce.Await", true],
+      ["Run two calculations", "await Task.WhenAll(forecast, reorder)", "Set results = ROneCOne.Task.WhenAll(forecastTask, reorderTask).Await", "135000 | 152"],
+      ["Build the next step", "allWork.ContinueWith(BuildSummary)", "allWork.ContinueWith(buildSummary).Await", "Forecast 135000; reorder point 152"],
+      ["Prove work left Excel's thread", "task ran on a pool thread", "forecastTask.WorkerThreadId <> ROneCOne.CurrentThreadId", true],
+      ["Keep workbook work safe", "run on the UI thread", "ROneCOne.Task.RunOnExcel(countOpenOrders).Await", 3],
+      ["Pause without another Excel", "await Task.Delay(5)", "ignored = ROneCOne.Task.Delay(5&).Await", true],
+      ["Cancel safely", "cancelSource.Cancel()", "source.Cancel: source.Token.IsCancellationRequested", true],
+      ["Show progress", "progress.Report(7)", "ROneCOne.ProgressOf(vbLong, handler).Report 7&", 7],
+      ["Finish from a callback", "source.SetResult(99)", "completion.SetResult 99&: completion.Task.Await", 99],
+      ["Limit waiting time", "await task.WaitAsync(timeout)", "task.WaitAsync(100&).Await", true],
     ],
   },
   {
     key: "data",
     title: "ROneCOne Data + Providers",
-    subtitle: "DataTable, DataSet, DataView, relations, and task-based OLE DB access",
+    subtitle: "Build validated tables, query them, and load local Excel data",
     macro: "RunROneCOneDataDemo",
     feature: "Data + providers",
     output: "ROneCOne_Data_Demo.xlsx",
     benchmark: "Build 1,000 typed rows and query them",
     benchmarkResult: "Selected rows",
     examples: [
-      ["Typed row sugar", "DataColumn + Rows.Add", "table.Column(\"Id\", vbLong).AutoNumber(100&, 10&).AsPrimaryKey\nSet row = table.Row(\"Ada\", 90&, ROneCOne.DBNull).Add", 100],
-      ["DataView query", "view.Sort + RowFilter", "DataView(table).WithFilter(...).WithSort(\"Score\", True)", "Grace"],
-      ["Relations", "parent.GetChildRows(...) ", "parentRow.GetChildRows(\"CustomerOrders\").Count", 1],
-      ["Change tracking", "table.GetChanges()", "table.GetChanges.Rows.Count", 1],
-      ["Adapter fill", "adapter.Fill(table)", "ROneCOne.DbDataAdapter(command).Fill(filled)", 2],
-      ["Provider ordering", "reader.GetString(0)", "filled.Rows.Item(0).Item(\"Name\")", "Grace"],
-      ["Async scalar", "await command.ExecuteScalarAsync()", "command.ExecuteScalarAsync.Await", 2],
-      ["Explicit DBNull", "DBNull.Value", "ROneCOne.DBNull", true],
-      ["Async capability", "provider capability inspection", "connection.AsyncMode", "Cooperative"],
-      ["Native async", "provider capability inspection", "connection.SupportsNativeAsync", false],
+      ["Add a validated row", "DataColumn + Rows.Add", "table.Column(\"Id\", vbLong).AutoNumber(100&, 10&).AsPrimaryKey\nSet row = table.Row(\"Ada\", 90&, ROneCOne.DBNull).Add", 100],
+      ["Show the top score", "view.Sort + RowFilter", "DataView(table).WithFilter(...).WithSort(\"Score\", True)", "Grace"],
+      ["Connect customers to orders", "parent.GetChildRows(...) ", "parentRow.GetChildRows(\"CustomerOrders\").Count", 1],
+      ["Find unsaved changes", "table.GetChanges()", "table.GetChanges.Rows.Count", 1],
+      ["Load an Excel table", "adapter.Fill(table)", "ROneCOne.DbDataAdapter(command).Fill(filled)", 2],
+      ["Keep source ordering", "reader.GetString(0)", "filled.Rows.Item(0).Item(\"Name\")", "Grace"],
+      ["Await a record count", "await command.ExecuteScalarAsync()", "command.ExecuteScalarAsync.Await", 2],
+      ["Store a blank database value", "DBNull.Value", "ROneCOne.DBNull", true],
+      ["See how waiting works", "provider capability inspection", "connection.AsyncMode", "Cooperative"],
+      ["Confirm safe single-thread use", "provider capability inspection", "connection.SupportsNativeAsync", false],
     ],
   },
 ];
@@ -151,13 +158,13 @@ async function buildCapability(config) {
 
   titleBand(start, config.title, config.subtitle, "H");
   start.getRange("A5:D5").merge();
-  start.getRange("A5").values = [["Run the living demo"]];
+  start.getRange("A5").values = [["Run this demo"]];
   section(start.getRange("A5:D5"));
   start.getRange("A6:D9").values = [
     ["1", "Press Alt+F8", "Open Excel's Macro dialog", null],
-    ["2", `Run ${config.macro}`, "Executes every example and benchmark", null],
-    ["3", "Review Examples", "Live results recalculate their PASS status", null],
-    ["4", "Import ROneCOne.cls", "The runtime itself remains one file", null],
+    ["2", `Run ${config.macro}`, "Fills in every result for you", null],
+    ["3", "Review Examples", "PASS confirms that each result worked", null],
+    ["4", "Import ROneCOne.cls", "Add the entire runtime to your own workbook", null],
   ];
   start.getRange("A6:D9").format = {
     borders: { preset: "all", style: "thin", color: colors.line },
@@ -203,7 +210,7 @@ async function buildCapability(config) {
   };
   start.getRange("A16:H16").merge();
   start.getRange("A16").values = [[
-    "Privacy invariant: no telemetry, network transmission, or runtime VBIDE access.",
+    "Your data stays local: no telemetry, network transmission, or runtime VBIDE access.",
   ]];
   start.getRange("A16:H16").format = {
     fill: "#FFF4E8",
@@ -220,7 +227,7 @@ async function buildCapability(config) {
 
   titleBand(examples, `Live ${config.feature.toLowerCase()} examples`, `Run ${config.macro}; column F validates every result.`, "F");
   examples.getRange("A5:F5").values = [[
-    "Pattern", "C# idea", "ROneCOne VBA", "Expected", "Live result", "Status",
+    "What it does", "C# equivalent (optional)", "ROneCOne VBA", "Expected", "Live result", "Status",
   ]];
   tableHeader(examples.getRange("A5:F5"));
   examples.getRange(`A6:D${lastRow}`).values = config.examples;
@@ -257,16 +264,16 @@ async function buildCapability(config) {
   benchmarks.getRange("B:D").format.columnWidth = 20;
   benchmarks.freezePanes.freezeRows(5);
 
-  titleBand(architecture, "One-file architecture", "Every value is a tagged role inside ROneCOne.cls.", "F");
+  titleBand(architecture, "Why deployment stays simple", "Every capability is contained in ROneCOne.cls.", "F");
   architecture.getRange("A5:F5").values = [[
     "Invariant", "Decision", "Behavior", "Status", "Runtime files", "Dependencies",
   ]];
   tableHeader(architecture.getRange("A5:F5"));
   architecture.getRange("A6:F10").values = [
     ["Single-file core", "ROneCOne.cls", "One import", "ENFORCED", 1, 0],
-    ["Strong typing", "Runtime signatures", "Fail before invocation", "ENFORCED", 1, 0],
-    ["One process", "In-process dispatch", "Never launches Excel", "ENFORCED", 1, 0],
-    ["No runtime VBIDE", "Tagged object kernel", "Normal macro security", "ENFORCED", 1, 0],
+    ["Checked values", "Runtime signatures", "Reject mistakes before work starts", "ENFORCED", 1, 0],
+    ["One process", "Windows thread pool", "Never launches another Excel", "ENFORCED", 1, 0],
+    ["No runtime VBIDE", "One internal object model", "Normal macro security", "ENFORCED", 1, 0],
     ["Privacy", "No transmission", "Workbook data remains local", "ENFORCED", 1, 0],
   ];
   architecture.getRange("A6:F10").format = {

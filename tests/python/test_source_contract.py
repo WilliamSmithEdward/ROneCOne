@@ -4,6 +4,8 @@ import re
 import unittest
 from pathlib import Path
 
+from tools.build_native_task_kernel import build_kernel
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "src" / "ROneCOne.cls"
@@ -375,6 +377,40 @@ class SourceContractTests(unittest.TestCase):
             )
             self.assertRegex(self.source, re.compile(pattern, re.IGNORECASE), member)
 
+    def test_task_run_has_a_true_native_thread_contract(self) -> None:
+        required_syntax = (
+            'Private Declare PtrSafe Function CreateThreadpoolWork Lib "kernel32"',
+            'Private Declare PtrSafe Sub SubmitThreadpoolWork Lib "kernel32"',
+            'Private Declare PtrSafe Function VirtualAlloc Lib "kernel32"',
+            "Public Function RunOnExcel(",
+            "Private Sub StartNativeTask(",
+            "Private Sub AdvanceNativeTask()",
+            "Public Property Get ExecutionMode() As String",
+            "Public Property Get WorkerThreadId() As Long",
+            'ExecutionMode = "NativeThreadPool"',
+            'ExecutionMode = "ExcelCooperative"',
+        )
+        for syntax in required_syntax:
+            self.assertIn(syntax, self.source)
+
+    def test_unproven_parallel_query_surface_is_not_public(self) -> None:
+        for syntax in (
+            "Public Function AsParallel(",
+            "Public Function WithDegreeOfParallelism(",
+            "Public Property Get IsParallel(",
+        ):
+            self.assertNotIn(syntax, self.source)
+
+    def test_embedded_native_task_kernel_matches_verified_builder(self) -> None:
+        function = re.search(
+            r"Private Function NativeTaskKernelHex\(\) As String(.*?)End Function",
+            self.source,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(function)
+        embedded_hex = "".join(re.findall(r'"([0-9A-F]+)"', function.group(1)))
+        self.assertEqual(build_kernel(), bytes.fromhex(embedded_hex))
+
         for role_name in (
             "ROLE_TASK",
             "ROLE_DATA_TABLE",
@@ -426,7 +462,7 @@ class SourceContractTests(unittest.TestCase):
 
     def test_contextual_linq_contract_accepts_member_names(self) -> None:
         contextual_signatures = (
-            r"Public Function Where\(ByVal predicateOrMember As Variant\)",
+            r"Public Function Where\(Optional ByVal predicateOrMember As Variant\)",
             r"Public Function SelectItems\(\s*_\s*\n\s*ByVal selector As Variant",
             r"Public Function Map\(\s*_\s*\n\s*ByVal selector As Variant",
             r"Public Function Order\(Optional ByVal comparer As Variant\)",

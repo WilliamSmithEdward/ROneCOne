@@ -10,22 +10,22 @@ VBA language and COM host permit them.
 
 ## Expression lambdas
 
-The shortest string-free form builds an immutable expression and infers its typed parameters:
+The shortest string-free form can build a reusable pricing rule and infer its input type:
 
 ```vba
-Dim square As ROneCOne
-Dim x As ROneCOne
+Dim applyDiscount As ROneCOne
+Dim price As ROneCOne
 
-Set x = ROneCOne.Var(vbLong)
-Set square = x.Multiply(x).AsFunc
-Debug.Print square(CLng(9))
+Set price = ROneCOne.Var(vbDouble)
+Set applyDiscount = price.Multiply(0.9).AsFunc
+Debug.Print applyDiscount(CDbl(100))
 ```
 
 The canonical expansion is:
 
 ```vba
-Set x = ROneCOne.Parameter(vbLong)
-Set square = ROneCOne.Lambda(x.Multiply(x), x)
+Set price = ROneCOne.Parameter(vbDouble)
+Set applyDiscount = ROneCOne.Lambda(price.Multiply(0.9), price)
 ```
 
 `AsFunc` discovers unique parameters once in left-to-right order. `ROneCOne.Value(capturedValue)`
@@ -94,10 +94,10 @@ behavior. `Remove` removes the last matching invocation subsequence and leaves t
 `ROneCOne.Func(existingAction)` and `existingAction.Returns(...)` raise `InvalidOperationError`.
 
 ```vba
-Set changed = ROneCOne.Combine(firstHandler, secondHandler)
-changed.Execute "ready"
-Set withoutSecond = changed.Remove(secondHandler)
-Set handlers = changed.GetInvocationList
+Set notify = ROneCOne.Combine(updateDashboard, writeAudit)
+notify.Execute "Order 1042 approved"
+Set withoutAudit = notify.Remove(writeAudit)
+Set handlers = notify.GetInvocationList
 ```
 
 `Execute` is the statement-form invocation surface for Actions. It validates the same signature as

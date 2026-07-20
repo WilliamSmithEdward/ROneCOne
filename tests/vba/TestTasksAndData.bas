@@ -14,6 +14,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     On Error GoTo FatalFailure
     ResetResults
 
+    mCurrentTest = "TestNativeTaskRun"
+    TestNativeTaskRun
     mCurrentTest = "TestTaskLifecycle"
     TestTaskLifecycle
     mCurrentTest = "TestTaskCombinators"
@@ -58,6 +60,61 @@ FatalFailure:
         .Range("B5").Value2 = mCurrentTest & " | " & CStr(capturedNumber) & _
             " | " & capturedSource & " | " & capturedDescription
     End With
+End Sub
+
+Private Sub TestNativeTaskRun()
+    Dim canceledTask As ROneCOne
+    Dim firstTask As ROneCOne
+    Dim firstWork As ROneCOne
+    Dim invalidError As Long
+    Dim procedureWork As ROneCOne
+    Dim results As ROneCOne
+    Dim secondTask As ROneCOne
+    Dim secondWork As ROneCOne
+    Dim shortCircuitTask As ROneCOne
+    Dim shortCircuitWork As ROneCOne
+    Dim source As ROneCOne
+
+    Set firstWork = ROneCOne.Value(21&).Multiply(2&).AsFunc
+    Set firstWork = firstWork.Returns(vbLong)
+    Set secondWork = ROneCOne.Value(10#).Divide(4#).AsFunc
+
+    Set firstTask = ROneCOne.Task.Run(firstWork)
+    Set secondTask = ROneCOne.Task.Run(secondWork)
+
+    AssertEqual "Task.Run native mode", _
+        "NativeThreadPool", firstTask.ExecutionMode
+    AssertTrue "Task.Run starts immediately", firstTask.Status <> "Created"
+    Set results = ROneCOne.Task.WhenAll(firstTask, secondTask).Await
+    AssertEqual "native first result", 42&, results.Item(0)
+    AssertEqual "native second result", 2.5, results.Item(1)
+    AssertTrue "native worker recorded", firstTask.WorkerThreadId <> 0
+    AssertTrue "native worker leaves Excel thread", _
+        firstTask.WorkerThreadId <> ROneCOne.CurrentThreadId
+
+    Set shortCircuitWork = ROneCOne.Value(False) _
+        .AndAlso(ROneCOne.Value(1#).Divide(0#)) _
+        .OrElse(ROneCOne.Value(True) _
+            .OrElse(ROneCOne.Value(1#).Divide(0#))).AsFunc
+    Set shortCircuitTask = ROneCOne.Task.Run(shortCircuitWork)
+    AssertEqual "native Boolean short circuit", True, _
+        shortCircuitTask.Await
+
+    Set procedureWork = ROneCOne.Func( _
+        "DelegateProcedures.OtherErrorNumber").Takes().Returns(vbLong)
+    On Error Resume Next
+    Set firstTask = ROneCOne.Task.Run(procedureWork)
+    invalidError = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertTrue "Task.Run rejects VBA procedures", invalidError <> 0
+
+    Set source = ROneCOne.CancellationTokenSource
+    source.Cancel
+    Set canceledTask = ROneCOne.Task.Run(firstWork, source.Token)
+    AssertTrue "pre-canceled native Task", canceledTask.IsCanceled
+    AssertEqual "pre-canceled Task starts no worker", 0&, _
+        canceledTask.WorkerThreadId
 End Sub
 
 Private Sub TestExistingRelationValidation()
@@ -199,9 +256,11 @@ Private Sub TestTaskLifecycle()
     Dim work As ROneCOne
 
     Set work = ROneCOne.Value(CLng(42)).AsFunc
-    Set taskValue = ROneCOne.Task.Run(work)
+    Set taskValue = ROneCOne.Task.RunOnExcel(work)
 
     AssertFalse "task starts incomplete", taskValue.IsCompleted
+    AssertEqual "cooperative execution mode", _
+        "ExcelCooperative", taskValue.ExecutionMode
     AssertEqual "task await result", CLng(42), taskValue.Await
     AssertTrue "task completes", taskValue.IsCompleted
     AssertEqual "task status", "RanToCompletion", taskValue.Status
@@ -245,9 +304,13 @@ Private Sub TestTaskCombinators()
     AssertTrue "WhenAny selects a completed task", winner Is completed
     AssertEqual "WhenAny completed result", 42&, winner.Result
 
+    Set firstTask = ROneCOne.Value(1&).Divide(0&).AsFunc
+    Set firstTask = firstTask.Returns(vbLong)
+    Set secondTask = ROneCOne.Value(2&).Divide(0&).AsFunc
+    Set secondTask = secondTask.Returns(vbLong)
     Set faulted = ROneCOne.Task.WhenAll( _
-        ROneCOne.Task.Run(ROneCOne.Value(1&).Divide(0&).AsFunc), _
-        ROneCOne.Task.Run(ROneCOne.Value(2&).Divide(0&).AsFunc))
+        ROneCOne.Task.Run(firstTask), _
+        ROneCOne.Task.Run(secondTask))
     On Error Resume Next
     ignored = faulted.Await
     faultNumber = Err.Number

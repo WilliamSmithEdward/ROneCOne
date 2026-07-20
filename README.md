@@ -17,7 +17,7 @@ connect, and no second runtime to install.
 |---|---|
 | Work with data cleanly | Typed collections and LINQ-style filtering, shaping, sorting, and aggregation |
 | Reuse behavior | Delegates and expression-based functions that can be passed, combined, and invoked |
-| Coordinate work | Tasks, await-style flow, cancellation, progress, and continuations |
+| Run calculations in parallel | Native Tasks, await-style flow, cancellation, progress, and continuations |
 | Model business data | DataTable, DataSet, DataView, relations, change tracking, and providers |
 | Build responsive workbook logic | Typed events with predictable subscription and delivery |
 | Handle failure deliberately | Structured Try, Catch, and Finally flows |
@@ -27,12 +27,14 @@ ROneCOne runs locally inside one Windows x64 Microsoft 365 Excel process. It wor
 macro-enabled workbooks and add-ins, requires no runtime VBIDE access, generates no source code,
 and sends no telemetry.
 
+Safe calculations can use Windows worker threads. Excel, VBA procedures, workbook objects, and COM
+stay on Excel's thread. Parallel work never opens another Excel.
+
 ## A modern runtime for serious workbooks
 
-ROneCOne includes mutable, concurrent-style, and immutable generic collection families; a broad
-LINQ surface; delegates and expression lambdas; tasks and await-style coordination; cancellation
-and progress; typed events; structured exceptions; and an in-memory data layer with OLE DB and
-ODBC access. IntelliSense descriptions keep the surface discoverable in the editor.
+ROneCOne includes generic collection families, LINQ, delegates, expression lambdas, native and
+cooperative Tasks, cancellation, progress, typed events, structured exceptions, and an in-memory
+data layer with OLE DB and ODBC access. IntelliSense descriptions keep it discoverable.
 
 The design follows familiar C# and .NET names and behavior wherever VBA permits it. The concise
 form leads every demo; the guide also shows the underlying contract when you need to debug or
