@@ -8,9 +8,9 @@
 [![Single class module runtime](https://img.shields.io/badge/runtime-one_class_module-0078D4)](src/ROneCOne.cls)
 
 ROneCOne is a modern programming layer for Excel VBA. Import one class module, `ROneCOne.cls`,
-and ordinary workbook code gains typed collections, LINQ-style queries, parallel tasks, typed
-events, structured error handling, and an in-memory data layer with local database access - the
-everyday toolkit of C# and .NET, written as plain, compilable VBA.
+and ordinary workbook code gains typed collections, LINQ-style queries, await-style tasks,
+typed events, structured error handling, and an in-memory data layer with local database
+access.
 
 Everything you already built keeps working. There is no installer, no add-in, no external
 reference, and no separate runtime to manage: the entire library is one file that travels inside
@@ -35,7 +35,7 @@ MsgBox "Scores at or above 85: " & strongScores.JoinText(", ")
 
 That is a typed list, filtered, sorted, and displayed without a loop, counter, or temporary
 array. The same fluent style carries through object queries such as `.Where("Age").AtLeast(40)`,
-parallel Tasks, typed events, and structured Try, Catch, and Finally flows.
+Tasks, typed events, and structured Try, Catch, and Finally flows.
 
 ## What becomes possible
 
@@ -43,7 +43,7 @@ parallel Tasks, typed events, and structured Try, Catch, and Finally flows.
 |---|---|
 | Work with data cleanly | Typed collections and LINQ-style filtering, shaping, sorting, and aggregation |
 | Reuse behavior | Delegates and expression-based functions that can be passed, combined, and invoked |
-| Run calculations in parallel | Native Tasks, await-style flow, cancellation, progress, and continuations |
+| Coordinate slow or multi-step work | Await-style Tasks with delays, timeouts, cancellation, progress, and continuations |
 | Model business data | DataTable, DataSet, DataView, relations, change tracking, and providers |
 | Build responsive workbook logic | Typed events with predictable subscription and delivery |
 | Handle failure deliberately | Structured Try, Catch, and Finally flows |
@@ -59,9 +59,8 @@ IntelliSense descriptions keep the surface discoverable inside the editor.
 - One imported file: [`src/ROneCOne.cls`](src/ROneCOne.cls)
 
 Everything runs locally inside your one Excel process. ROneCOne requires no installer, no
-external library, no network access, and no runtime VBIDE trust, and it sends no telemetry.
-Safe calculations can use Windows worker threads; Excel, VBA procedures, workbook objects, and
-COM stay on Excel's thread, and parallel work never opens another Excel.
+external library, no network access, and no runtime VBIDE trust, and it sends no telemetry. It
+never launches a second Excel.
 
 ## Start in three steps
 

@@ -17,7 +17,7 @@ Start here if you write workbook code and want results quickly. The
 | [Collections and LINQ](user-guide/collections-and-linq.md) | Query and summarize data |
 | [Delegates and expressions](user-guide/delegates-and-expressions.md) | Build reusable behavior |
 | [Events and exceptions](user-guide/events-and-exceptions.md) | Coordinate changes and failures |
-| [Tasks and async](user-guide/tasks-and-async.md) | Run work in parallel with progress and cancellation |
+| [Tasks and async](user-guide/tasks-and-async.md) | Coordinate work, cancellation, and progress |
 | [Data and providers](user-guide/data-and-providers.md) | Model, query, and load tabular data |
 | [Practical reference](user-guide/reference.md) | Find names, defaults, and limits fast |
 
