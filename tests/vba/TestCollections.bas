@@ -18,6 +18,8 @@ Public Sub RunROneCOneCollectionTests()
     TestPrimitiveList
     mCurrentTest = "TestStrictElementType"
     TestStrictElementType
+    mCurrentTest = "TestNumericWidening"
+    TestNumericWidening
     mCurrentTest = "TestUserClassList"
     TestUserClassList
     mCurrentTest = "TestUserClassLinq"
@@ -717,6 +719,71 @@ Private Sub TestStrictElementType()
 
     AssertEqual "strict type error", ROneCOne.TypeMismatchError, actualError
     AssertEqual "failed add is atomic", CLng(0), numbers.Count
+End Sub
+
+Private Sub TestNumericWidening()
+    Dim discount As ROneCOne
+    Dim doubles As ROneCOne
+    Dim longs As ROneCOne
+    Dim price As ROneCOne
+    Dim scores As ROneCOne
+    Dim singles As ROneCOne
+    Dim typedFunc As ROneCOne
+    Dim actualError As Long
+
+    ' Narrower integer literals widen into a wider integer list, and each stored
+    ' value takes the declared element type exactly.
+    Set longs = ROneCOne.ListOf(vbLong, CInt(1), CByte(2), CLng(3))
+    AssertEqual "widen count", CLng(3), longs.Count
+    AssertEqual "widened value", CLng(1), longs.Item(0)
+    AssertEqual "widened stored type", "Long", TypeName(longs.Item(0))
+    AssertEqual "widen keeps generic name", "List<Long>", longs.GenericTypeName
+
+    ' Integers, Long, and Single all widen losslessly into a Double list.
+    Set doubles = ROneCOne.ListOf(vbDouble)
+    doubles.Add CLng(100000)
+    doubles.Add CInt(7)
+    doubles.Add CSng(1.5)
+    AssertEqual "widened to double type", "Double", TypeName(doubles.Item(0))
+    AssertEqual "widened double value", CDbl(7), doubles.Item(1)
+
+    ' Narrowing (Double into Long) is still rejected, atomically.
+    Set longs = ROneCOne.ListOf(vbLong)
+    On Error Resume Next
+    longs.Add CDbl(1.5)
+    actualError = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertEqual "reject narrowing double to long", _
+        ROneCOne.TypeMismatchError, actualError
+    AssertEqual "rejected add is atomic", CLng(0), longs.Count
+
+    ' Long into Single is rejected as a class because some Longs lose precision;
+    ' Integer into Single is accepted because it never does.
+    Set singles = ROneCOne.ListOf(vbSingle)
+    On Error Resume Next
+    singles.Add CLng(100000)
+    actualError = Err.Number
+    Err.Clear
+    On Error GoTo 0
+    AssertEqual "reject lossy long to single", _
+        ROneCOne.TypeMismatchError, actualError
+    singles.Add CInt(300)
+    AssertEqual "accept integer to single", CLng(1), singles.Count
+
+    ' Dictionary keys widen for both insertion and indexed lookup.
+    Set scores = ROneCOne.DictionaryOf(vbLong, vbLong)
+    scores.Add CInt(101), CInt(95)
+    AssertEqual "widened dictionary lookup", CLng(95), scores.Item(CInt(101))
+
+    ' A Double-typed lambda accepts an integer argument with no CDbl ceremony.
+    Set price = ROneCOne.Var(vbDouble)
+    Set discount = price.Multiply(0.9).AsFunc
+    AssertEqual "widened lambda argument", CDbl(90), discount(CInt(100))
+
+    ' A Func declared to return Double accepts a Long-producing body.
+    Set typedFunc = ROneCOne.Value(CLng(42)).AsFunc.Returns(vbDouble)
+    AssertEqual "widened func result type", "Double", TypeName(typedFunc.Run())
 End Sub
 
 Private Sub TestUserClassList()

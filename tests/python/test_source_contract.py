@@ -554,6 +554,15 @@ class SourceContractTests(unittest.TestCase):
         self.assertIn("Attribute Run.VB_UserMemId = 0", self.source)
         self.assertNotRegex(self.source, re.compile(r"^Public Function Invoke\b", re.MULTILINE))
 
+    def test_lossless_numeric_widening_is_present_and_wired(self) -> None:
+        self.assertIn("Private Function IsLosslessWidening(", self.source)
+        self.assertIn("Private Function WidenScalarToward(", self.source)
+        self.assertIn("Private Function CoerceScalarToType(", self.source)
+        # Widening must be applied at every admission point, not a subset:
+        # element, key, parameter binding, delegate arguments, delegate result,
+        # DataColumn value, primary key, progress, and completion.
+        self.assertGreaterEqual(self.source.count("WidenScalarToward("), 12)
+
     def test_source_is_ascii_and_uses_short_lines(self) -> None:
         self.source.encode("ascii")
         long_lines = [

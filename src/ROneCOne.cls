@@ -1287,6 +1287,7 @@ Attribute Report.VB_Description = "Reports one typed progress value."
             "Report requires a Progress<T> value."
     End If
     Set wrapped = WrapInvocationArgument(value)
+    Set wrapped = WidenScalarToward(wrapped, mExpectedType)
     ValidateWrappedType wrapped, mExpectedType, mExpectedObjectType, _
         "Report", "progress value"
     Set arguments = New Collection
@@ -1405,6 +1406,7 @@ Attribute WithDefault.VB_Description = "Sets a DataColumn default value fluently
 
     RequireDataColumn Me, "WithDefault"
     Set wrapped = WrapDataValue(value)
+    Set wrapped = WidenScalarToward(wrapped, mExpectedType)
     ValidateDataColumnValue Me, wrapped, "WithDefault"
     Set mDefaultValue = wrapped
     Set WithDefault = Me
@@ -8869,6 +8871,7 @@ Private Sub SetDataRowItem(ByVal index As Variant, ByVal value As Variant)
     ValidateIndex columnIndex, mItems.Count, "DataRow.Item"
     Set column = mSource.InternalDataColumns.Item(columnIndex + 1)
     Set wrapped = WrapDataValue(value)
+    Set wrapped = WidenScalarToward(wrapped, column.InternalExpectedType)
     ValidateDataColumnValue column, wrapped, "DataRow.Item"
     Set previous = mItems.Item(columnIndex + 1)
     ReplaceDataValue columnIndex, wrapped
@@ -9065,7 +9068,8 @@ Private Function PrimaryKeyTokenFromArguments( _
 
     For index = 1 To arguments.Count
         Set column = mPrimaryKey.Item(index)
-        Set wrapped = arguments.Item(index)
+        Set wrapped = WidenScalarToward(arguments.Item(index), _
+            column.InternalExpectedType)
         ValidateDataColumnValue column, wrapped, "Find"
         token = DataIndexToken(wrapped)
         PrimaryKeyTokenFromArguments = PrimaryKeyTokenFromArguments & _
@@ -9416,6 +9420,7 @@ Private Function WrapTypedCompletionValue(ByVal value As Variant) As ROneCOne
     Dim wrapped As ROneCOne
 
     Set wrapped = WrapInvocationArgument(value)
+    Set wrapped = WidenScalarToward(wrapped, mExpectedType)
     ValidateWrappedType wrapped, mExpectedType, mExpectedObjectType, _
         "TaskCompletionSource", "result"
     Set WrapTypedCompletionValue = wrapped
@@ -10043,9 +10048,97 @@ Friend Function WrapKey( _
         End If
         Set wrapped = CreateScalarResult(value)
     End If
+    Set wrapped = WidenScalarToward(wrapped, mKeyType)
     ValidateWrappedType wrapped, mKeyType, mKeyObjectType, memberName, "key"
     Set WrapKey = wrapped
 End Function
+
+Private Function IsLosslessWidening( _
+    ByVal fromType As VbVarType, _
+    ByVal toType As VbVarType _
+) As Boolean
+    ' True when every value of fromType is representable in toType with no loss
+    ' of magnitude or precision. Narrowing, cross-family, and Boolean/Date/String
+    ' conversions are deliberately excluded so admission stays strict where it
+    ' protects and only relaxes where the promotion is provably safe.
+    If fromType = toType Then Exit Function
+    Select Case toType
+        Case vbInteger
+            IsLosslessWidening = (fromType = vbByte)
+        Case vbLong
+            IsLosslessWidening = (fromType = vbByte Or fromType = vbInteger)
+        Case vbLongLong
+            IsLosslessWidening = (fromType = vbByte Or fromType = vbInteger Or _
+                fromType = vbLong)
+        Case vbCurrency
+            IsLosslessWidening = (fromType = vbByte Or fromType = vbInteger Or _
+                fromType = vbLong)
+        Case vbSingle
+            IsLosslessWidening = (fromType = vbByte Or fromType = vbInteger)
+        Case vbDouble
+            IsLosslessWidening = (fromType = vbByte Or fromType = vbInteger Or _
+                fromType = vbLong Or fromType = vbSingle)
+    End Select
+End Function
+
+Private Function CoerceScalarToType( _
+    ByVal value As Variant, _
+    ByVal toType As VbVarType _
+) As Variant
+    Select Case toType
+        Case vbInteger
+            CoerceScalarToType = CInt(value)
+        Case vbLong
+            CoerceScalarToType = CLng(value)
+        Case vbLongLong
+            CoerceScalarToType = CLngLng(value)
+        Case vbCurrency
+            CoerceScalarToType = CCur(value)
+        Case vbSingle
+            CoerceScalarToType = CSng(value)
+        Case vbDouble
+            CoerceScalarToType = CDbl(value)
+        Case Else
+            CoerceScalarToType = value
+    End Select
+End Function
+
+Private Function WidenScalarToward( _
+    ByVal wrapped As ROneCOne, _
+    ByVal expectedType As VbVarType _
+) As ROneCOne
+    ' Returns wrapped unchanged unless its scalar is losslessly widenable to
+    ' expectedType, in which case a fresh wrapped holding the coerced value is
+    ' returned so the stored value's runtime type matches the declared type
+    ' exactly. Never raises; the strict validator that follows is the gate.
+    Dim coerced As ROneCOne
+
+    Set WidenScalarToward = wrapped
+    If expectedType = vbVariant Or expectedType = vbObject Then Exit Function
+    If wrapped.InternalHasObjectValue Then Exit Function
+    If IsNull(wrapped.InternalScalarValue) Then Exit Function
+    If IsEmpty(wrapped.InternalScalarValue) Then Exit Function
+    If Not IsLosslessWidening( _
+        VarType(wrapped.InternalScalarValue), expectedType) Then Exit Function
+    Set coerced = New ROneCOne
+    coerced.ConfigureScalarValue CoerceScalarToType( _
+        wrapped.InternalScalarValue, expectedType)
+    Set WidenScalarToward = coerced
+End Function
+
+Private Sub ReplaceCollectionItemAt( _
+    ByVal target As Collection, _
+    ByVal position As Long, _
+    ByVal item As ROneCOne _
+)
+    If position < target.Count Then
+        target.Add item, Before:=position
+        target.Remove position + 1
+    Else
+        target.Remove position
+        target.Add item
+    End If
+End Sub
 
 Private Sub ValidateWrappedType( _
     ByVal wrapped As ROneCOne, _
@@ -10091,6 +10184,9 @@ Private Sub ValidateKeyValue( _
     End If
     If IsObject(value) Then GoTo TypeFailed
     If VarType(value) = mKeyType Then Exit Sub
+    ' A losslessly widenable key hashes and compares identically to the stored
+    ' key of the declared type, so accept it for lookup without ceremony.
+    If IsLosslessWidening(VarType(value), mKeyType) Then Exit Sub
 TypeFailed:
     RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
         "The collection key does not match its generic type."
@@ -10229,6 +10325,7 @@ Friend Sub AddMutable( _
         End If
         Set valueWrapped = WrapElement(keyOrValue, memberName)
         Set keyWrapped = InvokeUnary(mKeySelector, valueWrapped)
+        Set keyWrapped = WidenScalarToward(keyWrapped, mKeyType)
         ValidateWrappedType keyWrapped, mKeyType, mKeyObjectType, _
             memberName, "key"
         If FindKeyIndex(keyWrapped, memberName) >= 0 Then
@@ -11058,6 +11155,7 @@ Private Sub AssignReferenceWrapped( _
     Dim singleValue As Single
     Dim scalarValue As Variant
 
+    Set wrapped = WidenScalarToward(wrapped, referenceValue.InternalExpectedType)
     If referenceValue.InternalReferenceAddress = 0 Then
         ValidateWrappedType wrapped, referenceValue.InternalExpectedType, _
             referenceValue.InternalExpectedObjectType, memberName, "output"
@@ -11407,6 +11505,7 @@ Friend Function WrapElement( _
     Else
         wrapped.ConfigureScalarValue candidate
     End If
+    Set wrapped = WidenScalarToward(wrapped, mElementType)
     ValidateElementWrapped wrapped, memberName
     Set WrapElement = wrapped
 End Function
@@ -13676,7 +13775,8 @@ Private Function ResolveParameter( _
 
     For index = 1 To parameters.Count
         If parameters.Item(index) Is parameterValue Then
-            Set argumentValue = arguments.Item(index)
+            Set argumentValue = WidenScalarToward( _
+                arguments.Item(index), parameterValue.InternalExpectedType)
             ValidateParameterValue parameterValue, argumentValue
             Set ResolveParameter = argumentValue
             Exit Function
@@ -13999,6 +14099,9 @@ Private Sub ValidateDelegateArguments(ByVal arguments As Collection)
                 RaiseContractError ERROR_TYPE_MISMATCH, "Run", _
                     "A reference was supplied to a ByVal parameter."
             End If
+            Set argumentValue = WidenScalarToward( _
+                argumentValue, descriptor.InternalExpectedType)
+            ReplaceCollectionItemAt arguments, index, argumentValue
             ValidateParameterValue descriptor, argumentValue
         End If
     Next index
@@ -14037,6 +14140,7 @@ Private Function FinalizeDelegateResult(ByVal result As ROneCOne) As ROneCOne
             RaiseContractError ERROR_TYPE_MISMATCH, "Run", _
                 "The delegate result is an object, not a scalar value."
         End If
+        Set result = WidenScalarToward(result, mReturnType)
         actualType = VarType(result.InternalScalarValue)
         If actualType <> mReturnType Then
             RaiseContractError ERROR_TYPE_MISMATCH, "Run", _

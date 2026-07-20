@@ -22,10 +22,10 @@ any workbook that imports it. Your macros call it like any other VBA class.
 Dim scores As ROneCOne
 Dim strongScores As ROneCOne
 
-Set scores = ROneCOne.ListOf(vbLong, CLng(90), CLng(72), CLng(88), CLng(95))
+Set scores = ROneCOne.ListOf(vbLong, 90, 72, 88, 95)
 
 Set strongScores = scores _
-    .Where(scores.Element.AtLeast(CLng(85))) _
+    .Where(scores.Element.AtLeast(85)) _
     .OrderDescending _
     .ToList
 

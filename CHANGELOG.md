@@ -8,6 +8,16 @@ checksums for each version are on the
 
 ## Unreleased
 
+### Added
+
+- Lossless numeric widening at every type-admission point (list and collection elements,
+  dictionary and keyed-collection keys, lambda parameters, delegate arguments and results,
+  DataColumn values, primary-key `Find`, progress values, and completion results). Plain
+  numeric literals no longer need `CLng`/`CDbl`-style wrappers; a value is admitted when it
+  promotes to the declared type without loss and is stored as that type. Narrowing,
+  cross-family, and Boolean/Date/String conversions still raise `TypeMismatchError` atomically.
+  See [ADR 0003](docs/decisions/0003-lossless-numeric-widening.md).
+
 ### Removed
 
 - The native `Task.Run` execution slice: the expression verifier, bytecode compiler, embedded

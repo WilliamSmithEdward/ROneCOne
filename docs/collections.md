@@ -47,20 +47,24 @@ scores.TrimExcess
 
 ## Primitive lists
 
-Use a `VbVarType` token as `T`. Values must have that exact VBA runtime type; ROneCOne does not
-silently coerce them.
+Use a `VbVarType` token as `T`. A value is admitted when its runtime type equals `T` or promotes
+to `T` without loss, and it is stored as `T` so the list stays exactly typed. Lossy, narrowing,
+and cross-family conversions are refused rather than silently truncated. The full promotion table
+is in the [practical reference](user-guide/reference.md#numeric-literals-widen-automatically).
 
 ```vba
 Dim numbers As ROneCOne
 
-Set numbers = ROneCOne.ListOf(vbLong, CLng(5), CLng(10))
+Set numbers = ROneCOne.ListOf(vbLong, 5, 10)
 
 Debug.Print numbers.GenericTypeName  ' List<Long>
 Debug.Print numbers(0)               ' 5: default zero-based indexer
 Debug.Print numbers.Item(1)          ' 10: explicit indexer
+Debug.Print TypeName(numbers(0))     ' Long: stored as the declared type
 ```
 
-An invalid mutation raises `ROneCOne.TypeMismatchError` before changing the list.
+An invalid mutation raises `ROneCOne.TypeMismatchError` before changing the list. A widenable
+value such as an integer literal in a `List<Double>` is not invalid; it is promoted.
 
 ## User-defined class lists
 

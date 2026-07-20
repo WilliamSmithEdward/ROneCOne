@@ -115,6 +115,25 @@ For an exact user-defined class, pass one non-`Nothing` instance as the type exa
 records its concrete class name; it does not retain the example merely because it was used as a
 type token.
 
+## Numeric literals widen automatically
+
+A typed numeric collection, signature, key, or DataColumn accepts any value that promotes to its
+declared type without loss, and stores it as the declared type. Plain literals need no `CLng`,
+`CDbl`, or similar wrapper.
+
+| Declared type | Also accepts | Never accepts |
+|---|---|---|
+| `vbInteger` | `Byte` | wider or fractional numbers |
+| `vbLong` | `Byte`, `Integer` | `LongLong`, `Single`, `Double`, `Currency` |
+| `vbLongLong` | `Byte`, `Integer`, `Long` | `Single`, `Double`, `Currency` |
+| `vbCurrency` | `Byte`, `Integer`, `Long` | floating-point sources |
+| `vbSingle` | `Byte`, `Integer` | `Long`, `LongLong`, `Double` |
+| `vbDouble` | `Byte`, `Integer`, `Long`, `Single` | `LongLong`, `Currency` |
+
+Any narrowing, cross-family, or Boolean, Date, or String conversion is refused with
+`TypeMismatchError`, atomically, before the collection changes. Explicit conversions stay valid
+and are never required.
+
 ## Default values
 
 The `OrDefault` terminals follow `default(T)` behavior:

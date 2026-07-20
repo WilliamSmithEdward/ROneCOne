@@ -32,13 +32,17 @@ Use a VBA type token for primitive values:
 ```vba
 Dim scores As ROneCOne
 
-Set scores = ROneCOne.ListOf( _
-    vbLong, CLng(75), CLng(90), CLng(82))
+Set scores = ROneCOne.ListOf(vbLong, 75, 90, 82)
 
-scores.Add CLng(95)
+scores.Add 95
 Debug.Print scores(0)
 Debug.Print scores.Count
 ```
+
+Plain numeric literals are enough. A typed list accepts any number that fits its declared type
+without loss and stores it as that type, so an integer literal drops straight into a
+`List<Long>` or `List<Double>`. A value that would lose information is still refused before the
+list changes.
 
 Use `ListFrom` when real objects are already available:
 

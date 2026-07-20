@@ -50,11 +50,10 @@ Public Sub TryROneCOne()
     Dim strongScores As ROneCOne
     Dim scores As ROneCOne
 
-    Set scores = ROneCOne.ListOf(vbLong, _
-        CLng(90), CLng(72), CLng(88), CLng(95))
+    Set scores = ROneCOne.ListOf(vbLong, 90, 72, 88, 95)
 
     Set strongScores = scores _
-        .Where(scores.Element.AtLeast(CLng(85))) _
+        .Where(scores.Element.AtLeast(85)) _
         .OrderDescending _
         .ToList
 
@@ -65,6 +64,11 @@ End Sub
 The message should display `Scores at or above 85: 95, 90, 88`. `Element` means "the current
 number" while the list is being filtered. The same pattern works with object properties such as
 `Where("Age").AtLeast(40)`.
+
+You wrote `90`, not `CLng(90)`. A typed list accepts any number that fits its type without loss
+and stores it as the declared type, so plain integer literals go straight into a `List<Long>`.
+A value that would lose information, such as a decimal into a whole-number list, is still
+refused.
 
 You have created a checked list, filtered it, sorted it, and displayed the result without writing a
 loop, counter, or temporary array.
