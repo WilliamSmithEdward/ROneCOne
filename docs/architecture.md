@@ -109,9 +109,9 @@ See [`collections.md`](collections.md) for the public surface and examples.
 
 ## Task, data, and provider slice
 
-Every Task executes through one cooperative state machine on Excel's owning thread.
-`Task.RunOnExcel` schedules any zero-argument delegate; deadlines, continuations, and provider
-calls use the same scheduler. Bounded waits pump events, sleep briefly, and reject same-task
+Every Task executes through one cooperative state machine on Excel's owning thread. `Task.Run`
+schedules any zero-argument delegate; deadlines, continuations, and provider calls use the same
+scheduler. Bounded waits pump events, sleep briefly, and reject same-task
 reentrancy. Combinators retain child tasks, cancellation registrations own removable callback
 entries, and fault sets preserve VBA error identity in AggregateException values. An earlier
 release shipped a native thread-pool path for verified scalar expressions; it was removed because

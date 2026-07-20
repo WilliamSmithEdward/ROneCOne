@@ -936,19 +936,17 @@ Attribute Using.VB_Description = "Creates a deterministic resource scope."
     Set Using = scope
 End Function
 
-Public Function RunOnExcel( _
+Friend Function ScheduleTaskWork( _
     ByVal work As ROneCOne, _
     Optional ByVal cancellationToken As ROneCOne _
 ) As ROneCOne
-Attribute RunOnExcel.VB_Description = _
-    "Schedules VBA or Excel work cooperatively on Excel's thread."
     Dim taskValue As ROneCOne
 
-    ValidateTaskWork work, "Task.RunOnExcel"
-    ValidateCancellationToken cancellationToken, "Task.RunOnExcel"
+    ValidateTaskWork work, "Task.Run"
+    ValidateCancellationToken cancellationToken, "Task.Run"
     Set taskValue = New ROneCOne
     taskValue.ConfigureTask TASK_WORK, work, cancellationToken
-    Set RunOnExcel = taskValue
+    Set ScheduleTaskWork = taskValue
 End Function
 
 Public Function Delay( _
@@ -2831,7 +2829,7 @@ Attribute Combine.VB_Description = "Returns an immutable multicast delegate."
 End Function
 
 Public Function Run(ParamArray arguments() As Variant) As Variant
-Attribute Run.VB_Description = "Invokes, indexes, or selects a member from an expression."
+Attribute Run.VB_Description = "Invokes a delegate, schedules Task work, or indexes a sequence."
 Attribute Run.VB_UserMemId = 0
     Dim argumentValues As Collection
     Dim rawArgument As Variant
@@ -2977,6 +2975,24 @@ Private Sub AssignInvocationResult( _
     If mRole = ROLE_USING Then
         Set result = ExecuteUsingScope(argumentValues)
         AssignPublicResult destination, result
+        Exit Sub
+    End If
+
+    If mRole = ROLE_TASK_FACTORY Then
+        If argumentValues.Count < 1 Or argumentValues.Count > 2 Then
+            RaiseContractError ERROR_ARITY_MISMATCH, "Task.Run", _
+                "Task.Run requires work and an optional cancellation token."
+        End If
+        Set argumentValue = argumentValues.Item(1)
+        If argumentValues.Count = 1 Then
+            Set result = ScheduleTaskWork( _
+                RequireROneCOne(Unwrap(argumentValue), "Task.Run"))
+        Else
+            Set result = ScheduleTaskWork( _
+                RequireROneCOne(Unwrap(argumentValue), "Task.Run"), _
+                RequireROneCOne(Unwrap(argumentValues.Item(2)), "Task.Run"))
+        End If
+        Set destination = result
         Exit Sub
     End If
 

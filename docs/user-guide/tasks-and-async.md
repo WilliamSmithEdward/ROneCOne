@@ -24,8 +24,8 @@ Dim results As ROneCOne
 Set forecastWork = ROneCOne.Value(125000#).Multiply(1.08).AsFunc
 Set reorderWork = ROneCOne.Value(80#).Multiply(1.65).Add(20#).AsFunc
 
-Set forecastTask = ROneCOne.Task.RunOnExcel(forecastWork)
-Set reorderTask = ROneCOne.Task.RunOnExcel(reorderWork)
+Set forecastTask = ROneCOne.Task.Run(forecastWork)
+Set reorderTask = ROneCOne.Task.Run(reorderWork)
 Set results = ROneCOne.Task.WhenAll(forecastTask, reorderTask).Await
 
 Debug.Print results.Item(0)   ' 135000
@@ -35,7 +35,7 @@ Debug.Print results.Item(1)   ' 152
 In plain language:
 
 1. `AsFunc` turns each formula into a self-contained expression lambda.
-2. `Task.RunOnExcel` schedules it on the cooperative scheduler.
+2. `Task.Run` schedules it on the cooperative scheduler.
 3. `WhenAll` represents the pair.
 4. `Await` runs the scheduled work and returns both answers in the original order.
 
@@ -51,7 +51,7 @@ Dim ordersTask As ROneCOne
 Set countOpenOrders = ROneCOne.Func( _
     "Operations.CountOpenOrders").Takes().Returns(vbLong)
 
-Set ordersTask = ROneCOne.Task.RunOnExcel(countOpenOrders)
+Set ordersTask = ROneCOne.Task.Run(countOpenOrders)
 Debug.Print ordersTask.Await
 ```
 

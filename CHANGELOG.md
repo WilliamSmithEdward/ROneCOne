@@ -14,9 +14,12 @@ checksums for each version are on the
   x64 worker kernel, thread-pool and virtual-memory declares, and the `TaskRun`,
   `ExecutionMode`, `WorkerThreadId`, and `CurrentThreadId` members. Direct measurement showed
   the parallel path delivered no practical gain, and removing the embedded machine code
-  simplifies audit and trust. `Task.RunOnExcel` is the single execution path; signature-bound
-  native delegates through `DispCallFunc` are unchanged. See
-  [ADR 0001](docs/decisions/0001-remove-native-task-run.md).
+  simplifies audit and trust. Signature-bound native delegates through `DispCallFunc` are
+  unchanged. See [ADR 0001](docs/decisions/0001-remove-native-task-run.md).
+- `RunOnExcel`: with one execution model there is nothing left for the name to distinguish.
+  `Task.Run(work, optional token)` is the single scheduling call and executes cooperatively on
+  Excel's thread. See
+  [ADR 0002](docs/decisions/0002-task-run-names-the-cooperative-scheduler.md).
 - The kernel builder `tools/build_native_task_kernel.py` and its source contracts.
 - The unused `mExpressionText` field, the write-only collection builder flag, the bracketed
   `[Empty]` alias (`EmptyOf` remains), the duplicate public `TaskFromResult`
@@ -27,7 +30,7 @@ checksums for each version are on the
 
 - Rebuilt the Tasks demo and guide around cooperative coordination: scheduling, `WhenAll`,
   continuations, cancellation, progress, timeouts, and yielding.
-- The task benchmark now measures 1,000 cooperative `Task.RunOnExcel(...).Await` lifecycles.
+- The task benchmark now measures 1,000 cooperative `Task.Run(...).Await` lifecycles.
 
 ## 1.2.0 - 2026-07-19
 

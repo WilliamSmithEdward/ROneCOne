@@ -9,7 +9,7 @@ process. The sections below define the exact technical contract.
 
 ## Surface
 
-- `Task.RunOnExcel`, `Task.FromResult`, `Task.CompletedTask`, `Task.Delay`, and
+- `Task.Run`, `Task.FromResult`, `Task.CompletedTask`, `Task.Delay`, and
   `Task.YieldOnce`
 - `Await`, `Wait`, `Result`, `Status`, `Exception`, and terminal-state properties
 - `WhenAll`, `WhenAny`, `WaitAsync`, and `ContinueWith`
@@ -22,12 +22,14 @@ process. The sections below define the exact technical contract.
 
 ## Execution model
 
-Every Task executes on the cooperative scheduler on Excel's owning thread. `Task.RunOnExcel`
-schedules any zero-argument delegate: expression lambdas, ordinary VBA procedures, workbook
-work, and COM calls. Delay, continuations, provider calls, and pending completion sources use
-the same scheduler. Bounded waits pump Excel events and sleep briefly so the application remains
+Every Task executes on the cooperative scheduler on Excel's owning thread. `Task.Run` schedules
+any zero-argument delegate: expression lambdas, ordinary VBA procedures, workbook work, and COM
+calls. Delay, continuations, provider calls, and pending completion sources use the same
+scheduler. Bounded waits pump Excel events and sleep briefly so the application remains
 responsive. There is no other execution mode; a Task never moves work to another thread and
-never launches a second Excel application.
+never launches a second Excel application. The name follows C# because only one execution model
+exists; the single-thread boundary is documented here rather than encoded in a bespoke name
+(see [ADR 0002](decisions/0002-task-run-names-the-cooperative-scheduler.md)).
 
 ## Coordination and failure
 

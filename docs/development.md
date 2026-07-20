@@ -77,12 +77,13 @@ samples with a 0.5234375-second median. The same three processes repeat every es
 performance gate and all 425 live assertions. Measurements are recorded in
 `benchmarks/v1.2.0-baseline.json`.
 
-The v2.0.0 baseline follows the removal of the native execution slice
-([ADR 0001](decisions/0001-remove-native-task-run.md)). The task scenario becomes 1,000
-cooperative `Task.RunOnExcel(...).Await` lifecycles with a 0.0546875-second median against the
-retained 1.5-second gate, roughly ten times faster than the removed native path measured on the
-same machine. Three fresh processes repeat every established gate and all 416 live assertions.
-Measurements are recorded in `benchmarks/v2.0.0-baseline.json`.
+The v2.0.0 baseline follows the removal of the native execution slice and the renaming of the
+cooperative scheduling call to `Task.Run` ([ADR 0001](decisions/0001-remove-native-task-run.md),
+[ADR 0002](decisions/0002-task-run-names-the-cooperative-scheduler.md)). The task scenario
+becomes 1,000 cooperative `Task.Run(...).Await` lifecycles against the retained 1.5-second
+gate, roughly ten times faster than the removed native path measured on the same machine. Three
+fresh processes repeat every established gate and all 416 live assertions. Measurements are
+recorded in `benchmarks/v2.0.0-baseline.json`.
 
 pyVBAanalysis 1.2.0 treats a VBA bang identifier such as `!Age` as an ordinary variable token.
 Live bang examples therefore declare the token name in their local scope even though VBA uses it

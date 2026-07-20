@@ -287,7 +287,6 @@ class SourceContractTests(unittest.TestCase):
     def test_tasks_data_and_provider_contract_is_present(self) -> None:
         required_members = (
             "Task",
-            "RunOnExcel",
             "FromResult",
             "Delay",
             "WhenAll",
@@ -374,8 +373,10 @@ class SourceContractTests(unittest.TestCase):
             self.assertRegex(self.source, re.compile(pattern, re.IGNORECASE), member)
 
     def test_tasks_are_cooperative_only_with_no_native_execution(self) -> None:
-        self.assertIn("Public Function RunOnExcel(", self.source)
+        self.assertIn("Friend Function ScheduleTaskWork(", self.source)
+        self.assertIn('RaiseContractError ERROR_ARITY_MISMATCH, "Task.Run"', self.source)
         for removed_syntax in (
+            "RunOnExcel",
             "CreateThreadpoolWork",
             "SubmitThreadpoolWork",
             "VirtualAlloc",

@@ -54,9 +54,9 @@ Private Sub WriteTaskExamples()
     Set forecastWork = ROneCOne.Value(125000#).Multiply(1.08).AsFunc
     Set reorderWork = ROneCOne.Value(80#).Multiply(1.65).Add(20#).AsFunc
 
-    ' RunOnExcel schedules the work; WhenAll keeps results in the original order.
-    Set forecastTask = ROneCOne.Task.RunOnExcel(forecastWork)
-    Set reorderTask = ROneCOne.Task.RunOnExcel(reorderWork)
+    ' Task.Run schedules the work; WhenAll keeps results in the original order.
+    Set forecastTask = ROneCOne.Task.Run(forecastWork)
+    Set reorderTask = ROneCOne.Task.Run(reorderWork)
     Set allWork = ROneCOne.Task.WhenAll(forecastTask, reorderTask)
 
     ' A continuation turns the two raw numbers into a readable summary.
@@ -70,7 +70,7 @@ Private Sub WriteTaskExamples()
     ' This function reads VBA data, so it belongs on Excel's thread too.
     Set countOpenOrders = ROneCOne.Func( _
         "TasksDemoUsage.CountOpenOrders").Takes().Returns(vbLong)
-    Set openOrdersTask = ROneCOne.Task.RunOnExcel(countOpenOrders)
+    Set openOrdersTask = ROneCOne.Task.Run(countOpenOrders)
 
     ' Cancellation lets a button or timeout ask cooperative work to stop.
     Set source = ROneCOne.CancellationTokenSource
@@ -146,7 +146,7 @@ Private Sub RunTaskBenchmark()
     started = Timer
     For index = 1 To BENCHMARK_ITERATIONS
         Set work = ROneCOne.Value(index).Multiply(2&).AsFunc
-        result = ROneCOne.Task.RunOnExcel(work).Await
+        result = ROneCOne.Task.Run(work).Await
     Next index
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
         .Range("B6").Value2 = BENCHMARK_ITERATIONS

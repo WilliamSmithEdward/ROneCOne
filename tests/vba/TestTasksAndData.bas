@@ -202,7 +202,7 @@ Private Sub TestTaskLifecycle()
     Dim work As ROneCOne
 
     Set work = ROneCOne.Value(CLng(42)).AsFunc
-    Set taskValue = ROneCOne.Task.RunOnExcel(work)
+    Set taskValue = ROneCOne.Task.Run(work)
 
     AssertFalse "task starts incomplete", taskValue.IsCompleted
     AssertEqual "task await result", CLng(42), taskValue.Await
@@ -212,7 +212,7 @@ Private Sub TestTaskLifecycle()
 
     Set source = ROneCOne.CancellationTokenSource
     source.Cancel
-    Set taskValue = ROneCOne.Task.RunOnExcel(work, source.Token)
+    Set taskValue = ROneCOne.Task.Run(work, source.Token)
     On Error Resume Next
     ignored = taskValue.Await
     canceledError = Err.Number
@@ -265,8 +265,8 @@ Private Sub TestTaskCombinators()
     Set secondTask = ROneCOne.Value(2&).Divide(0&).AsFunc
     Set secondTask = secondTask.Returns(vbLong)
     Set faulted = ROneCOne.Task.WhenAll( _
-        ROneCOne.Task.RunOnExcel(firstTask), _
-        ROneCOne.Task.RunOnExcel(secondTask))
+        ROneCOne.Task.Run(firstTask), _
+        ROneCOne.Task.Run(secondTask))
     On Error Resume Next
     ignored = faulted.Await
     faultNumber = Err.Number

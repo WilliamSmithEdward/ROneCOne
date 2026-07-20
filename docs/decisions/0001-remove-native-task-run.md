@@ -1,6 +1,8 @@
 # ADR 0001: Remove the native Task.Run execution slice
 
-Status: accepted, 2026-07-19
+Status: accepted, 2026-07-19; the naming portion is superseded by
+[ADR 0002](0002-task-run-names-the-cooperative-scheduler.md), which renames the cooperative
+scheduling call to `Task.Run`
 
 ## Context
 
