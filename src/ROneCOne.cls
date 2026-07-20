@@ -276,7 +276,8 @@ Private mErrorDescription As String
 Private mErrorHelpFile As String
 Private mErrorHelpContext As Long
 
-Private mItems As Collection
+Private mItems() As ROneCOne
+Private mItemsCount As Long
 Private mEnumerationValues As Collection
 Private mElementType As VbVarType
 Private mElementObjectType As String
@@ -290,8 +291,10 @@ Private mEnumerationVersion As Long
 Private mElementParameter As ROneCOne
 Private mContextMemberPath As String
 Private mCollectionKind As Long
-Private mKeys As Collection
-Private mPriorities As Collection
+Private mKeys() As ROneCOne
+Private mKeysCount As Long
+Private mPriorities() As ROneCOne
+Private mPrioritiesCount As Long
 Private mHashSlots() As Long
 Private mHashCodes() As Long
 Private mHashKeys() As ROneCOne
@@ -316,7 +319,8 @@ Private mTaskWaitActive As Boolean
 Private mCancellationSource As ROneCOne
 Private mCancellationRequested As Boolean
 Private mName As String
-Private mOriginalItems As Collection
+Private mOriginalItems() As ROneCOne
+Private mOriginalItemsCount As Long
 Private mPrimaryKey As Collection
 Private mDataIndex As ROneCOne
 Private mDataTables As Collection
@@ -1079,7 +1083,7 @@ Attribute IsCompleted.VB_Description = "Reports terminal Task or blocking-collec
     If mRole = ROLE_TASK Then
         IsCompleted = (mTaskStatus >= TASK_STATUS_COMPLETED)
     ElseIf mCollectionKind = COLLECTION_BLOCKING Then
-        IsCompleted = (mAddingCompleted And mItems.Count = 0)
+        IsCompleted = (mAddingCompleted And mItemsCount = 0)
     Else
         RaiseContractError ERROR_INVALID_OPERATION, "IsCompleted", _
             "IsCompleted requires a Task or BlockingCollection."
@@ -1553,7 +1557,7 @@ Public Sub AddColumn(ByVal column As ROneCOne)
 Attribute AddColumn.VB_Description = "Adds a DataColumn to a DataTable schema."
     RequireDataTable Me, "AddColumn"
     RequireDataColumn column, "AddColumn"
-    If FindNamedObjectIndex(mKeys, column.ColumnName) >= 0 Then
+    If FindNamedObjectIndex(ArrSnapshot(mKeys, mKeysCount), column.ColumnName) >= 0 Then
         RaiseContractError ERROR_INVALID_ARGUMENT, "AddColumn", _
             "A column with the same name already exists."
     End If
@@ -1562,7 +1566,7 @@ Attribute AddColumn.VB_Description = "Adds a DataColumn to a DataTable schema."
             "The DataColumn already belongs to a table."
     End If
     column.ConfigureReadOnlySource Me
-    mKeys.Add column
+    ArrAppend mKeys, mKeysCount, column
 End Sub
 
 Public Function Column( _
@@ -1607,18 +1611,18 @@ Attribute Row.VB_Description = "Creates a detached DataRow from positional value
         valueCount = 0
     End If
     On Error GoTo 0
-    If valueCount > mKeys.Count Then
+    If valueCount > mKeysCount Then
         RaiseContractError ERROR_INVALID_ARGUMENT, "Row", _
             "The row contains more values than the table has columns."
     End If
-    For Each column In mKeys
+    For Each column In ArrSnapshot(mKeys, mKeysCount)
         If Not column.InternalAutoIncrement Then nonAutoCount = nonAutoCount + 1
     Next column
-    If valueCount > 0 And nonAutoCount < mKeys.Count And _
+    If valueCount > 0 And nonAutoCount < mKeysCount And _
         valueCount <= nonAutoCount Then
         valueIndex = LBound(values)
-        For columnIndex = 1 To mKeys.Count
-            Set column = mKeys.Item(columnIndex)
+        For columnIndex = 1 To mKeysCount
+            Set column = mKeys(columnIndex)
             If Not column.InternalAutoIncrement And valueIndex <= UBound(values) Then
                 rowValue.Item(columnIndex - 1) = values(valueIndex)
                 valueIndex = valueIndex + 1
@@ -1646,7 +1650,7 @@ Attribute AddRow.VB_Description = "Adds a detached DataRow after validating cons
     End If
     ValidateDataRowConstraints row, Nothing
     ValidateForeignKeyConstraints row
-    mItems.Add row
+    ArrAppend mItems, mItemsCount, row
     row.ConfigureRowState ROW_STATE_ADDED
     RebuildPrimaryKeyIndex
     mVersion = mVersion + 1
@@ -1660,7 +1664,7 @@ Attribute LoadRow.VB_Description = "Creates and adds a DataRow from an array or 
 
     RequireDataTable Me, "LoadRow"
     Set wrappedValues = BuildDynamicArguments(values)
-    If wrappedValues.Count > mKeys.Count Then
+    If wrappedValues.Count > mKeysCount Then
         RaiseContractError ERROR_INVALID_ARGUMENT, "LoadRow", _
             "The row contains more values than the table has columns."
     End If
@@ -1758,7 +1762,7 @@ Attribute LoadFromRange.VB_Description = _
 
     RequireDataTable Me, "LoadFromRange"
     ReadRangeGrid source, grid, rowCount, colCount, "LoadFromRange"
-    If colCount <> mKeys.Count Then
+    If colCount <> mKeysCount Then
         RaiseContractError ERROR_INVALID_ARGUMENT, "LoadFromRange", _
             "The range column count does not match the table column count."
     End If
@@ -1834,9 +1838,9 @@ Private Function WriteDataTableToRange( _
     Dim writtenRow As Long
 
     RequireRangeTarget target, "ToRange"
-    colCount = mKeys.Count
+    colCount = mKeysCount
     Set liveRows = New Collection
-    For Each row In mItems
+    For Each row In ArrSnapshot(mItems, mItemsCount)
         If row.RowState <> "Deleted" Then liveRows.Add row
     Next row
     outputRows = liveRows.Count
@@ -1845,7 +1849,7 @@ Private Function WriteDataTableToRange( _
     ReDim output(1 To outputRows, 1 To colCount)
     If writeHeaders Then
         For colIndex = 1 To colCount
-            Set column = mKeys.Item(colIndex)
+            Set column = mKeys(colIndex)
             output(1, colIndex) = column.ColumnName
         Next colIndex
         rowOffset = 1
@@ -1911,7 +1915,7 @@ Attribute Copy.VB_Description = "Copies a DataTable schema and current rows."
 
     RequireDataTable Me, "Copy"
     Set result = CloneDataTableSchema(Me)
-    For Each row In mItems
+    For Each row In ArrSnapshot(mItems, mItemsCount)
         If row.RowState <> "Deleted" Then CopyDataRowInto row, result
     Next row
     result.AcceptChanges
@@ -1947,7 +1951,7 @@ Attribute GetChanges.VB_Description = "Copies rows that have pending changes."
     End If
     RequireDataTable Me, "GetChanges"
     Set result = CloneDataTableSchema(Me)
-    For Each row In mItems
+    For Each row In ArrSnapshot(mItems, mItemsCount)
         If row.RowState <> "Unchanged" Then CopyDataRowInto row, result
     Next row
     Set GetChanges = result
@@ -2003,13 +2007,13 @@ End Sub
 Public Property Get Columns() As ROneCOne
 Attribute Columns.VB_Description = "Gets the named DataColumn collection."
     RequireDataTable Me, "Columns"
-    Set Columns = CreateNamedDataCollection(mKeys)
+    Set Columns = CreateNamedDataCollection(ArrSnapshot(mKeys, mKeysCount))
 End Property
 
 Public Property Get Rows() As ROneCOne
 Attribute Rows.VB_Description = "Gets the DataRow collection."
     RequireDataTable Me, "Rows"
-    Set Rows = CreateObjectListSnapshot(mItems)
+    Set Rows = CreateObjectListSnapshot(ArrSnapshot(mItems, mItemsCount))
 End Property
 
 Public Property Get Tables() As ROneCOne
@@ -2089,10 +2093,10 @@ Attribute AcceptChanges.VB_Description = "Commits current DataRow values as orig
         Exit Sub
     End If
     If mRole = ROLE_DATA_TABLE Then
-        For index = mItems.Count To 1 Step -1
-            Set row = mItems.Item(index)
+        For index = mItemsCount To 1 Step -1
+            Set row = mItems(index)
             If row.RowState = "Deleted" Then
-                mItems.Remove index
+                ArrRemoveAt mItems, mItemsCount, index
             Else
                 row.AcceptChanges
             End If
@@ -2121,10 +2125,10 @@ Attribute RejectChanges.VB_Description = "Rolls back DataRow values to their ori
         Exit Sub
     End If
     If mRole = ROLE_DATA_TABLE Then
-        For index = mItems.Count To 1 Step -1
-            Set row = mItems.Item(index)
+        For index = mItemsCount To 1 Step -1
+            Set row = mItems(index)
             If row.RowState = "Added" Then
-                mItems.Remove index
+                ArrRemoveAt mItems, mItemsCount, index
             Else
                 row.RejectChanges
             End If
@@ -2274,7 +2278,7 @@ Attribute AddParameter.VB_Description = "Adds a parameter to a database command.
         RaiseContractError ERROR_INVALID_OPERATION, "AddParameter", _
             "AddParameter requires a DbParameter."
     End If
-    mItems.Add parameter
+    ArrAppend mItems, mItemsCount, parameter
 End Sub
 
 Public Function WithParameter( _
@@ -2358,7 +2362,7 @@ End Function
 Public Property Get Parameters() As ROneCOne
 Attribute Parameters.VB_Description = "Gets a read-only view of command parameters."
     RequireDbCommand Me, "Parameters"
-    Set Parameters = CreateReadOnlyCollectionFromItems(mItems)
+    Set Parameters = CreateReadOnlyCollectionFromItems(ArrSnapshot(mItems, mItemsCount))
 End Property
 
 Public Property Get State() As String
@@ -3244,7 +3248,7 @@ Private Sub AssignInvocationResult( _
             Set result = FindHashValue(keyWrapped, "Run")
         Else
             itemIndex = FindKeyIndex(keyWrapped, "Run")
-            If itemIndex >= 0 Then Set result = mItems.Item(itemIndex + 1)
+            If itemIndex >= 0 Then Set result = mItems(itemIndex + 1)
         End If
         If result Is Nothing Then
             RaiseContractError ERROR_INVALID_ARGUMENT, "Run", _
@@ -3328,7 +3332,7 @@ Attribute Add.VB_Description = "Adds a list item or creates an addition expressi
                 "List<T>.Add accepts one item."
         End If
         Set wrapped = WrapElement(operand, "Add")
-        mItems.Add wrapped
+        ArrAppend mItems, mItemsCount, wrapped
         AddUnwrappedValue mEnumerationValues, wrapped
         mVersion = mVersion + 1
         Set Add = Me
@@ -3732,7 +3736,7 @@ Attribute Item.VB_Description = "Gets or sets a zero-based typed list item."
         Else
             Set keyWrapped = WrapKey(index, "Item")
             itemIndex = FindKeyIndex(keyWrapped, "Item")
-            If itemIndex >= 0 Then Set wrapped = mItems.Item(itemIndex + 1)
+            If itemIndex >= 0 Then Set wrapped = mItems(itemIndex + 1)
         End If
         If wrapped Is Nothing Then
             RaiseContractError ERROR_INVALID_ARGUMENT, "Item", _
@@ -3751,7 +3755,7 @@ Attribute Item.VB_Description = "Gets or sets a zero-based typed list item."
         Else
             Set keyWrapped = WrapKey(index, "Item")
             itemIndex = FindKeyIndex(keyWrapped, "Item")
-            If itemIndex >= 0 Then Set wrapped = mItems.Item(itemIndex + 1)
+            If itemIndex >= 0 Then Set wrapped = mItems(itemIndex + 1)
         End If
         If wrapped Is Nothing Then
             RaiseContractError ERROR_INVALID_ARGUMENT, "Item", _
@@ -3760,8 +3764,8 @@ Attribute Item.VB_Description = "Gets or sets a zero-based typed list item."
     ElseIf mCollectionKind = COLLECTION_READ_ONLY Then
         Set wrapped = mSource.MaterializeWrapped.Item(CLng(index) + 1)
     ElseIf IsGenericCollectionRole(mRole) Then
-        ValidateIndex CLng(index), mItems.Count, "Item"
-        Set wrapped = mItems.Item(CLng(index) + 1)
+        ValidateIndex CLng(index), mItemsCount, "Item"
+        Set wrapped = mItems(CLng(index) + 1)
     Else
         Set wrapped = WrappedItem(CLng(index))
     End If
@@ -3786,7 +3790,7 @@ Attribute Count.VB_Description = "Counts every element or only predicate matches
         If mCollectionKind = COLLECTION_READ_ONLY Then
             Count = mSource.Count
         Else
-            Count = mItems.Count
+            Count = mItemsCount
         End If
         Exit Property
     End If
@@ -3810,7 +3814,7 @@ End Property
 Public Function EnsureCapacity(ByVal capacityValue As Long) As Long
 Attribute EnsureCapacity.VB_Description = "Reserves hash capacity without changing Count."
     RequireHashCapacityCollection "EnsureCapacity"
-    If capacityValue < mItems.Count Then
+    If capacityValue < mItemsCount Then
         RaiseContractError ERROR_INVALID_ARGUMENT, "EnsureCapacity", _
             "Capacity cannot be smaller than Count."
     End If
@@ -3824,10 +3828,10 @@ End Function
 Public Sub TrimExcess()
 Attribute TrimExcess.VB_Description = "Rebuilds the hash index at the smallest safe capacity."
     RequireHashCapacityCollection "TrimExcess"
-    If mItems.Count = 0 Then
+    If mItemsCount = 0 Then
         ResetHashIndex
     Else
-        ResizeHashIndex NextHashCapacity(mItems.Count * 2)
+        ResizeHashIndex NextHashCapacity(mItemsCount * 2)
     End If
 End Sub
 
@@ -3880,7 +3884,7 @@ Attribute AddRange.VB_Description = "Atomically appends a sequence, array, or Co
         ValidateElementWrapped wrapped, "AddRange"
     Next wrapped
     For Each wrapped In incoming
-        mItems.Add wrapped
+        ArrAppend mItems, mItemsCount, wrapped
         AddUnwrappedValue mEnumerationValues, wrapped
     Next wrapped
     If incoming.Count > 0 Then mVersion = mVersion + 1
@@ -3890,9 +3894,9 @@ Public Sub Clear()
 Attribute Clear.VB_Description = "Removes every item from this typed list."
     If IsGenericCollectionRole(mRole) Then
         RequireMutableCollection "Clear"
-        Set mItems = New Collection
-        Set mKeys = New Collection
-        Set mPriorities = New Collection
+        ArrReset mItems, mItemsCount
+        ArrReset mKeys, mKeysCount
+        ArrReset mPriorities, mPrioritiesCount
         If HashIndexSupported Then
             RebuildHashIndex 8
         Else
@@ -3903,7 +3907,7 @@ Attribute Clear.VB_Description = "Removes every item from this typed list."
         Exit Sub
     End If
     RequireList Me, "Clear"
-    Set mItems = New Collection
+    ArrReset mItems, mItemsCount
     Set mEnumerationValues = New Collection
     mVersion = mVersion + 1
 End Sub
@@ -4016,15 +4020,15 @@ Attribute Insert.VB_Description = "Inserts a typed item at a zero-based list ind
     Dim wrapped As ROneCOne
 
     RequireList Me, "Insert"
-    If index < 0 Or index > mItems.Count Then
+    If index < 0 Or index > mItemsCount Then
         RaiseIndexError "Insert", index
     End If
     Set wrapped = WrapElement(value, "Insert")
-    If index = mItems.Count Then
-        mItems.Add wrapped
+    If index = mItemsCount Then
+        ArrAppend mItems, mItemsCount, wrapped
         AddUnwrappedValue mEnumerationValues, wrapped
     Else
-        mItems.Add wrapped, Before:=index + 1
+        ArrInsert mItems, mItemsCount, index + 1, wrapped
         AddUnwrappedValue mEnumerationValues, wrapped, index + 1
     End If
     mVersion = mVersion + 1
@@ -4095,13 +4099,13 @@ Public Sub RemoveAt(ByVal index As Long)
 Attribute RemoveAt.VB_Description = "Removes the item at a zero-based list index."
     If IsGenericCollectionRole(mRole) Then
         RequireMutableCollection "RemoveAt"
-        ValidateIndex index, mItems.Count, "RemoveAt"
+        ValidateIndex index, mItemsCount, "RemoveAt"
         RemoveCollectionAt index
         Exit Sub
     End If
     RequireList Me, "RemoveAt"
-    ValidateIndex index, mItems.Count, "RemoveAt"
-    mItems.Remove index + 1
+    ValidateIndex index, mItemsCount, "RemoveAt"
+    ArrRemoveAt mItems, mItemsCount, index + 1
     mEnumerationValues.Remove index + 1
     mVersion = mVersion + 1
 End Sub
@@ -4162,7 +4166,7 @@ Attribute TryGetValue.VB_Description = "Copies a keyed value into a typed refere
         Set selected = FindHashValue(keyWrapped, "TryGetValue")
     Else
         itemIndex = FindKeyIndex(keyWrapped, "TryGetValue")
-        If itemIndex >= 0 Then Set selected = mItems.Item(itemIndex + 1)
+        If itemIndex >= 0 Then Set selected = mItems(itemIndex + 1)
     End If
     If selected Is Nothing Then Exit Function
     AssignReferenceWrapped valueReference, selected, "TryGetValue"
@@ -4177,7 +4181,7 @@ Attribute Keys.VB_Description = "Gets a typed snapshot of the collection keys."
     RequireKeyedCollection "Keys"
     Set result = New ROneCOne
     result.ConfigureList mKeyType, mKeyObjectType
-    For Each wrapped In mKeys
+    For Each wrapped In ArrSnapshot(mKeys, mKeysCount)
         result.InternalAddWrapped wrapped
     Next wrapped
     Set Keys = result
@@ -4191,7 +4195,7 @@ Attribute Values.VB_Description = "Gets a typed snapshot of the collection value
     RequireKeyedCollection "Values"
     Set result = New ROneCOne
     result.ConfigureList mElementType, mElementObjectType
-    For Each wrapped In mItems
+    For Each wrapped In ArrSnapshot(mItems, mItemsCount)
         result.InternalAddWrapped wrapped
     Next wrapped
     Set Values = result
@@ -4253,8 +4257,8 @@ Attribute Dequeue.VB_Description = "Removes and returns the next queue element."
         RaiseContractError ERROR_INVALID_OPERATION, "Dequeue", _
             "Dequeue requires a queue."
     End If
-    If mItems.Count = 0 Then RaiseEmptySequence "Dequeue"
-    Set wrapped = mItems.Item(1)
+    If mItemsCount = 0 Then RaiseEmptySequence "Dequeue"
+    Set wrapped = mItems(1)
     RemoveCollectionAt 0
     AssignPublicResult Dequeue, wrapped
 End Function
@@ -4268,8 +4272,8 @@ Attribute TryDequeue.VB_Description = "Attempts to remove the next queue element
         RaiseContractError ERROR_INVALID_OPERATION, "TryDequeue", _
             "TryDequeue requires a queue."
     End If
-    If mItems.Count = 0 Then Exit Function
-    AssignReferenceWrapped valueReference, mItems.Item(1), "TryDequeue"
+    If mItemsCount = 0 Then Exit Function
+    AssignReferenceWrapped valueReference, mItems(1), "TryDequeue"
     RemoveCollectionAt 0
     TryDequeue = True
 End Function
@@ -4305,8 +4309,8 @@ Attribute Pop.VB_Description = "Removes and returns the top stack element."
         RaiseContractError ERROR_INVALID_OPERATION, "Pop", _
             "Pop requires a stack."
     End If
-    If mItems.Count = 0 Then RaiseEmptySequence "Pop"
-    Set wrapped = mItems.Item(1)
+    If mItemsCount = 0 Then RaiseEmptySequence "Pop"
+    Set wrapped = mItems(1)
     RemoveCollectionAt 0
     AssignPublicResult Pop, wrapped
 End Function
@@ -4319,8 +4323,8 @@ Attribute TryPop.VB_Description = "Attempts to remove the top stack element."
         RaiseContractError ERROR_INVALID_OPERATION, "TryPop", _
             "TryPop requires a stack."
     End If
-    If mItems.Count = 0 Then Exit Function
-    AssignReferenceWrapped valueReference, mItems.Item(1), "TryPop"
+    If mItemsCount = 0 Then Exit Function
+    AssignReferenceWrapped valueReference, mItems(1), "TryPop"
     RemoveCollectionAt 0
     TryPop = True
 End Function
@@ -4333,8 +4337,8 @@ Attribute Peek.VB_Description = "Returns the next queue or stack element without
         RaiseContractError ERROR_INVALID_OPERATION, "Peek", _
             "Peek requires a queue or stack."
     End If
-    If mItems.Count = 0 Then RaiseEmptySequence "Peek"
-    AssignPublicResult Peek, mItems.Item(1)
+    If mItemsCount = 0 Then RaiseEmptySequence "Peek"
+    AssignPublicResult Peek, mItems(1)
 End Function
 
 Public Function TryPeek(ByVal valueReference As ROneCOne) As Boolean
@@ -4346,8 +4350,8 @@ Attribute TryPeek.VB_Description = "Attempts to read the next queue or stack ele
         RaiseContractError ERROR_INVALID_OPERATION, "TryPeek", _
             "TryPeek requires a queue or stack."
     End If
-    If mItems.Count = 0 Then Exit Function
-    AssignReferenceWrapped valueReference, mItems.Item(1), "TryPeek"
+    If mItemsCount = 0 Then Exit Function
+    AssignReferenceWrapped valueReference, mItems(1), "TryPeek"
     TryPeek = True
 End Function
 
@@ -4355,10 +4359,10 @@ Public Function AddFirst(ByVal value As Variant) As ROneCOne
 Attribute AddFirst.VB_Description = "Adds an item at the beginning of a linked list."
     RequireLinkedList "AddFirst"
     RequireMutableCollection "AddFirst"
-    If mItems.Count = 0 Then
-        mItems.Add WrapElement(value, "AddFirst")
+    If mItemsCount = 0 Then
+        ArrAppend mItems, mItemsCount, WrapElement(value, "AddFirst")
     Else
-        mItems.Add WrapElement(value, "AddFirst"), Before:=1
+        ArrInsert mItems, mItemsCount, 1, WrapElement(value, "AddFirst")
     End If
     mVersion = mVersion + 1
     Set AddFirst = FirstNode
@@ -4368,7 +4372,7 @@ Public Function AddLast(ByVal value As Variant) As ROneCOne
 Attribute AddLast.VB_Description = "Adds an item at the end of a linked list."
     RequireLinkedList "AddLast"
     RequireMutableCollection "AddLast"
-    mItems.Add WrapElement(value, "AddLast")
+    ArrAppend mItems, mItemsCount, WrapElement(value, "AddLast")
     mVersion = mVersion + 1
     Set AddLast = LastNode
 End Function
@@ -4377,7 +4381,7 @@ Public Sub RemoveFirst()
 Attribute RemoveFirst.VB_Description = "Removes the first linked-list item."
     RequireLinkedList "RemoveFirst"
     RequireMutableCollection "RemoveFirst"
-    If mItems.Count = 0 Then RaiseEmptySequence "RemoveFirst"
+    If mItemsCount = 0 Then RaiseEmptySequence "RemoveFirst"
     RemoveCollectionAt 0
 End Sub
 
@@ -4385,36 +4389,36 @@ Public Sub RemoveLast()
 Attribute RemoveLast.VB_Description = "Removes the last linked-list item."
     RequireLinkedList "RemoveLast"
     RequireMutableCollection "RemoveLast"
-    If mItems.Count = 0 Then RaiseEmptySequence "RemoveLast"
-    RemoveCollectionAt mItems.Count - 1
+    If mItemsCount = 0 Then RaiseEmptySequence "RemoveLast"
+    RemoveCollectionAt mItemsCount - 1
 End Sub
 
 Public Property Get FirstNode() As ROneCOne
 Attribute FirstNode.VB_Description = "Gets the first linked-list node."
     RequireLinkedList "FirstNode"
-    If mItems.Count = 0 Then Exit Property
+    If mItemsCount = 0 Then Exit Property
     Set FirstNode = CreateCollectionNode(0)
 End Property
 
 Public Property Get LastNode() As ROneCOne
 Attribute LastNode.VB_Description = "Gets the last linked-list node."
     RequireLinkedList "LastNode"
-    If mItems.Count = 0 Then Exit Property
-    Set LastNode = CreateCollectionNode(mItems.Count - 1)
+    If mItemsCount = 0 Then Exit Property
+    Set LastNode = CreateCollectionNode(mItemsCount - 1)
 End Property
 
 Public Property Get MinValue() As Variant
 Attribute MinValue.VB_Description = "Gets the minimum element of a sorted set."
     RequireSortedSet "MinValue"
-    If mItems.Count = 0 Then RaiseEmptySequence "MinValue"
-    AssignPublicResult MinValue, mItems.Item(1)
+    If mItemsCount = 0 Then RaiseEmptySequence "MinValue"
+    AssignPublicResult MinValue, mItems(1)
 End Property
 
 Public Property Get MaxValue() As Variant
 Attribute MaxValue.VB_Description = "Gets the maximum element of a sorted set."
     RequireSortedSet "MaxValue"
-    If mItems.Count = 0 Then RaiseEmptySequence "MaxValue"
-    AssignPublicResult MaxValue, mItems.Item(mItems.Count)
+    If mItemsCount = 0 Then RaiseEmptySequence "MaxValue"
+    AssignPublicResult MaxValue, mItems(mItemsCount)
 End Property
 
 Public Function GetViewBetween( _
@@ -4433,7 +4437,7 @@ Attribute GetViewBetween.VB_Description = "Gets a sorted-set range view."
     Set result = New ROneCOne
     result.ConfigureGenericCollection ROLE_HASH_SET, COLLECTION_SORTED_SET, _
         mElementType, mElementObjectType, vbEmpty, vbNullString, mQueryComparer
-    For Each wrapped In mItems
+    For Each wrapped In ArrSnapshot(mItems, mItemsCount)
         If CompareWithComparer(wrapped, lowerWrapped, mQueryComparer, _
             "GetViewBetween") >= 0 And _
             CompareWithComparer(wrapped, upperWrapped, mQueryComparer, _
@@ -4510,8 +4514,8 @@ Attribute IntersectWith.VB_Description = "Keeps only values found in both sets."
     RequireSetCollection "IntersectWith"
     RequireMutableCollection "IntersectWith"
     Set incoming = BuildIncomingItems(other, "IntersectWith")
-    For index = mItems.Count To 1 Step -1
-        If FindWrappedInCollection(incoming, mItems.Item(index), _
+    For index = mItemsCount To 1 Step -1
+        If FindWrappedInCollection(incoming, mItems(index), _
             "IntersectWith") < 0 Then RemoveCollectionAt index - 1
     Next index
 End Sub
@@ -4538,7 +4542,7 @@ Attribute SetEquals.VB_Description = "Tests whether two sets contain the same va
 
     RequireSetCollection "SetEquals"
     Set incoming = BuildIncomingItems(other, "SetEquals")
-    If incoming.Count <> mItems.Count Then Exit Function
+    If incoming.Count <> mItemsCount Then Exit Function
     For Each wrapped In incoming
         If FindElementIndex(wrapped, "SetEquals") < 0 Then Exit Function
     Next wrapped
@@ -4561,7 +4565,7 @@ Attribute GetOrAdd.VB_Description = "Gets an existing value or atomically adds o
         Set selected = FindHashValue(keyWrapped, "GetOrAdd")
     Else
         itemIndex = FindKeyIndex(keyWrapped, "GetOrAdd")
-        If itemIndex >= 0 Then Set selected = mItems.Item(itemIndex + 1)
+        If itemIndex >= 0 Then Set selected = mItems(itemIndex + 1)
     End If
     If selected Is Nothing Then
         Set selected = WrapElement(value, "GetOrAdd")
@@ -4592,7 +4596,7 @@ Attribute TryRemove.VB_Description = "Atomically removes a keyed value when pres
     Else
         itemIndex = FindKeyIndex(keyWrapped, "TryRemove")
         If itemIndex < 0 Then Exit Function
-        Set selected = mItems.Item(itemIndex + 1)
+        Set selected = mItems(itemIndex + 1)
     End If
     AssignReferenceWrapped valueReference, selected, "TryRemove"
     RemoveCollectionAt itemIndex
@@ -4621,7 +4625,7 @@ Attribute TryUpdate.VB_Description = "Updates a concurrent value after compariso
     Else
         itemIndex = FindKeyIndex(keyWrapped, "TryUpdate")
         If itemIndex < 0 Then Exit Function
-        Set selected = mItems.Item(itemIndex + 1)
+        Set selected = mItems(itemIndex + 1)
     End If
     Set expected = WrapElement(comparisonValue, "TryUpdate")
     If Not ValuesEqual(selected, expected) Then Exit Function
@@ -4660,8 +4664,8 @@ Attribute ExceptWith.VB_Description = "Removes every value found in another sequ
     RequireSetCollection "ExceptWith"
     RequireMutableCollection "ExceptWith"
     Set incoming = BuildIncomingItems(other, "ExceptWith")
-    For index = mItems.Count To 1 Step -1
-        If FindWrappedInCollection(incoming, mItems.Item(index), _
+    For index = mItemsCount To 1 Step -1
+        If FindWrappedInCollection(incoming, mItems(index), _
             "ExceptWith") >= 0 Then RemoveCollectionAt index - 1
     Next index
 End Sub
@@ -4716,8 +4720,8 @@ Attribute RemoveWhere.VB_Description = "Removes set values matching a predicate.
     RequireSetCollection "RemoveWhere"
     RequireMutableCollection "RemoveWhere"
     Set predicateValue = NormalizeContextUnary(predicate, "RemoveWhere", False)
-    For index = mItems.Count To 1 Step -1
-        If InvokePredicate(predicateValue, mItems.Item(index), "RemoveWhere") Then
+    For index = mItemsCount To 1 Step -1
+        If InvokePredicate(predicateValue, mItems(index), "RemoveWhere") Then
             RemoveCollectionAt index - 1
             RemoveWhere = RemoveWhere + 1
         End If
@@ -4728,7 +4732,7 @@ Public Function TryAddItem(ByVal value As Variant) As Boolean
 Attribute TryAddItem.VB_Description = "Attempts to add to a blocking collection."
     RequireBlockingCollection "TryAddItem"
     If mAddingCompleted Then Exit Function
-    If mQueryCount >= 0 And mItems.Count >= mQueryCount Then Exit Function
+    If mQueryCount >= 0 And mItemsCount >= mQueryCount Then Exit Function
     AddMutable value, , "TryAddItem"
     TryAddItem = True
 End Function
@@ -4748,8 +4752,8 @@ End Property
 Public Function TakeItem() As Variant
 Attribute TakeItem.VB_Description = "Removes the next blocking-collection value."
     RequireBlockingCollection "TakeItem"
-    If mItems.Count = 0 Then RaiseEmptySequence "TakeItem"
-    AssignPublicResult TakeItem, mItems.Item(1)
+    If mItemsCount = 0 Then RaiseEmptySequence "TakeItem"
+    AssignPublicResult TakeItem, mItems(1)
     RemoveCollectionAt 0
 End Function
 
@@ -4757,8 +4761,8 @@ Public Function TryTake(ByVal valueReference As ROneCOne) As Boolean
 Attribute TryTake.VB_Description = "Attempts to remove a blocking-collection value."
     RequireBlockingCollection "TryTake"
     RequireReference valueReference, "TryTake"
-    If mItems.Count = 0 Then Exit Function
-    AssignReferenceWrapped valueReference, mItems.Item(1), "TryTake"
+    If mItemsCount = 0 Then Exit Function
+    AssignReferenceWrapped valueReference, mItems(1), "TryTake"
     RemoveCollectionAt 0
     TryTake = True
 End Function
@@ -4771,9 +4775,9 @@ Attribute TryPeekPair.VB_Description = "Reads the next priority-queue element an
     RequirePriorityQueue "TryPeekPair"
     RequireReference elementReference, "TryPeekPair"
     RequireReference priorityReference, "TryPeekPair"
-    If mItems.Count = 0 Then Exit Function
-    AssignReferenceWrapped elementReference, mItems.Item(1), "TryPeekPair"
-    AssignReferenceWrapped priorityReference, mPriorities.Item(1), "TryPeekPair"
+    If mItemsCount = 0 Then Exit Function
+    AssignReferenceWrapped elementReference, mItems(1), "TryPeekPair"
+    AssignReferenceWrapped priorityReference, mPriorities(1), "TryPeekPair"
     TryPeekPair = True
 End Function
 
@@ -4799,8 +4803,8 @@ Attribute DequeueEnqueue.VB_Description = _
 
     RequirePriorityQueue "DequeueEnqueue"
     RequireMutableCollection "DequeueEnqueue"
-    If mItems.Count = 0 Then RaiseEmptySequence "DequeueEnqueue"
-    Set removed = mItems.Item(1)
+    If mItemsCount = 0 Then RaiseEmptySequence "DequeueEnqueue"
+    Set removed = mItems(1)
     RemoveCollectionAt 0
     AddPriorityValue WrapElement(element, "DequeueEnqueue"), _
         WrapKey(priority, "DequeueEnqueue")
@@ -4819,7 +4823,7 @@ Attribute EnqueueDequeue.VB_Description = _
     RequireMutableCollection "EnqueueDequeue"
     AddPriorityValue WrapElement(element, "EnqueueDequeue"), _
         WrapKey(priority, "EnqueueDequeue")
-    Set removed = mItems.Item(1)
+    Set removed = mItems(1)
     RemoveCollectionAt 0
     AssignPublicResult EnqueueDequeue, removed
 End Function
@@ -4831,9 +4835,9 @@ Attribute UnorderedItems.VB_Description = "Gets priority-queue element-priority 
 
     RequirePriorityQueue "UnorderedItems"
     Set result = ROneCOne.ListOf(vbObject)
-    For index = 1 To mItems.Count
+    For index = 1 To mItemsCount
         result.Add CreateDictionaryEntry( _
-            mItems.Item(index), mPriorities.Item(index))
+            mItems(index), mPriorities(index))
     Next index
     Set UnorderedItems = result
 End Property
@@ -4896,8 +4900,8 @@ Attribute FindLastNode.VB_Description = "Finds the last linked-list node with a 
 
     RequireLinkedList "FindLastNode"
     Set candidate = WrapElement(value, "FindLastNode")
-    For index = mItems.Count To 1 Step -1
-        If ValuesEqualWithComparer(mItems.Item(index), candidate, _
+    For index = mItemsCount To 1 Step -1
+        If ValuesEqualWithComparer(mItems(index), candidate, _
             mQueryComparer, "FindLastNode") Then
             Set FindLastNode = CreateCollectionNode(index - 1)
             Exit Function
@@ -4995,7 +4999,7 @@ Attribute DequeueImmutable.VB_Description = "Returns an immutable queue without 
         RaiseContractError ERROR_INVALID_OPERATION, "DequeueImmutable", _
             "DequeueImmutable requires an immutable queue."
     End If
-    If mItems.Count = 0 Then RaiseEmptySequence "DequeueImmutable"
+    If mItemsCount = 0 Then RaiseEmptySequence "DequeueImmutable"
     Set result = CloneGenericCollection(Me)
     result.ConfigureCollectionRole MutableRoleForKind(mCollectionKind)
     result.RemoveCollectionAt 0
@@ -5012,7 +5016,7 @@ Attribute PopImmutable.VB_Description = "Returns an immutable stack without its 
         RaiseContractError ERROR_INVALID_OPERATION, "PopImmutable", _
             "PopImmutable requires an immutable stack."
     End If
-    If mItems.Count = 0 Then RaiseEmptySequence "PopImmutable"
+    If mItemsCount = 0 Then RaiseEmptySequence "PopImmutable"
     Set result = CloneGenericCollection(Me)
     result.ConfigureCollectionRole MutableRoleForKind(mCollectionKind)
     result.RemoveCollectionAt 0
@@ -6460,10 +6464,10 @@ End Property
 Public Property Get InnerExceptions() As ROneCOne
 Attribute InnerExceptions.VB_Description = "Gets AggregateException inner exceptions."
     RequireError Me, "InnerExceptions"
-    If mItems Is Nothing Then
+    If mItemsCount = 0 Then
         Set InnerExceptions = ROneCOne.ListOf(ROneCOne.Exception)
     Else
-        Set InnerExceptions = CreateObjectListSnapshot(mItems)
+        Set InnerExceptions = CreateObjectListSnapshot(ArrSnapshot(mItems, mItemsCount))
     End If
 End Property
 
@@ -6597,17 +6601,17 @@ End Property
 
 Friend Property Get InternalCollectionItems() As Collection
 Attribute InternalCollectionItems.VB_MemberFlags = "40"
-    Set InternalCollectionItems = mItems
+    Set InternalCollectionItems = ArrSnapshot(mItems, mItemsCount)
 End Property
 
 Friend Property Get InternalCollectionKeys() As Collection
 Attribute InternalCollectionKeys.VB_MemberFlags = "40"
-    Set InternalCollectionKeys = mKeys
+    Set InternalCollectionKeys = ArrSnapshot(mKeys, mKeysCount)
 End Property
 
 Friend Property Get InternalCollectionPriorities() As Collection
 Attribute InternalCollectionPriorities.VB_MemberFlags = "40"
-    Set InternalCollectionPriorities = mPriorities
+    Set InternalCollectionPriorities = ArrSnapshot(mPriorities, mPrioritiesCount)
 End Property
 
 Friend Property Get InternalKeyType() As VbVarType
@@ -6647,12 +6651,12 @@ End Property
 
 Friend Property Get InternalDataColumns() As Collection
 Attribute InternalDataColumns.VB_MemberFlags = "40"
-    Set InternalDataColumns = mKeys
+    Set InternalDataColumns = ArrSnapshot(mKeys, mKeysCount)
 End Property
 
 Friend Property Get InternalDataRows() As Collection
 Attribute InternalDataRows.VB_MemberFlags = "40"
-    Set InternalDataRows = mItems
+    Set InternalDataRows = ArrSnapshot(mItems, mItemsCount)
 End Property
 
 Friend Property Get InternalDataTables() As Collection
@@ -7064,7 +7068,7 @@ Friend Sub ConfigureList( _
     mRole = ROLE_LIST
     mElementType = elementType
     mElementObjectType = elementObjectType
-    Set mItems = New Collection
+    ArrReset mItems, mItemsCount
     Set mEnumerationValues = New Collection
     mEnumerationVersion = 0
 End Sub
@@ -7078,9 +7082,9 @@ Friend Sub ConfigureAggregateError(ByVal errors As Collection)
     mErrorSource = "ROneCOne.AggregateException"
     mErrorDescription = CStr(errors.Count) & _
         " exception(s) occurred. Inspect InnerExceptions for details."
-    Set mItems = New Collection
+    ArrReset mItems, mItemsCount
     For Each errorValue In errors
-        mItems.Add errorValue
+        ArrAppend mItems, mItemsCount, errorValue
     Next errorValue
 End Sub
 
@@ -7090,7 +7094,7 @@ End Sub
 
 Friend Property Get InternalInnerExceptions() As Collection
 Attribute InternalInnerExceptions.VB_MemberFlags = "40"
-    Set InternalInnerExceptions = mItems
+    Set InternalInnerExceptions = ArrSnapshot(mItems, mItemsCount)
 End Property
 
 Friend Sub ConfigureGenericCollection( _
@@ -7109,9 +7113,9 @@ Friend Sub ConfigureGenericCollection( _
     mKeyType = keyType
     mKeyObjectType = keyObjectType
     Set mQueryComparer = comparer
-    Set mItems = New Collection
-    Set mKeys = New Collection
-    Set mPriorities = New Collection
+    ArrReset mItems, mItemsCount
+    ArrReset mKeys, mKeysCount
+    ArrReset mPriorities, mPrioritiesCount
     Set mEnumerationValues = New Collection
     If HashIndexSupported Then RebuildHashIndex 8
 End Sub
@@ -7318,8 +7322,8 @@ End Function
 Friend Sub ConfigureDataTable(ByVal tableName As String)
     mRole = ROLE_DATA_TABLE
     mName = tableName
-    Set mItems = New Collection
-    Set mKeys = New Collection
+    ArrReset mItems, mItemsCount
+    ArrReset mKeys, mKeysCount
     Set mPrimaryKey = New Collection
     Set mDataIndex = ROneCOne.DictionaryOf(vbString, ROneCOne.Exception)
 End Sub
@@ -7471,10 +7475,10 @@ Friend Sub ConfigureDataRow(ByVal table As ROneCOne)
 
     mRole = ROLE_DATA_ROW
     Set mSource = table
-    Set mItems = New Collection
-    Set mOriginalItems = New Collection
+    ArrReset mItems, mItemsCount
+    ArrReset mOriginalItems, mOriginalItemsCount
     For Each column In table.InternalDataColumns
-        mItems.Add DefaultDataColumnValue(column)
+        ArrAppend mItems, mItemsCount, DefaultDataColumnValue(column)
     Next column
     mRowState = ROW_STATE_DETACHED
 End Sub
@@ -7581,7 +7585,7 @@ Friend Sub ConfigureDbCommand( _
     mRole = ROLE_DB_COMMAND
     mCommandText = commandText
     Set mSource = connection
-    Set mItems = New Collection
+    ArrReset mItems, mItemsCount
     mCommandType = 1
 End Sub
 
@@ -7623,7 +7627,7 @@ Friend Sub ConfigureGrouping( _
     ConfigureGenericCollection ROLE_COLLECTION, COLLECTION_GROUPING, _
         vbVariant, vbNullString, vbVariant
     Set mLeft = keyWrapped
-    mItems.Add firstElement
+    ArrAppend mItems, mItemsCount, firstElement
 End Sub
 
 Friend Sub ConfigureEmptyGrouping(ByVal keyWrapped As ROneCOne)
@@ -7640,15 +7644,15 @@ Friend Sub InternalAddLookupGroup( _
 
     PrepareHashInsert
     Set groupWrapped = CreateObjectResult(group)
-    mKeys.Add keyWrapped
-    mItems.Add groupWrapped
-    AddHashIndexEntry keyWrapped, mKeys.Count - 1, groupWrapped
+    ArrAppend mKeys, mKeysCount, keyWrapped
+    ArrAppend mItems, mItemsCount, groupWrapped
+    AddHashIndexEntry keyWrapped, mKeysCount - 1, groupWrapped
 End Sub
 
 Friend Function InternalCollectionItem(ByVal index As Long) As ROneCOne
     Dim wrapped As ROneCOne
 
-    Set wrapped = mItems.Item(index + 1)
+    Set wrapped = mItems(index + 1)
     If wrapped.InternalHasObjectValue Then
         Set InternalCollectionItem = wrapped.InternalObjectValue
     Else
@@ -7661,27 +7665,27 @@ Friend Sub InternalAddTaskChild(ByVal taskValue As ROneCOne)
 End Sub
 
 Friend Sub InternalAppendCollectionItem(ByVal wrapped As ROneCOne)
-    mItems.Add wrapped
+    ArrAppend mItems, mItemsCount, wrapped
 End Sub
 
 Friend Sub InternalAppendCollectionKey(ByVal wrapped As ROneCOne)
-    mKeys.Add wrapped
+    ArrAppend mKeys, mKeysCount, wrapped
 End Sub
 
 Friend Sub InternalAppendCollectionPriority(ByVal wrapped As ROneCOne)
-    mPriorities.Add wrapped
+    ArrAppend mPriorities, mPrioritiesCount, wrapped
 End Sub
 
 Friend Sub InternalQueueValue(ByVal wrapped As ROneCOne)
-    mItems.Add wrapped
+    ArrAppend mItems, mItemsCount, wrapped
     mVersion = mVersion + 1
 End Sub
 
 Friend Sub InternalPushValue(ByVal wrapped As ROneCOne)
-    If mItems.Count = 0 Then
-        mItems.Add wrapped
+    If mItemsCount = 0 Then
+        ArrAppend mItems, mItemsCount, wrapped
     Else
-        mItems.Add wrapped, Before:=1
+        ArrInsert mItems, mItemsCount, 1, wrapped
     End If
     mVersion = mVersion + 1
 End Sub
@@ -7723,7 +7727,7 @@ End Sub
 
 Friend Sub InternalAddWrapped(ByVal wrapped As ROneCOne)
     ValidateElementWrapped wrapped, "ToList"
-    mItems.Add wrapped
+    ArrAppend mItems, mItemsCount, wrapped
     AddUnwrappedValue mEnumerationValues, wrapped
     mVersion = mVersion + 1
 End Sub
@@ -7756,7 +7760,7 @@ Friend Function MaterializeWrapped() As Collection
     RequireSequence Me, "Materialize"
     If mRole = ROLE_LIST Then
         Set values = New Collection
-        For Each wrapped In mItems
+        For Each wrapped In ArrSnapshot(mItems, mItemsCount)
             values.Add wrapped
         Next wrapped
         Set MaterializeWrapped = values
@@ -7773,12 +7777,12 @@ Friend Function MaterializeWrapped() As Collection
         End If
         Set values = New Collection
         If IsDictionaryCollection Then
-            For entryIndex = 1 To mItems.Count
+            For entryIndex = 1 To mItemsCount
                 values.Add CreateDictionaryEntry( _
-                    mKeys.Item(entryIndex), mItems.Item(entryIndex))
+                    mKeys(entryIndex), mItems(entryIndex))
             Next entryIndex
         Else
-            For Each wrapped In mItems
+            For Each wrapped In ArrSnapshot(mItems, mItemsCount)
                 values.Add wrapped
             Next wrapped
         End If
@@ -8310,7 +8314,7 @@ Private Function RemoveListItem(ByVal value As Variant) As Boolean
     RequireList Me, "Remove"
     index = IndexOf(value)
     If index >= 0 Then
-        mItems.Remove index + 1
+        ArrRemoveAt mItems, mItemsCount, index + 1
         mEnumerationValues.Remove index + 1
         mVersion = mVersion + 1
         RemoveListItem = True
@@ -8550,7 +8554,7 @@ Private Function BuildAdoCommand( _
     End If
     CallByName commandObject, "CommandType", VbLet, mCommandType
     Set parametersObject = CallByName(commandObject, "Parameters", VbGet)
-    For Each parameter In mItems
+    For Each parameter In ArrSnapshot(mItems, mItemsCount)
         If dataRow Is Nothing Or Len(parameter.InternalSourceColumn) = 0 Then
             Set valueWrapped = parameter.InternalQueryValue
         Else
@@ -9011,12 +9015,12 @@ Private Sub ValidateCompatibleDataTable( _
     Dim sourceColumn As ROneCOne
     Dim targetColumn As ROneCOne
 
-    If mKeys.Count <> sourceTable.InternalDataColumns.Count Then
+    If mKeysCount <> sourceTable.InternalDataColumns.Count Then
         RaiseContractError ERROR_INVALID_OPERATION, memberName, _
             "The table schemas have different column counts."
     End If
-    For index = 1 To mKeys.Count
-        Set targetColumn = mKeys.Item(index)
+    For index = 1 To mKeysCount
+        Set targetColumn = mKeys(index)
         Set sourceColumn = sourceTable.InternalDataColumns.Item(index)
         If targetColumn.ColumnName <> sourceColumn.ColumnName Or _
             targetColumn.InternalExpectedType <> sourceColumn.InternalExpectedType Or _
@@ -9037,7 +9041,7 @@ Friend Function DataFieldWrapped(ByVal columnName As String) As ROneCOne
         RaiseContractError ERROR_INVALID_ARGUMENT, "DataRow.Item", _
             "The requested column was not found."
     End If
-    Set DataFieldWrapped = mItems.Item(columnIndex + 1)
+    Set DataFieldWrapped = mItems(columnIndex + 1)
 End Function
 
 Private Function DataRowItem(ByVal index As Variant) As ROneCOne
@@ -9048,8 +9052,8 @@ Private Function DataRowItem(ByVal index As Variant) As ROneCOne
         Exit Function
     End If
     columnIndex = CLng(index)
-    ValidateIndex columnIndex, mItems.Count, "DataRow.Item"
-    Set DataRowItem = mItems.Item(columnIndex + 1)
+    ValidateIndex columnIndex, mItemsCount, "DataRow.Item"
+    Set DataRowItem = mItems(columnIndex + 1)
 End Function
 
 Friend Function DataRowVersionValue( _
@@ -9065,10 +9069,10 @@ Friend Function DataRowVersionValue( _
             "The requested source column was not found."
     End If
     If NormalizeDataRowVersion(sourceVersion, "DataRowVersionValue") = _
-        "Original" And mOriginalItems.Count > 0 Then
-        Set DataRowVersionValue = mOriginalItems.Item(columnIndex + 1)
+        "Original" And mOriginalItemsCount > 0 Then
+        Set DataRowVersionValue = mOriginalItems(columnIndex + 1)
     Else
-        Set DataRowVersionValue = mItems.Item(columnIndex + 1)
+        Set DataRowVersionValue = mItems(columnIndex + 1)
     End If
 End Function
 
@@ -9088,12 +9092,12 @@ Private Sub SetDataRowItem(ByVal index As Variant, ByVal value As Variant)
     Else
         columnIndex = CLng(index)
     End If
-    ValidateIndex columnIndex, mItems.Count, "DataRow.Item"
+    ValidateIndex columnIndex, mItemsCount, "DataRow.Item"
     Set column = mSource.InternalDataColumns.Item(columnIndex + 1)
     Set wrapped = WrapDataValue(value)
     Set wrapped = WidenScalarToward(wrapped, column.InternalExpectedType)
     ValidateDataColumnValue column, wrapped, "DataRow.Item"
-    Set previous = mItems.Item(columnIndex + 1)
+    Set previous = mItems(columnIndex + 1)
     ReplaceDataValue columnIndex, wrapped
     On Error GoTo RestorePrevious
     If mRowState <> ROW_STATE_DETACHED Then
@@ -9254,7 +9258,7 @@ Friend Sub RebuildPrimaryKeyIndex()
     If mRole <> ROLE_DATA_TABLE Then Exit Sub
     Set mDataIndex = ROneCOne.DictionaryOf(vbString, ROneCOne.Exception)
     If mPrimaryKey.Count = 0 Then Exit Sub
-    For Each row In mItems
+    For Each row In ArrSnapshot(mItems, mItemsCount)
         If row.RowState <> "Deleted" Then
             keyToken = PrimaryKeyTokenForRow(row)
             If Not mDataIndex.TryAdd(keyToken, row) Then
@@ -9321,20 +9325,7 @@ Private Sub ReplaceDataValue( _
     ByVal columnIndex As Long, _
     ByVal wrapped As ROneCOne _
 )
-    Dim current As ROneCOne
-    Dim index As Long
-    Dim replacement As Collection
-
-    Set replacement = New Collection
-    For index = 1 To mItems.Count
-        If index = columnIndex + 1 Then
-            replacement.Add wrapped
-        Else
-            Set current = mItems.Item(index)
-            replacement.Add current
-        End If
-    Next index
-    Set mItems = replacement
+    ArrReplaceAt mItems, columnIndex + 1, wrapped
 End Sub
 
 Friend Sub ValidateDataRowConstraints( _
@@ -9348,11 +9339,11 @@ Friend Sub ValidateDataRowConstraints( _
     Dim wrapped As ROneCOne
 
     columnIndex = 0
-    For Each column In mKeys
+    For Each column In ArrSnapshot(mKeys, mKeysCount)
         Set wrapped = row.InternalDataRows.Item(columnIndex + 1)
         ValidateDataColumnValue column, wrapped, "AddRow"
         If column.InternalUnique Then
-            For Each existing In mItems
+            For Each existing In ArrSnapshot(mItems, mItemsCount)
                 If Not existing Is row Then
                     If DataValuesEqual( _
                         existing.InternalDataRows.Item(columnIndex + 1), _
@@ -9414,9 +9405,9 @@ End Function
 Private Sub AcceptRowChanges()
     Dim wrapped As ROneCOne
 
-    Set mOriginalItems = New Collection
-    For Each wrapped In mItems
-        mOriginalItems.Add wrapped
+    ArrReset mOriginalItems, mOriginalItemsCount
+    For Each wrapped In ArrSnapshot(mItems, mItemsCount)
+        ArrAppend mOriginalItems, mOriginalItemsCount, wrapped
     Next wrapped
     mRowState = ROW_STATE_UNCHANGED
 End Sub
@@ -9429,9 +9420,9 @@ Private Sub RejectRowChanges()
         Exit Sub
     End If
     If mRowState = ROW_STATE_UNCHANGED Then Exit Sub
-    Set mItems = New Collection
-    For Each wrapped In mOriginalItems
-        mItems.Add wrapped
+    ArrReset mItems, mItemsCount
+    For Each wrapped In ArrSnapshot(mOriginalItems, mOriginalItemsCount)
+        ArrAppend mItems, mItemsCount, wrapped
     Next wrapped
     mRowState = ROW_STATE_UNCHANGED
 End Sub
@@ -10553,9 +10544,9 @@ Friend Sub AddMutable( _
                 "An item with the same key already exists."
         End If
         PrepareHashInsert
-        mKeys.Add keyWrapped
-        mItems.Add valueWrapped
-        AddHashIndexEntry keyWrapped, mKeys.Count - 1, valueWrapped
+        ArrAppend mKeys, mKeysCount, keyWrapped
+        ArrAppend mItems, mItemsCount, valueWrapped
+        AddHashIndexEntry keyWrapped, mKeysCount - 1, valueWrapped
     ElseIf IsPriorityQueueKind(mCollectionKind) Then
         If IsMissing(value) Then
             RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
@@ -10577,12 +10568,12 @@ Friend Sub AddMutable( _
                 "Adding has already been completed."
         End If
         If mCollectionKind = COLLECTION_BLOCKING And mQueryCount >= 0 Then
-            If mItems.Count >= mQueryCount Then
+            If mItemsCount >= mQueryCount Then
                 RaiseContractError ERROR_INVALID_OPERATION, memberName, _
                     "The bounded collection is full."
             End If
         End If
-        mItems.Add WrapElement(keyOrValue, memberName)
+        ArrAppend mItems, mItemsCount, WrapElement(keyOrValue, memberName)
     End If
     mVersion = mVersion + 1
     NotifyCollectionChanged "Add"
@@ -10596,19 +10587,19 @@ Friend Sub AddDictionaryPair( _
     Dim insertAt As Long
 
     If IsSortedMapKind(mCollectionKind) Then
-        insertAt = FindSortedInsertIndex(mKeys, keyWrapped, memberName)
-        If insertAt <= mKeys.Count Then
-            mKeys.Add keyWrapped, Before:=insertAt
-            mItems.Add valueWrapped, Before:=insertAt
+        insertAt = FindSortedInsertIndex(mKeys, mKeysCount, keyWrapped, memberName)
+        If insertAt <= mKeysCount Then
+            ArrInsert mKeys, mKeysCount, insertAt, keyWrapped
+            ArrInsert mItems, mItemsCount, insertAt, valueWrapped
         Else
-            mKeys.Add keyWrapped
-            mItems.Add valueWrapped
+            ArrAppend mKeys, mKeysCount, keyWrapped
+            ArrAppend mItems, mItemsCount, valueWrapped
         End If
     Else
         PrepareHashInsert
-        mKeys.Add keyWrapped
-        mItems.Add valueWrapped
-        AddHashIndexEntry keyWrapped, mKeys.Count - 1, valueWrapped
+        ArrAppend mKeys, mKeysCount, keyWrapped
+        ArrAppend mItems, mItemsCount, valueWrapped
+        AddHashIndexEntry keyWrapped, mKeysCount - 1, valueWrapped
     End If
     mVersion = mVersion + 1
 End Sub
@@ -10620,16 +10611,16 @@ Friend Sub AddSetValue( _
     Dim insertAt As Long
 
     If IsSortedSetKind(mCollectionKind) Then
-        insertAt = FindSortedInsertIndex(mItems, wrapped, memberName)
-        If insertAt <= mItems.Count Then
-            mItems.Add wrapped, Before:=insertAt
+        insertAt = FindSortedInsertIndex(mItems, mItemsCount, wrapped, memberName)
+        If insertAt <= mItemsCount Then
+            ArrInsert mItems, mItemsCount, insertAt, wrapped
         Else
-            mItems.Add wrapped
+            ArrAppend mItems, mItemsCount, wrapped
         End If
     Else
         PrepareHashInsert
-        mItems.Add wrapped
-        AddHashIndexEntry wrapped, mItems.Count - 1
+        ArrAppend mItems, mItemsCount, wrapped
+        AddHashIndexEntry wrapped, mItemsCount - 1
     End If
     mVersion = mVersion + 1
 End Sub
@@ -10640,13 +10631,13 @@ Friend Sub AddPriorityValue( _
 )
     Dim insertAt As Long
 
-    insertAt = FindSortedInsertIndex(mPriorities, priorityWrapped, "Enqueue")
-    If insertAt <= mPriorities.Count Then
-        mPriorities.Add priorityWrapped, Before:=insertAt
-        mItems.Add wrapped, Before:=insertAt
+    insertAt = FindSortedInsertIndex(mPriorities, mPrioritiesCount, priorityWrapped, "Enqueue")
+    If insertAt <= mPrioritiesCount Then
+        ArrInsert mPriorities, mPrioritiesCount, insertAt, priorityWrapped
+        ArrInsert mItems, mItemsCount, insertAt, wrapped
     Else
-        mPriorities.Add priorityWrapped
-        mItems.Add wrapped
+        ArrAppend mPriorities, mPrioritiesCount, priorityWrapped
+        ArrAppend mItems, mItemsCount, wrapped
     End If
     mVersion = mVersion + 1
 End Sub
@@ -10717,20 +10708,88 @@ Private Sub ResetHashIndex()
     mHashCount = 0
 End Sub
 
+' Element and key storage uses doubling dynamic arrays rather than a linked
+' Collection, so a numeric indexer is O(1) and a bulk build stays linear. The
+' helpers below keep one growable array (slots 1..count) with amortized append.
+
+Private Sub ArrReset(ByRef arr() As ROneCOne, ByRef count As Long)
+    ReDim arr(1 To 8)
+    count = 0
+End Sub
+
+Private Sub ArrAppend( _
+    ByRef arr() As ROneCOne, _
+    ByRef count As Long, _
+    ByVal item As ROneCOne _
+)
+    If count >= UBound(arr) Then ReDim Preserve arr(1 To UBound(arr) * 2)
+    count = count + 1
+    Set arr(count) = item
+End Sub
+
+Private Sub ArrInsert( _
+    ByRef arr() As ROneCOne, _
+    ByRef count As Long, _
+    ByVal position As Long, _
+    ByVal item As ROneCOne _
+)
+    Dim shiftIndex As Long
+
+    If count >= UBound(arr) Then ReDim Preserve arr(1 To UBound(arr) * 2)
+    For shiftIndex = count To position Step -1
+        Set arr(shiftIndex + 1) = arr(shiftIndex)
+    Next shiftIndex
+    Set arr(position) = item
+    count = count + 1
+End Sub
+
+Private Sub ArrRemoveAt( _
+    ByRef arr() As ROneCOne, _
+    ByRef count As Long, _
+    ByVal position As Long _
+)
+    Dim shiftIndex As Long
+
+    For shiftIndex = position To count - 1
+        Set arr(shiftIndex) = arr(shiftIndex + 1)
+    Next shiftIndex
+    Set arr(count) = Nothing
+    count = count - 1
+End Sub
+
+Private Sub ArrReplaceAt( _
+    ByRef arr() As ROneCOne, _
+    ByVal position As Long, _
+    ByVal item As ROneCOne _
+)
+    Set arr(position) = item
+End Sub
+
+Private Function ArrSnapshot( _
+    ByRef arr() As ROneCOne, _
+    ByVal count As Long _
+) As Collection
+    Dim index As Long
+    Dim result As Collection
+
+    Set result = New Collection
+    For index = 1 To count
+        result.Add arr(index)
+    Next index
+    Set ArrSnapshot = result
+End Function
+
 Friend Sub RebuildHashIndex(ByVal requestedCapacity As Long)
     Dim index As Long
-    Dim indexedValues As Collection
-    Dim itemWrapped As ROneCOne
-    Dim indexedItems() As ROneCOne
+    Dim keyed As Boolean
     Dim minimum As Long
-    Dim wrapped As ROneCOne
 
     If Not HashIndexSupported Then
         ResetHashIndex
         Exit Sub
     End If
     If requestedCapacity < 8 Then requestedCapacity = 8
-    minimum = mItems.Count * 2
+    minimum = mItemsCount * 2
     If requestedCapacity < minimum Then requestedCapacity = minimum
     mHashCapacity = NextHashCapacity(requestedCapacity)
     ReDim mHashSlots(0 To mHashCapacity - 1)
@@ -10738,29 +10797,17 @@ Friend Sub RebuildHashIndex(ByVal requestedCapacity As Long)
     ReDim mHashKeys(0 To mHashCapacity - 1)
     ReDim mHashValues(0 To mHashCapacity - 1)
     mHashCount = 0
-    If IsDictionaryCollection Or mCollectionKind = COLLECTION_KEYED Or _
-        mCollectionKind = COLLECTION_LOOKUP Then
-        Set indexedValues = mKeys
+    keyed = (IsDictionaryCollection Or mCollectionKind = COLLECTION_KEYED Or _
+        mCollectionKind = COLLECTION_LOOKUP)
+    If keyed Then
+        For index = 1 To mKeysCount
+            InsertHashSlot mKeys(index), index - 1, mItems(index)
+        Next index
     Else
-        Set indexedValues = mItems
+        For index = 1 To mItemsCount
+            InsertHashSlot mItems(index), index - 1, mItems(index)
+        Next index
     End If
-    If indexedValues.Count = 0 Then Exit Sub
-    ReDim indexedItems(1 To mItems.Count)
-    index = 0
-    For Each itemWrapped In mItems
-        index = index + 1
-        Set indexedItems(index) = itemWrapped
-    Next itemWrapped
-    index = 0
-    For Each wrapped In indexedValues
-        index = index + 1
-        If IsDictionaryCollection Or mCollectionKind = COLLECTION_KEYED Or _
-            mCollectionKind = COLLECTION_LOOKUP Then
-            InsertHashSlot wrapped, index - 1, indexedItems(index)
-        Else
-            InsertHashSlot wrapped, index - 1, wrapped
-        End If
-    Next wrapped
 End Sub
 
 Private Sub ResizeHashIndex(ByVal requestedCapacity As Long)
@@ -10864,7 +10911,6 @@ End Function
 
 Private Function FindHashIndex( _
     ByVal candidate As ROneCOne, _
-    ByVal values As Collection, _
     ByVal memberName As String _
 ) As Long
     Dim slot As Long
@@ -11007,23 +11053,25 @@ Private Function HashText(ByVal value As String) As Long
 End Function
 
 Private Function FindSortedValueIndex( _
-    ByVal values As Collection, _
+    ByRef values() As ROneCOne, _
+    ByVal count As Long, _
     ByVal candidate As ROneCOne, _
     ByVal memberName As String _
 ) As Long
     Dim position As Long
 
     FindSortedValueIndex = -1
-    position = FindSortedInsertIndex(values, candidate, memberName)
-    If position > values.Count Then Exit Function
-    If CompareWithComparer(values.Item(position), candidate, _
+    position = FindSortedInsertIndex(values, count, candidate, memberName)
+    If position > count Then Exit Function
+    If CompareWithComparer(values(position), candidate, _
         mQueryComparer, memberName) = 0 Then
         FindSortedValueIndex = position - 1
     End If
 End Function
 
 Private Function FindSortedInsertIndex( _
-    ByVal values As Collection, _
+    ByRef values() As ROneCOne, _
+    ByVal count As Long, _
     ByVal candidate As ROneCOne, _
     ByVal memberName As String _
 ) As Long
@@ -11032,11 +11080,11 @@ Private Function FindSortedInsertIndex( _
     Dim middle As Long
 
     low = 1
-    high = values.Count + 1
+    high = count + 1
     Do While low < high
         middle = low + ((high - low) \ 2)
-        If middle <= values.Count And _
-            CompareWithComparer(values.Item(middle), candidate, _
+        If middle <= count And _
+            CompareWithComparer(values(middle), candidate, _
                 mQueryComparer, memberName) < 0 Then
             low = middle + 1
         Else
@@ -11053,23 +11101,23 @@ Friend Function FindKeyIndex( _
     Dim index As Long
 
     If IsSortedMapKind(mCollectionKind) Then
-        FindKeyIndex = FindSortedValueIndex(mKeys, candidate, memberName)
+        FindKeyIndex = FindSortedValueIndex(mKeys, mKeysCount, candidate, memberName)
         Exit Function
     End If
     If HashIndexSupported Then
-        FindKeyIndex = FindHashIndex(candidate, mKeys, memberName)
+        FindKeyIndex = FindHashIndex(candidate, memberName)
         Exit Function
     End If
 
     FindKeyIndex = -1
-    For index = 1 To mKeys.Count
+    For index = 1 To mKeysCount
         If CollectionUsesEquality(mCollectionKind) Then
-            If ValuesEqualWithComparer(mKeys.Item(index), candidate, _
+            If ValuesEqualWithComparer(mKeys(index), candidate, _
                 mQueryComparer, memberName) Then
                 FindKeyIndex = index - 1
                 Exit Function
             End If
-        ElseIf CompareWithComparer(mKeys.Item(index), candidate, _
+        ElseIf CompareWithComparer(mKeys(index), candidate, _
             mQueryComparer, memberName) = 0 Then
             FindKeyIndex = index - 1
             Exit Function
@@ -11082,14 +11130,15 @@ Friend Function FindElementIndex( _
     ByVal memberName As String _
 ) As Long
     If IsSortedSetKind(mCollectionKind) Then
-        FindElementIndex = FindSortedValueIndex(mItems, candidate, memberName)
+        FindElementIndex = FindSortedValueIndex(mItems, mItemsCount, candidate, memberName)
         Exit Function
     End If
     If HashIndexSupported Then
-        FindElementIndex = FindHashIndex(candidate, mItems, memberName)
+        FindElementIndex = FindHashIndex(candidate, memberName)
         Exit Function
     End If
-    FindElementIndex = FindWrappedInCollection(mItems, candidate, memberName)
+    FindElementIndex = FindWrappedInCollection( _
+        ArrSnapshot(mItems, mItemsCount), candidate, memberName)
 End Function
 
 Private Function FindWrappedInCollection( _
@@ -11143,8 +11192,8 @@ Private Function IsSetSubset( _
     RequireSetCollection memberName
     Set incoming = BuildIncomingItems(other, memberName)
     Set uniqueValues = DistinctWrappedValues(incoming, memberName)
-    If proper And mItems.Count >= uniqueValues.Count Then Exit Function
-    For Each wrapped In mItems
+    If proper And mItemsCount >= uniqueValues.Count Then Exit Function
+    For Each wrapped In ArrSnapshot(mItems, mItemsCount)
         If FindWrappedInCollection(uniqueValues, wrapped, memberName) < 0 Then
             Exit Function
         End If
@@ -11164,7 +11213,7 @@ Private Function IsSetSuperset( _
     RequireSetCollection memberName
     Set incoming = BuildIncomingItems(other, memberName)
     Set uniqueValues = DistinctWrappedValues(incoming, memberName)
-    If proper And mItems.Count <= uniqueValues.Count Then Exit Function
+    If proper And mItemsCount <= uniqueValues.Count Then Exit Function
     For Each wrapped In uniqueValues
         If FindElementIndex(wrapped, memberName) < 0 Then Exit Function
     Next wrapped
@@ -11195,7 +11244,7 @@ Private Sub SetItemValue(ByVal index As Variant, ByVal value As Variant)
     If IsGenericCollectionRole(mRole) Then
         RequireMutableCollection "Item"
         itemIndex = CLng(index)
-        ValidateIndex itemIndex, mItems.Count, "Item"
+        ValidateIndex itemIndex, mItemsCount, "Item"
         ReplaceCollectionItem itemIndex, WrapElement(value, "Item")
         Exit Sub
     End If
@@ -11206,20 +11255,7 @@ Friend Sub ReplaceCollectionItem( _
     ByVal index As Long, _
     ByVal wrapped As ROneCOne _
 )
-    Dim current As ROneCOne
-    Dim position As Long
-    Dim replacement As Collection
-
-    Set replacement = New Collection
-    For position = 1 To mItems.Count
-        If position = index + 1 Then
-            replacement.Add wrapped
-        Else
-            Set current = mItems.Item(position)
-            replacement.Add current
-        End If
-    Next position
-    Set mItems = replacement
+    ArrReplaceAt mItems, index + 1, wrapped
     If HashIndexSupported Then RebuildHashIndex mHashCapacity
     mVersion = mVersion + 1
     NotifyCollectionChanged "Replace"
@@ -11245,11 +11281,11 @@ Private Function RemoveCollectionValue( _
 End Function
 
 Friend Sub RemoveCollectionAt(ByVal index As Long)
-    mItems.Remove index + 1
+    ArrRemoveAt mItems, mItemsCount, index + 1
     If IsDictionaryCollection Or mCollectionKind = COLLECTION_KEYED Then
-        mKeys.Remove index + 1
+        ArrRemoveAt mKeys, mKeysCount, index + 1
     ElseIf IsPriorityQueueKind(mCollectionKind) Then
-        mPriorities.Remove index + 1
+        ArrRemoveAt mPriorities, mPrioritiesCount, index + 1
     End If
     mVersion = mVersion + 1
     If HashIndexSupported Then RebuildHashIndex mHashCapacity
@@ -11290,9 +11326,9 @@ End Function
 Private Function CreateCollectionNode(ByVal index As Long) As ROneCOne
     Dim node As ROneCOne
 
-    ValidateIndex index, mItems.Count, "LinkedListNode"
+    ValidateIndex index, mItemsCount, "LinkedListNode"
     Set node = New ROneCOne
-    node.ConfigureCollectionNode mItems.Item(index + 1), Me
+    node.ConfigureCollectionNode mItems(index + 1), Me
     Set CreateCollectionNode = node
 End Function
 
@@ -11304,8 +11340,8 @@ Friend Function FindNodeWrappedIndex(ByVal wrapped As ROneCOne) As Long
     Dim index As Long
 
     FindNodeWrappedIndex = -1
-    For index = 1 To mItems.Count
-        If mItems.Item(index) Is wrapped Then
+    For index = 1 To mItemsCount
+        If mItems(index) Is wrapped Then
             FindNodeWrappedIndex = index - 1
             Exit Function
         End If
@@ -11333,10 +11369,10 @@ Private Function InsertRelativeNode( _
     insertAt = index
     If insertAfter Then insertAt = insertAt + 1
     Set wrapped = WrapElement(value, memberName)
-    If insertAt >= mItems.Count Then
-        mItems.Add wrapped
+    If insertAt >= mItemsCount Then
+        ArrAppend mItems, mItemsCount, wrapped
     Else
-        mItems.Add wrapped, Before:=insertAt + 1
+        ArrInsert mItems, mItemsCount, insertAt + 1, wrapped
     End If
     mVersion = mVersion + 1
     Set InsertRelativeNode = CreateCollectionNode(insertAt)
@@ -11892,28 +11928,22 @@ End Sub
 Private Function WrappedItem(ByVal index As Long) As ROneCOne
     Dim values As Collection
 
+    ' A materialized list indexes its backing array directly in O(1). Only a
+    ' deferred query has to materialize to resolve a positional element.
+    If mRole = ROLE_LIST Then
+        ValidateIndex index, mItemsCount, "Item"
+        Set WrappedItem = mItems(index + 1)
+        Exit Function
+    End If
     Set values = MaterializeWrapped
     ValidateIndex index, values.Count, "Item"
     Set WrappedItem = values.Item(index + 1)
 End Function
 
 Private Sub ReplaceItem(ByVal index As Long, ByVal wrapped As ROneCOne)
-    Dim current As ROneCOne
-    Dim position As Long
-    Dim replacement As Collection
-
     RequireList Me, "Item"
-    ValidateIndex index, mItems.Count, "Item"
-    Set replacement = New Collection
-    For position = 1 To mItems.Count
-        If position = index + 1 Then
-            replacement.Add wrapped
-        Else
-            Set current = mItems.Item(position)
-            replacement.Add current
-        End If
-    Next position
-    Set mItems = replacement
+    ValidateIndex index, mItemsCount, "Item"
+    ArrReplaceAt mItems, index + 1, wrapped
     Set mEnumerationValues = MaterializeValues
     mVersion = mVersion + 1
 End Sub
@@ -15159,7 +15189,10 @@ Private Sub Class_Terminate()
     Set mCatchActions = Nothing
     Set mCatchNumbers = Nothing
     Set mFinallyAction = Nothing
-    Set mItems = Nothing
+    Erase mItems
+    Erase mKeys
+    Erase mPriorities
+    Erase mOriginalItems
     Set mEnumerationValues = Nothing
     Set mElementParameter = Nothing
     Set mSource = Nothing

@@ -8,6 +8,14 @@ checksums for each version are on the
 
 ## Unreleased
 
+### Changed
+
+- Element and key storage now uses doubling dynamic arrays instead of a VBA `Collection`, so a
+  positional read on a materialized list or generic collection is O(1), an append is amortized
+  O(1), and a value replacement is O(1). A `for i: list(i)` loop over ten thousand elements drops
+  from quadratic (it previously exceeded the test deadline) to linear. The public API is
+  unchanged. See [ADR 0005](docs/decisions/0005-array-backed-collection-storage.md).
+
 ### Added
 
 - A worksheet Range bridge built on single bulk `Range.Value` calls:

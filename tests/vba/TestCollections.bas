@@ -20,6 +20,8 @@ Public Sub RunROneCOneCollectionTests()
     TestStrictElementType
     mCurrentTest = "TestNumericWidening"
     TestNumericWidening
+    mCurrentTest = "TestIndexedAccessScales"
+    TestIndexedAccessScales
     mCurrentTest = "TestUserClassList"
     TestUserClassList
     mCurrentTest = "TestUserClassLinq"
@@ -784,6 +786,27 @@ Private Sub TestNumericWidening()
     ' A Func declared to return Double accepts a Long-producing body.
     Set typedFunc = ROneCOne.Value(CLng(42)).AsFunc.Returns(vbDouble)
     AssertEqual "widened func result type", "Double", TypeName(typedFunc.Run())
+End Sub
+
+Private Sub TestIndexedAccessScales()
+    Dim expected As Double
+    Dim i As Long
+    Dim numbers As ROneCOne
+    Dim total As Double
+
+    Set numbers = ROneCOne.ListOf(vbLong)
+    For i = 1 To 10000
+        numbers.Add i
+    Next i
+    ' Sum through the numeric indexer. With array-backed storage each access is
+    ' O(1), so this whole pass is linear; under a linked Collection it would be
+    ' quadratic and blow past the harness deadline on ten thousand elements.
+    For i = 0 To numbers.Count - 1
+        total = total + numbers(i)
+    Next i
+    expected = 10000# * 10001# / 2#
+    AssertEqual "indexed access sum", expected, total
+    AssertEqual "indexed access count", 10000&, numbers.Count
 End Sub
 
 Private Sub TestUserClassList()

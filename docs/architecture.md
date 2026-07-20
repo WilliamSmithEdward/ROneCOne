@@ -91,13 +91,19 @@ the chain evaluates each selector once into a key matrix, then applies a stable 
 sort. This keeps composite ordering O(n log n), preserves equal-key source order, and avoids
 repeated property or delegate calls inside the comparison loop.
 
-Default-equality hash collections use open addressing with power-of-two slot arrays and direct
-key/value references. Capacity reservation sizes the table for its load factor before mutation.
-Keyed reads can bypass `Collection.Item`, whose numeric access is linear in VBA, while canonical
-collections remain the ordered enumeration source. Deletion and replacement rebuild the compact
-index so canonical positions and direct slots cannot diverge. Custom equality delegates use the
-linear path because the runtime cannot infer a hash function that honors an arbitrary comparer.
-Sorted maps and sets use binary search over their maintained order.
+Element and key storage is a doubling dynamic array, not a VBA `Collection`, whose numeric
+`Item` access is linear. A positional read on a materialized list or generic collection is
+therefore O(1), an append is amortized O(1), and a value replacement is O(1) rather than a full
+rebuild. Cross-instance accessors expose a right-sized snapshot so consumers keep an iterable
+Collection while storage stays an array; the enumerator cache that backs `For Each` remains a
+Collection.
+
+Default-equality hash collections layer open addressing with power-of-two slot arrays and direct
+key/value references over that storage. Capacity reservation sizes the table for its load factor
+before mutation. Deletion and replacement keep the compact index consistent with array positions.
+Custom equality delegates use the linear path because the runtime cannot infer a hash function
+that honors an arbitrary comparer. Sorted maps and sets use binary search over their maintained
+order.
 
 The sequence default member distinguishes numeric indices from String member names. Numeric values
 retain zero-based indexing; names return `Condition(name)`. This makes VBA's native `sequence!Age`

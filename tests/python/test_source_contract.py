@@ -554,6 +554,24 @@ class SourceContractTests(unittest.TestCase):
         self.assertIn("Attribute Run.VB_UserMemId = 0", self.source)
         self.assertNotRegex(self.source, re.compile(r"^Public Function Invoke\b", re.MULTILINE))
 
+    def test_element_storage_is_array_backed(self) -> None:
+        self.assertIn("Private mItems() As ROneCOne", self.source)
+        self.assertIn("Private mItemsCount As Long", self.source)
+        self.assertIn("Private mKeys() As ROneCOne", self.source)
+        self.assertIn("Private mPriorities() As ROneCOne", self.source)
+        self.assertIn("Private mOriginalItems() As ROneCOne", self.source)
+        for helper in (
+            "Private Sub ArrAppend(",
+            "Private Sub ArrInsert(",
+            "Private Sub ArrRemoveAt(",
+            "Private Sub ArrReplaceAt(",
+            "Private Sub ArrReset(",
+            "Private Function ArrSnapshot(",
+        ):
+            self.assertIn(helper, self.source)
+        self.assertNotIn("Private mItems As Collection", self.source)
+        self.assertNotIn("Private mKeys As Collection", self.source)
+
     def test_worksheet_range_bridge_is_present(self) -> None:
         for member in (
             "DataTableFromRange",
