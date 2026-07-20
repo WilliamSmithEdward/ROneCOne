@@ -130,17 +130,18 @@ class DemoContractTests(unittest.TestCase):
     def test_task_demo_leads_with_task_coordination(self) -> None:
         source = TASKS_DEMO.read_text(encoding="utf-8")
 
-        self.assertIn("ROneCOne.Task.Run(forecastWork)", source)
-        self.assertIn("ROneCOne.Task.Run(reorderWork)", source)
+        self.assertIn("ROneCOne.Task.RunOnExcel(forecastWork)", source)
+        self.assertIn("ROneCOne.Task.RunOnExcel(reorderWork)", source)
         self.assertIn("ROneCOne.Task.WhenAll(forecastTask, reorderTask)", source)
         self.assertIn("ROneCOne.Task.RunOnExcel(countOpenOrders)", source)
-        self.assertIn("WorkerThreadId <> ROneCOne.CurrentThreadId", source)
         self.assertIn("Set results = allWork.Await", source)
         self.assertIn(".WaitAsync(100&)", source)
-        self.assertIn("ROneCOne.Task.YieldOnce.Await", source)
+        self.assertIn("ROneCOne.Task.YieldOnce", source)
         self.assertIn("allWork.ContinueWith(buildSummary)", source)
         self.assertIn("ROneCOne.CancellationTokenSource", source)
         self.assertIn("ROneCOne.TaskCompletionSourceOf(vbLong)", source)
+        self.assertNotIn("ROneCOne.Task.Run(", source)
+        self.assertNotIn("WorkerThreadId", source)
         self.assertNotIn("FromResult", source)
 
     def test_public_guides_lead_with_practical_workflows(self) -> None:
@@ -154,8 +155,8 @@ class DemoContractTests(unittest.TestCase):
         )
 
         self.assertIn("CountOpenOrders", tasks)
-        self.assertIn("Task.Run", tasks)
-        self.assertLess(tasks.index("Task.Run"), tasks.index("Task.FromResult"))
+        self.assertIn("Task.RunOnExcel", tasks)
+        self.assertLess(tasks.index("Task.RunOnExcel"), tasks.index("Task.FromResult"))
         self.assertIn("applyDiscount", delegates)
         self.assertIn("Order 1042 approved", delegates)
         self.assertIn("Order 1042 shipped", events)

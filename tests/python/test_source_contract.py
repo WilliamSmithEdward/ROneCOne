@@ -4,8 +4,6 @@ import re
 import unittest
 from pathlib import Path
 
-from tools.build_native_task_kernel import build_kernel
-
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "src" / "ROneCOne.cls"
@@ -289,7 +287,7 @@ class SourceContractTests(unittest.TestCase):
     def test_tasks_data_and_provider_contract_is_present(self) -> None:
         required_members = (
             "Task",
-            "TaskRun",
+            "RunOnExcel",
             "FromResult",
             "Delay",
             "WhenAll",
@@ -375,21 +373,22 @@ class SourceContractTests(unittest.TestCase):
             )
             self.assertRegex(self.source, re.compile(pattern, re.IGNORECASE), member)
 
-    def test_task_run_has_a_true_native_thread_contract(self) -> None:
-        required_syntax = (
-            'Private Declare PtrSafe Function CreateThreadpoolWork Lib "kernel32"',
-            'Private Declare PtrSafe Sub SubmitThreadpoolWork Lib "kernel32"',
-            'Private Declare PtrSafe Function VirtualAlloc Lib "kernel32"',
-            "Public Function RunOnExcel(",
-            "Private Sub StartNativeTask(",
-            "Private Sub AdvanceNativeTask()",
-            "Public Property Get ExecutionMode() As String",
-            "Public Property Get WorkerThreadId() As Long",
-            'ExecutionMode = "NativeThreadPool"',
-            'ExecutionMode = "ExcelCooperative"',
-        )
-        for syntax in required_syntax:
-            self.assertIn(syntax, self.source)
+    def test_tasks_are_cooperative_only_with_no_native_execution(self) -> None:
+        self.assertIn("Public Function RunOnExcel(", self.source)
+        for removed_syntax in (
+            "CreateThreadpoolWork",
+            "SubmitThreadpoolWork",
+            "VirtualAlloc",
+            "VirtualProtect",
+            "FlushInstructionCache",
+            "NativeTaskKernelHex",
+            "Public Function TaskRun(",
+            "Public Property Get ExecutionMode(",
+            "Public Property Get WorkerThreadId(",
+            "Public Property Get CurrentThreadId(",
+            "TASK_NATIVE_WORK",
+        ):
+            self.assertNotIn(removed_syntax, self.source)
 
     def test_unproven_parallel_query_surface_is_not_public(self) -> None:
         for syntax in (
@@ -399,16 +398,7 @@ class SourceContractTests(unittest.TestCase):
         ):
             self.assertNotIn(syntax, self.source)
 
-    def test_embedded_native_task_kernel_matches_verified_builder(self) -> None:
-        function = re.search(
-            r"Private Function NativeTaskKernelHex\(\) As String(.*?)End Function",
-            self.source,
-            re.DOTALL,
-        )
-        self.assertIsNotNone(function)
-        embedded_hex = "".join(re.findall(r'"([0-9A-F]+)"', function.group(1)))
-        self.assertEqual(build_kernel(), bytes.fromhex(embedded_hex))
-
+    def test_task_roles_and_combinators_are_present(self) -> None:
         for role_name in (
             "ROLE_TASK",
             "ROLE_DATA_TABLE",

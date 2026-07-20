@@ -1,13 +1,18 @@
 # Tasks and async
 
-A Task represents work that will produce a result. ROneCOne can run safe calculations on Windows
-worker threads, wait for several answers together, keep Excel responsive, add a timeout, report
-progress, or respond to cancellation. Everything stays local and inside the current Excel process.
+A Task represents work that will produce a result. ROneCOne coordinates that work with the
+familiar .NET shape: start several calculations, wait for them together, keep Excel responsive,
+add a timeout, report progress, or respond to cancellation. Every Task runs cooperatively on
+Excel's own thread, inside your one Excel process.
 
-## Run two calculations at the same time
+> [!NOTE]
+> Tasks coordinate work; they do not run it in parallel. ROneCOne schedules every Task on
+> Excel's thread, which keeps workbook objects safe and never launches a second Excel.
+
+## Coordinate two calculations
 
 Suppose a planning workbook needs a revenue forecast and a reorder point. Build each calculation,
-start both Tasks, and wait once:
+schedule both Tasks, and wait once:
 
 ```vba
 Dim forecastTask As ROneCOne
@@ -19,8 +24,8 @@ Dim results As ROneCOne
 Set forecastWork = ROneCOne.Value(125000#).Multiply(1.08).AsFunc
 Set reorderWork = ROneCOne.Value(80#).Multiply(1.65).Add(20#).AsFunc
 
-Set forecastTask = ROneCOne.Task.Run(forecastWork)
-Set reorderTask = ROneCOne.Task.Run(reorderWork)
+Set forecastTask = ROneCOne.Task.RunOnExcel(forecastWork)
+Set reorderTask = ROneCOne.Task.RunOnExcel(reorderWork)
 Set results = ROneCOne.Task.WhenAll(forecastTask, reorderTask).Await
 
 Debug.Print results.Item(0)   ' 135000
@@ -30,18 +35,14 @@ Debug.Print results.Item(1)   ' 152
 In plain language:
 
 1. `AsFunc` turns each formula into a self-contained expression lambda.
-2. `Task.Run` checks that the expression is safe, then starts it on the Windows thread pool.
+2. `Task.RunOnExcel` schedules it on the cooperative scheduler.
 3. `WhenAll` represents the pair.
-4. `Await` waits for both answers and returns them in the original order.
+4. `Await` runs the scheduled work and returns both answers in the original order.
 
-The usual numeric and Boolean result types are inferred. Add `.Returns(vbLong)` or another
-supported scalar type when you want an exact result type. The current native scalar set is Byte,
-Integer, Long, Single, Double, Boolean, and Date.
+## Schedule workbook procedures the same way
 
-## Keep workbook work on Excel's thread
-
-Excel objects and ordinary VBA procedures belong to Excel's owning thread. Wrap that work as a
-delegate, then use the explicit safe path:
+Ordinary VBA functions, workbook objects, and COM calls use the identical shape. Wrap the
+procedure as a delegate and schedule it:
 
 ```vba
 Dim countOpenOrders As ROneCOne
@@ -54,30 +55,8 @@ Set ordersTask = ROneCOne.Task.RunOnExcel(countOpenOrders)
 Debug.Print ordersTask.Await
 ```
 
-`RunOnExcel` uses cooperative scheduling. It keeps composition and await-style flow, but it does
-not claim that a VBA function or workbook call is running in parallel.
-
-> [!NOTE]
-> Passing an Excel-owned delegate to `Task.Run` raises a clear error instead of quietly changing
-> the execution mode. Work never falls back to a different thread silently.
-
-## Know what may run on a worker
-
-The first native expression surface accepts numeric or Boolean constants with addition,
-subtraction, multiplication, division, negation, comparisons, `AndAlso`, `OrElse`, and `Not`.
-It does not accept strings, objects, member access, VBA calls, Excel calls, COM, or external
-addresses. This boundary is what makes worker-thread execution predictable.
-
-You can inspect it when needed:
-
-```vba
-Debug.Print forecastTask.ExecutionMode     ' NativeThreadPool
-Debug.Print forecastTask.WorkerThreadId    ' Nonzero worker thread
-Debug.Print ROneCOne.CurrentThreadId        ' Excel's current thread
-```
-
-Normal workbook code rarely needs the thread identifiers; they are useful for diagnostics and
-proof that work did not execute on Excel's thread.
+Because everything already lives on Excel's thread, delegates, workbook reads, and Excel object
+calls need no special handling.
 
 ## Turn the result into the next step
 
@@ -97,8 +76,8 @@ Set summaryTask = allWork.ContinueWith(buildSummary)
 Debug.Print summaryTask.Await
 ```
 
-Continuations run cooperatively on Excel's thread, so they can safely hand the finished results to
-ordinary workbook code.
+Continuations receive the finished antecedent Task and can safely hand its results to ordinary
+workbook code.
 
 ## Keep Excel responsive and put a limit on waiting
 
@@ -128,9 +107,9 @@ progress.Report 250&
 cancelSource.Cancel
 ```
 
-Pass `cancelSource.Token` to work that supports cancellation. Native work checks between
-instructions; cooperative work checks at safe scheduler points. A typed progress reporter rejects
-the wrong kind of value before it reaches the screen.
+Pass `cancelSource.Token` to work that supports cancellation. The scheduler checks the token at
+safe points before and during waits. A typed progress reporter rejects the wrong kind of value
+before it reaches the screen.
 
 ## When the answer is already available
 
@@ -147,6 +126,6 @@ directly.
 ## Where next
 
 - [Data and providers](data-and-providers.md) continues the learning path.
-- [Task technical reference](../tasks.md) defines exact failure, cancellation, memory,
+- [Task technical reference](../tasks.md) defines exact failure, cancellation,
   completion-source, and aggregate-error rules.
 - [Guide index](README.md) returns to the full learning path.

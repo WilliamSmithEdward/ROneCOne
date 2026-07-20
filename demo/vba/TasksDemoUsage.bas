@@ -1,8 +1,9 @@
 Attribute VB_Name = "TasksDemoUsage"
 Option Explicit
 
-' This tutorial runs safe calculations in parallel without opening another Excel.
-' Workbook and VBA work uses RunOnExcel so Excel objects never cross threads.
+' This tutorial coordinates calculations, cancellation, progress, and timeouts
+' with await-style Tasks. Every Task runs cooperatively on Excel's own thread,
+' so workbook objects stay safe and no second Excel is ever launched.
 
 Private Const BENCHMARK_ITERATIONS As Long = 1000
 Private Const BENCHMARKS_SHEET As String = "Benchmarks"
@@ -45,20 +46,20 @@ Private Sub WriteTaskExamples()
     Dim results As ROneCOne
     Dim source As ROneCOne
     Dim summaryTask As ROneCOne
+    Dim yielded As ROneCOne
     Dim ignored As Variant
     Dim registration As ROneCOne
 
-    ' These expression lambdas are pure: they cannot touch Excel, VBA, or COM.
-    ' That makes it safe for Task.Run to move them onto Windows worker threads.
+    ' Each calculation is an expression lambda scheduled on Excel's thread.
     Set forecastWork = ROneCOne.Value(125000#).Multiply(1.08).AsFunc
     Set reorderWork = ROneCOne.Value(80#).Multiply(1.65).Add(20#).AsFunc
 
-    ' Task.Run starts immediately. WhenAll keeps results in the original order.
-    Set forecastTask = ROneCOne.Task.Run(forecastWork)
-    Set reorderTask = ROneCOne.Task.Run(reorderWork)
+    ' RunOnExcel schedules the work; WhenAll keeps results in the original order.
+    Set forecastTask = ROneCOne.Task.RunOnExcel(forecastWork)
+    Set reorderTask = ROneCOne.Task.RunOnExcel(reorderWork)
     Set allWork = ROneCOne.Task.WhenAll(forecastTask, reorderTask)
 
-    ' A continuation turns the two raw counts into a readable summary.
+    ' A continuation turns the two raw numbers into a readable summary.
     Set buildSummary = ROneCOne.Func( _
         "TasksDemoUsage.BuildForecastSummary") _
         .Takes(ROneCOne.Task) _
@@ -66,7 +67,7 @@ Private Sub WriteTaskExamples()
     Set summaryTask = allWork.ContinueWith(buildSummary)
     Set results = allWork.Await
 
-    ' This function reads VBA data, so it deliberately stays on Excel's thread.
+    ' This function reads VBA data, so it belongs on Excel's thread too.
     Set countOpenOrders = ROneCOne.Func( _
         "TasksDemoUsage.CountOpenOrders").Takes().Returns(vbLong)
     Set openOrdersTask = ROneCOne.Task.RunOnExcel(countOpenOrders)
@@ -95,19 +96,19 @@ Private Sub WriteTaskExamples()
     Set bounded = ROneCOne.Task.Delay(5&).WaitAsync(100&)
     ignored = delayed.Await
     ignored = bounded.Await
-    ignored = ROneCOne.Task.YieldOnce.Await
+    Set yielded = ROneCOne.Task.YieldOnce
+    ignored = yielded.Await
 
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
         .Range("E6").Value2 = results.JoinText(" | ")
         .Range("E7").Value2 = summaryTask.Await
-        .Range("E8").Value2 = _
-            forecastTask.WorkerThreadId <> ROneCOne.CurrentThreadId
-        .Range("E9").Value2 = openOrdersTask.Await
-        .Range("E10").Value2 = delayed.IsCompleted
-        .Range("E11").Value2 = source.Token.IsCancellationRequested
-        .Range("E12").Value2 = mProgressTotal
-        .Range("E13").Value2 = completion.Task.Await
-        .Range("E14").Value2 = bounded.IsCompleted
+        .Range("E8").Value2 = openOrdersTask.Await
+        .Range("E9").Value2 = delayed.IsCompleted
+        .Range("E10").Value2 = source.Token.IsCancellationRequested
+        .Range("E11").Value2 = mProgressTotal
+        .Range("E12").Value2 = completion.Task.Await
+        .Range("E13").Value2 = bounded.IsCompleted
+        .Range("E14").Value2 = yielded.IsCompleted
     End With
 End Sub
 
@@ -145,7 +146,7 @@ Private Sub RunTaskBenchmark()
     started = Timer
     For index = 1 To BENCHMARK_ITERATIONS
         Set work = ROneCOne.Value(index).Multiply(2&).AsFunc
-        result = ROneCOne.Task.Run(work).Await
+        result = ROneCOne.Task.RunOnExcel(work).Await
     Next index
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
         .Range("B6").Value2 = BENCHMARK_ITERATIONS

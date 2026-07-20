@@ -6,7 +6,7 @@ param(
     [ValidateRange(0.01, 60)]
     [double]$MaxOrderingBenchmarkSeconds = 2.5,
     [ValidateRange(0.01, 60)]
-    [double]$MaxNativeTaskBenchmarkSeconds = 1.5,
+    [double]$MaxTaskBenchmarkSeconds = 1.5,
     [switch]$Worker,
     [string]$ProcessInfoPath = "demo\.working\demo-processes.json"
 )
@@ -164,8 +164,8 @@ public static class ROneCOneDemoProcess
         }
         if ($featureName -eq "Tasks + async" -and `
             ($benchmarkSeconds -le 0 -or `
-                $benchmarkSeconds -gt $MaxNativeTaskBenchmarkSeconds)) {
-            throw "Native Task benchmark exceeded the $MaxNativeTaskBenchmarkSeconds-second gate."
+                $benchmarkSeconds -gt $MaxTaskBenchmarkSeconds)) {
+            throw "Task benchmark exceeded the $MaxTaskBenchmarkSeconds-second gate."
         }
         [pscustomobject]@{
             workbook = $resolvedWorkbook
@@ -173,7 +173,7 @@ public static class ROneCOneDemoProcess
             status = $demoStatus
             examples_passing = $statuses.Count
             benchmark_seconds = $benchmarkSeconds
-            native_task_gate_seconds = $MaxNativeTaskBenchmarkSeconds
+            task_gate_seconds = $MaxTaskBenchmarkSeconds
             member_dispatch_seconds = $memberDispatchSeconds
             ordering_seconds = $orderingSeconds
             ordering_gate_seconds = $MaxOrderingBenchmarkSeconds
@@ -214,7 +214,7 @@ $arguments = @(
     "-MacroName", "`"$MacroName`"",
     "-ProcessInfoPath", "`"$resolvedProcessInfo`"",
     "-MaxOrderingBenchmarkSeconds", $MaxOrderingBenchmarkSeconds,
-    "-MaxNativeTaskBenchmarkSeconds", $MaxNativeTaskBenchmarkSeconds,
+    "-MaxTaskBenchmarkSeconds", $MaxTaskBenchmarkSeconds,
     "-Worker"
 )
 $process = Start-Process `

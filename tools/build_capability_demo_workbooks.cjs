@@ -71,22 +71,22 @@ const capabilities = [
   {
     key: "tasks",
     title: "ROneCOne Tasks",
-    subtitle: "Run safe calculations in parallel, without opening another Excel",
+    subtitle: "Coordinate calculations, cancellation, and progress on Excel's thread",
     macro: "RunROneCOneTasksDemo",
     feature: "Tasks + async",
     output: "ROneCOne_Tasks_Demo.xlsx",
-    benchmark: "Native Task.Run startup + Await",
+    benchmark: "Cooperative Task.RunOnExcel startup + Await",
     benchmarkResult: "Last result",
     examples: [
       ["Run two calculations", "await Task.WhenAll(forecast, reorder)", "Set results = ROneCOne.Task.WhenAll(forecastTask, reorderTask).Await", "135000 | 152"],
       ["Build the next step", "allWork.ContinueWith(BuildSummary)", "allWork.ContinueWith(buildSummary).Await", "Forecast 135000; reorder point 152"],
-      ["Prove work left Excel's thread", "task ran on a pool thread", "forecastTask.WorkerThreadId <> ROneCOne.CurrentThreadId", true],
       ["Keep workbook work safe", "run on the UI thread", "ROneCOne.Task.RunOnExcel(countOpenOrders).Await", 3],
       ["Pause without another Excel", "await Task.Delay(5)", "ignored = ROneCOne.Task.Delay(5&).Await", true],
       ["Cancel safely", "cancelSource.Cancel()", "source.Cancel: source.Token.IsCancellationRequested", true],
       ["Show progress", "progress.Report(7)", "ROneCOne.ProgressOf(vbLong, handler).Report 7&", 7],
       ["Finish from a callback", "source.SetResult(99)", "completion.SetResult 99&: completion.Task.Await", 99],
       ["Limit waiting time", "await task.WaitAsync(timeout)", "task.WaitAsync(100&).Await", true],
+      ["Let Excel breathe", "await Task.Yield()", "ignored = ROneCOne.Task.YieldOnce.Await", true],
     ],
   },
   {
@@ -272,7 +272,7 @@ async function buildCapability(config) {
   architecture.getRange("A6:F10").values = [
     ["Single-file core", "ROneCOne.cls", "One import", "ENFORCED", 1, 0],
     ["Checked values", "Runtime signatures", "Reject mistakes before work starts", "ENFORCED", 1, 0],
-    ["One process", "Windows thread pool", "Never launches another Excel", "ENFORCED", 1, 0],
+    ["One process", "Cooperative scheduler", "Never launches another Excel", "ENFORCED", 1, 0],
     ["No runtime VBIDE", "One internal object model", "Normal macro security", "ENFORCED", 1, 0],
     ["Privacy", "No transmission", "Workbook data remains local", "ENFORCED", 1, 0],
   ];

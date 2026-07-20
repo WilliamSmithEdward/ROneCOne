@@ -6,6 +6,29 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
+## Unreleased
+
+### Removed
+
+- The native `Task.Run` execution slice: the expression verifier, bytecode compiler, embedded
+  x64 worker kernel, thread-pool and virtual-memory declares, and the `TaskRun`,
+  `ExecutionMode`, `WorkerThreadId`, and `CurrentThreadId` members. Direct measurement showed
+  the parallel path delivered no practical gain, and removing the embedded machine code
+  simplifies audit and trust. `Task.RunOnExcel` is the single execution path; signature-bound
+  native delegates through `DispCallFunc` are unchanged. See
+  [ADR 0001](docs/decisions/0001-remove-native-task-run.md).
+- The kernel builder `tools/build_native_task_kernel.py` and its source contracts.
+- The unused `mExpressionText` field, the write-only collection builder flag, the bracketed
+  `[Empty]` alias (`EmptyOf` remains), the duplicate public `TaskFromResult`
+  (`Task.FromResult` remains), the expired `DemoCustomerQuery` packager shim, and the reserved
+  `.ronecone.env.example` schema the runtime never read.
+
+### Changed
+
+- Rebuilt the Tasks demo and guide around cooperative coordination: scheduling, `WhenAll`,
+  continuations, cancellation, progress, timeouts, and yielding.
+- The task benchmark now measures 1,000 cooperative `Task.RunOnExcel(...).Await` lifecycles.
+
 ## 1.2.0 - 2026-07-19
 
 ### Added

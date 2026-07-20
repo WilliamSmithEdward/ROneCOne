@@ -41,6 +41,8 @@ syntax. Each technical document links back to its user guide.
   and the state and isolation rules.
 - [Development and Excel safety](development.md) documents the four validation gates, the
   popup-adaptive Excel harness, benchmarks, and how the demo workbooks are rebuilt.
+- [Decision records](decisions/) capture significant architecture decisions with their context
+  and consequences.
 
 ## Release history
 

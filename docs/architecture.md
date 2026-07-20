@@ -109,14 +109,14 @@ See [`collections.md`](collections.md) for the public surface and examples.
 
 ## Task, data, and provider slice
 
-Tasks have two explicit execution modes. `Task.Run` compiles a verified, zero-argument numeric or
-Boolean expression to a small bytecode and submits an embedded x64 interpreter to the Windows
-thread pool. Code is read/execute, task data is non-executable, and the verifier admits no VBA,
-Excel, COM, object, or arbitrary-address operation. `Task.RunOnExcel`, deadlines, continuations,
-and provider calls use cooperative state machines on Excel's owning thread. Bounded waits pump
-events, sleep briefly, and reject same-task reentrancy. Combinators retain child tasks,
-cancellation registrations own removable callback entries, and fault sets preserve VBA error
-identity in AggregateException values.
+Every Task executes through one cooperative state machine on Excel's owning thread.
+`Task.RunOnExcel` schedules any zero-argument delegate; deadlines, continuations, and provider
+calls use the same scheduler. Bounded waits pump events, sleep briefly, and reject same-task
+reentrancy. Combinators retain child tasks, cancellation registrations own removable callback
+entries, and fault sets preserve VBA error identity in AggregateException values. An earlier
+release shipped a native thread-pool path for verified scalar expressions; it was removed because
+it delivered no practical performance gain, and the decision is recorded in
+[`decisions/0001-remove-native-task-run.md`](decisions/0001-remove-native-task-run.md).
 
 Data tables maintain primary-key hash indexes. Relations cache parent and child lookup indexes and
 invalidate them from table version changes. Provider objects remain late-bound ADO wrappers;
@@ -159,7 +159,7 @@ contexts are keyed to one workbook, and process-global mutable state never coupl
 | Available | Stable composite `Order`/`OrderBy`/`ThenBy` queries with per-level comparers |
 | Available | Typed events over universal Actions |
 | Available | Structured `Try/Catch/Finally` over callable blocks |
-| Available | Native Task.Run, await-style coordination, cancellation, progress, and completion sources |
+| Available | Cooperative Tasks with await-style coordination, cancellation, progress, and completion sources |
 | Available | Mutable, concurrent-style, immutable, and specialized generic collections |
 | Available | DataTable, DataSet, DataView, relations, readers, adapters, and providers |
 | Constrained by host | Arbitrary VBA, COM, and workbook state remain on Excel's thread |

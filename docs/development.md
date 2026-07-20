@@ -29,7 +29,7 @@ terminals, predicate algebra, collection membership, null-safe paths, custom com
 quantifiers, stable composite ordering, indexed hash collections, capacity control, and enumerator
 refresh after mutation. Dedicated advanced-collection and task/data/provider suites cover
 specialized families, scheduler state, cancellation, indexed data relations, and provider
-capabilities. The current live total is 414 assertions across all four suites.
+capabilities. The current live total is 416 assertions across all four suites.
 
 The invocation benchmark has a configurable release ceiling (`-MaxBenchmarkSeconds`, default
 `0.5` for 10,000 calls). The v0.1.0 measurements are stored in
@@ -76,6 +76,13 @@ and deterministic resource cleanup. Its 1.5-second release gate is based on thre
 samples with a 0.5234375-second median. The same three processes repeat every established
 performance gate and all 425 live assertions. Measurements are recorded in
 `benchmarks/v1.2.0-baseline.json`.
+
+The v2.0.0 baseline follows the removal of the native execution slice
+([ADR 0001](decisions/0001-remove-native-task-run.md)). The task scenario becomes 1,000
+cooperative `Task.RunOnExcel(...).Await` lifecycles with a 0.0546875-second median against the
+retained 1.5-second gate, roughly ten times faster than the removed native path measured on the
+same machine. Three fresh processes repeat every established gate and all 416 live assertions.
+Measurements are recorded in `benchmarks/v2.0.0-baseline.json`.
 
 pyVBAanalysis 1.2.0 treats a VBA bang identifier such as `!Age` as an ordinary variable token.
 Live bang examples therefore declare the token name in their local scope even though VBA uses it
