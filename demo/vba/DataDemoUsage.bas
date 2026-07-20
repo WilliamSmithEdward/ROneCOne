@@ -1,8 +1,20 @@
 Attribute VB_Name = "DataDemoUsage"
 Option Explicit
 
-' This tutorial builds a checked table, relates customers to orders, and loads data.
-' The temporary source workbook is created locally and deleted after the demo.
+' ============================================================================
+' ROneCOne tutorial: in-memory data and providers
+' ----------------------------------------------------------------------------
+' This demo works with data the way a small database does, but entirely inside
+' Excel. You define a table with typed columns, and every row you add is checked
+' against them. You can filter and sort through a view, link two tables with a
+' relationship and walk between them, track which rows changed, and even read
+' another workbook through a connection, all without leaving VBA.
+'
+' The last part reads a second workbook as a data source. The demo creates that
+' source file locally, uses it, and deletes it again, so nothing is left behind.
+'
+' To run it: press Alt+F8, choose RunROneCOneDataDemo, and click Run.
+' ============================================================================
 
 Private Const BENCHMARK_ITERATIONS As Long = 1000
 Private Const BENCHMARKS_SHEET As String = "Benchmarks"
@@ -53,20 +65,29 @@ Private Sub WriteDataExamples( _
     Dim table As ROneCOne
     Dim view As ROneCOne
 
-    ' Define the columns once, then every added row is checked against them.
+    ' Step 1: define the table's shape once. Each Column names a piece of data
+    ' and its type, so every row you add later is checked against that shape.
+    ' The Id column numbers itself (starting at 100, stepping by 10) and is the
+    ' primary key that identifies a row; Name fills in "Unknown" when left blank.
     Set table = ROneCOne.DataTable("People")
     table.Column("Id", vbLong).AutoNumber(100&, 10&).AsPrimaryKey
     table.Column("Name", vbString).WithDefault "Unknown"
     table.Column "Score", vbLong
     table.Column "Note", vbString
+    ' Add two rows. You supply Name, Score, and Note; the Id fills itself in.
+    ' ROneCOne.DBNull is the data layer's way of saying "no value here" for Note.
     Set row = table.Row("Ada", 90&, ROneCOne.DBNull).Add
     Set row = table.Row("Grace", 95&, "Compiler pioneer").Add
-    ' A view filters and sorts the same rows without copying the table by hand.
+    ' A view is a live window onto the same rows, filtered and sorted, without
+    ' copying anything by hand. This one keeps scores of at least 90 and orders
+    ' them high to low, so reading the view back gives the top scorer first.
     Set view = ROneCOne.DataView(table) _
         .WithFilter(table.Rows!Score.AtLeast(90&)) _
         .WithSort("Score", True)
 
-    ' Relate each order to its customer, then navigate in either direction.
+    ' Two tables can be linked. Here every order belongs to a customer: the
+    ' relationship ties the Orders CustomerId back to the Customers Id, and once
+    ' linked you can start at a customer and ask for its orders (done below).
     Set parent = ROneCOne.DataTable("Customers")
     parent.Column("Id", vbLong).AsPrimaryKey
     Set parentRow = parent.LoadRow(Array(1&))
@@ -79,23 +100,37 @@ Private Sub WriteDataExamples( _
     data.AddRelation ROneCOne.DataRelation( _
         "CustomerOrders", parent.Columns("Id"), child.Columns("CustomerId"))
 
-    ' Mark the current rows saved, then make one change for GetChanges to find.
+    ' The table remembers what changed since you last saved. AcceptChanges marks
+    ' everything as the new saved baseline; the edit right after it is then the
+    ' only pending change, which is exactly what GetChanges reports further down.
     table.AcceptChanges
     table.Rows.Item(0).Item("Score") = 91&
 
-    ' Load another local workbook without adding an ADO reference in the VBE.
+    ' Now read a different workbook as if it were a database, without adding any
+    ' references in the VBA editor. The connection string points at the fixture
+    ' file this demo created; Connect opens it so the commands below can query it.
     Set connection = ROneCOne.DbConnection( _
         "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & fixturePath & _
         ";Extended Properties=""Excel 12.0 Xml;HDR=YES"";")
     connection.Connect
+    ' A command holds a query. This one asks for names and scores, highest first.
+    ' An adapter runs a command and pours the results into a table you provide,
+    ' so "filled" ends up holding whatever the source workbook returned.
     Set command = ROneCOne.DbCommand( _
         "SELECT [Name], [Score] FROM [Scores$] ORDER BY [Score] DESC", _
         connection)
     Set adapter = ROneCOne.DbDataAdapter(command)
     Set filled = ROneCOne.DataTable("Scores")
+    ' A query that returns a single value (here, a row count) can run in the
+    ' background. ExecuteScalarAsync starts it now and hands back a task; the
+    ' answer is collected later with Await, once we actually need the number.
     Set scalarTask = ROneCOne.DbCommand( _
         "SELECT COUNT(*) FROM [Scores$]", connection).ExecuteScalarAsync
 
+    ' Each line reads one result and writes it to the Examples sheet: the first
+    ' row's Id, the view's top name, how many orders the customer has, how many
+    ' pending changes exist, the rows the adapter filled, the counted total, and
+    ' so on, so every feature above shows its answer next to the others.
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
         .Range("E6").Value2 = table.Rows.Item(0).Item("Id")
         .Range("E7").Value2 = view.Item(0).Item("Name")
@@ -111,6 +146,9 @@ Private Sub WriteDataExamples( _
 End Sub
 
 Private Sub CreateProviderFixture(ByVal fixturePath As String)
+    ' Build the throwaway source workbook the connection reads from. It is a
+    ' plain sheet named "Scores" with two names and two numbers, saved next to
+    ' this workbook and deleted at the end so the demo leaves nothing behind.
     Dim fixture As Workbook
     Dim sheet As Worksheet
 
@@ -139,6 +177,8 @@ Private Sub RunDataBenchmark()
     Dim started As Double
     Dim table As ROneCOne
 
+    ' Load a thousand rows, then filter them, and time the whole thing. This
+    ' shows the in-memory table stays fast enough for everyday workbook data.
     Set table = ROneCOne.DataTable("Benchmark")
     table.Column "Value", vbLong
     started = Timer

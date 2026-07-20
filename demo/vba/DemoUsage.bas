@@ -1,8 +1,21 @@
 Attribute VB_Name = "DemoUsage"
 Option Explicit
 
-' This tutorial uses delegates to build reusable pricing and notification rules.
-' Read the comments from top to bottom; each example starts with the useful result.
+' ============================================================================
+' ROneCOne tutorial: delegates and expressions
+' ----------------------------------------------------------------------------
+' A "delegate" is just a piece of work saved in a variable. Instead of running
+' a calculation right away, you describe it once, keep it, and run it whenever
+' you like, as many times as you like, passing different inputs each time.
+'
+' This demo builds a few small business rules that way: a discount, an order
+' total, an approval check, and a notification that fans out to two places. You
+' do not need to understand the internals to follow along. Read top to bottom;
+' every example names the useful result first, then shows how it was built.
+'
+' To run it: press Alt+F8, choose RunROneCOneDemo, and click Run. The results
+' appear on the "Examples" worksheet, one per row.
+' ============================================================================
 
 #If Win64 Then
 Private Declare PtrSafe Sub CopyPointer Lib "kernel32" Alias "RtlMoveMemory" ( _
@@ -64,22 +77,34 @@ Private Sub WriteDelegateExamples()
     Dim worksheetFunctions As Object
     Dim writeAudit As ROneCOne
 
-    ' Build pricing rules in place. No extra helper procedure is needed.
+    ' Step 1: describe placeholders for the numbers a rule will receive later.
+    ' "Var" means "a value of this type that I will supply when I run the rule."
+    ' Think of them as the blanks in a fill-in-the-blank formula.
     Set amount = ROneCOne.Var(vbLong)
     Set shipping = ROneCOne.Var(vbLong)
     Set price = ROneCOne.Var(vbDouble)
+
+    ' Now write the formulas over those blanks and freeze each one into a
+    ' runnable rule with AsFunc. applyDiscount takes a price off ten percent;
+    ' orderTotal adds shipping to an amount; approvalRule is true only when the
+    ' amount is at least 100 and below 1000. Nothing runs yet; these are recipes.
     Set applyDiscount = price.Multiply(0.9).AsFunc
     Set orderTotal = amount.Add(shipping).AsFunc
     Set approvalRule = amount.AtLeast(CLng(100)) _
         .AndAlso(amount.LessThan(CLng(1000))) _
         .AsFunc
 
-    ' AndAlso stops after False, so the unsafe division is never attempted.
+    ' AndAlso is a "short-circuit" and: once the left side is False, the right
+    ' side is never looked at. Here the left side is False, so the deliberately
+    ' unsafe divide-by-zero on the right is never reached and cannot fail.
     Set safeFalse = ROneCOne.Value(False) _
         .AndAlso(ROneCOne.Value(1).Divide(0)) _
         .AsFunc
 
-    ' Existing Excel methods and workbook procedures use the same Func shape.
+    ' A rule can also wrap work that already exists. Point Func at a built-in
+    ' Excel worksheet function, or at one of your own workbook procedures by
+    ' name. Takes and Returns state the expected argument and result types so a
+    ' wrong call is caught before the target ever runs.
     Set worksheetFunctions = Application.WorksheetFunction
     Set maximum = ROneCOne.Func(worksheetFunctions, "Max") _
         .Takes(vbLong, vbLong) _
@@ -88,7 +113,8 @@ Private Sub WriteDelegateExamples()
         .Takes(vbLong, vbLong) _
         .Returns(vbLong)
 
-    ' One notification can update the dashboard and write an audit entry.
+    ' Combine joins several actions into one. Running "notify" once updates the
+    ' dashboard and writes the audit entry, in that order, from a single call.
     Set updateDashboard = ROneCOne.Action("DemoUsage.UpdateDashboard") _
         .Takes(vbString)
     Set writeAudit = ROneCOne.Action("DemoUsage.WriteAudit") _
@@ -97,7 +123,9 @@ Private Sub WriteDelegateExamples()
     mTrace = vbNullString
     notify.Execute "Order 1042 approved"
 
-    ' ByRef lets the delegate update the original order number in place.
+    ' Most rules only read their inputs. This one changes a variable in place:
+    ' passing orderNumber "by reference" lets the native action bump it from
+    ' 1041 to 1042. This is the one place a delegate writes back to your data.
     orderNumber = 1041
 #If Win64 Then
     Set increment = ROneCOne.NativeAction(NextOrderNumberAddress) _
@@ -105,10 +133,16 @@ Private Sub WriteDelegateExamples()
     increment.Execute ROneCOne.RefLong(orderNumber)
 #End If
 
-    ' PipeTo applies the discount first, then adds the handling charge.
+    ' PipeTo chains two rules so one feeds the next: apply the discount, then
+    ' add a handling charge to that discounted price. The output of the first
+    ' becomes the input of the second.
     Set addHandling = price.Add(5#).AsFunc
     Set pipeline = applyDiscount.PipeTo(addHandling)
 
+    ' Everything above only described work. This is where the rules finally run.
+    ' Calling a rule looks like calling a function: applyDiscount(100) runs the
+    ' saved recipe with 100 as the input. Each line writes one answer to the
+    ' Examples sheet so you can see the result next to the rule that produced it.
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
         .Range("E6").Value2 = applyDiscount(CDbl(100))
         .Range("E7").Value2 = orderTotal(CLng(100), CLng(5))
@@ -127,6 +161,10 @@ End Sub
 
 ' -----------------------------------------------------------------------------
 ' Demo call targets
+' ----------------------------------------------------------------------------
+' These are ordinary workbook procedures. The rules above reach them by name,
+' which shows that ROneCOne wraps the plain VBA code you already write; there is
+' nothing special about the procedures themselves.
 ' -----------------------------------------------------------------------------
 
 Public Function CalculateOrderTotal( _
@@ -169,6 +207,8 @@ Private Sub RunDelegateBenchmark()
     Dim price As ROneCOne
     Dim started As Double
 
+    ' Build one rule, then run it ten thousand times and time the loop. This
+    ' shows the per-call cost is small enough for everyday workbook use.
     Set price = ROneCOne.Var(vbDouble)
     Set applyDiscount = price.Multiply(0.9).AsFunc
     started = Timer

@@ -1,8 +1,20 @@
 Attribute VB_Name = "EventsDemoUsage"
 Option Explicit
 
-' This tutorial shows one order update reaching several workbook features.
-' The event checks every handler before anything is subscribed or run.
+' ============================================================================
+' ROneCOne tutorial: typed events
+' ----------------------------------------------------------------------------
+' An "event" is an announcement one part of your workbook makes so that other
+' parts can react. You subscribe interested handlers to the event; then, each
+' time you "emit" it, every subscriber runs with the message you sent.
+'
+' Here an order-status change announces itself, and two handlers react: one
+' updates a dashboard, the other writes an audit line. The event is typed: it
+' only accepts handlers with the right argument, so a mismatched handler is
+' rejected up front rather than failing mid-run.
+'
+' To run it: press Alt+F8, choose RunROneCOneEventsDemo, and click Run.
+' ============================================================================
 
 Private Const BENCHMARK_ITERATIONS As Long = 10000
 Private Const BENCHMARKS_SHEET As String = "Benchmarks"
@@ -35,13 +47,15 @@ Private Sub WriteEventExamples()
     Dim updateDashboard As ROneCOne
     Dim writeAudit As ROneCOne
 
-    ' Turn two ordinary procedures into checked String event handlers.
+    ' Wrap two ordinary procedures as handlers. Takes(vbString) says each one
+    ' expects a single text message, so only compatible handlers can subscribe.
     Set updateDashboard = ROneCOne.Action( _
         "EventsDemoUsage.UpdateDashboard").Takes(vbString)
     Set writeAudit = ROneCOne.Action( _
         "EventsDemoUsage.WriteAudit").Takes(vbString)
 
-    ' Every Emit now updates the dashboard and records the same message.
+    ' Create the event and subscribe both handlers. From now on, one Emit call
+    ' delivers the message to every subscriber in the order they were added.
     Set orderStatusChanged = ROneCOne.EventOf(vbString) _
         .Subscribe(updateDashboard) _
         .Subscribe(writeAudit)
@@ -53,7 +67,8 @@ Private Sub WriteEventExamples()
         .Range("E7").Value2 = orderStatusChanged.HandlerCount
     End With
 
-    ' Stop auditing future messages without changing the dashboard handler.
+    ' Unsubscribe removes one handler and reports whether it was found. The next
+    ' Emit reaches only the dashboard; auditing has been switched off cleanly.
     removed = orderStatusChanged.Unsubscribe(writeAudit)
     mTrace = vbNullString
     orderStatusChanged.Emit "Order 1043 delayed"

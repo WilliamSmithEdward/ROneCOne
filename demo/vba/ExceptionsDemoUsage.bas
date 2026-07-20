@@ -1,8 +1,20 @@
 Attribute VB_Name = "ExceptionsDemoUsage"
 Option Explicit
 
-' This tutorial protects a sales import and always closes the file.
-' Catch is ready for a known bad amount; this safe demo uses a valid sample row.
+' ============================================================================
+' ROneCOne tutorial: structured Try, Catch, and Finally
+' ----------------------------------------------------------------------------
+' Real work can fail, and some cleanup must happen no matter what. This pattern
+' makes both explicit in one place: TRY the work, CATCH a specific failure so
+' you can recover from it, and FINALLY run cleanup that always happens, whether
+' the work succeeded, failed and was caught, or failed and was not.
+'
+' The example imports sales rows and always closes the file afterwards. A Catch
+' stands ready for one known problem (a bad amount); because this safe demo
+' feeds a valid row, the Catch is never needed and the import simply succeeds.
+'
+' To run it: press Alt+F8, choose RunROneCOneExceptionsDemo, and click Run.
+' ============================================================================
 
 Private Const BENCHMARK_ITERATIONS As Long = 1000
 Private Const BENCHMARKS_SHEET As String = "Benchmarks"
@@ -36,7 +48,9 @@ Private Sub WriteExceptionExamples()
     Dim skipBadRow As ROneCOne
     Dim successfulImport As ROneCOne
 
-    ' These are ordinary VBA procedures with checked Action signatures.
+    ' Name the three steps as ordinary procedures. The recovery step,
+    ' skipBadRow, is allowed one argument (ROneCOne.Exception): if the import
+    ' fails, ROneCOne hands it the captured error so recovery can be specific.
     Set importWork = ROneCOne.Action( _
         "ExceptionsDemoUsage.ImportSales").Takes()
     Set skipBadRow = ROneCOne.Action( _
@@ -44,7 +58,9 @@ Private Sub WriteExceptionExamples()
     Set closeImportFile = ROneCOne.Action( _
         "ExceptionsDemoUsage.CloseImportFile").Takes()
 
-    ' Protect the import before doing any work. Catch is ready if the import fails.
+    ' Assemble the protected operation and then run it with Execute. Read it as
+    ' a sentence: try the import; if a bad-amount error happens, skip that row;
+    ' and no matter what, close the file at the end.
     mTrace = vbNullString
     Set importAttempt = ROneCOne.Try(importWork) _
         .Catch(INVALID_AMOUNT_ERROR, skipBadRow) _
@@ -56,7 +72,8 @@ Private Sub WriteExceptionExamples()
         .Range("E8").Value2 = "No import error"
     End With
 
-    ' The same cleanup also runs after a successful import.
+    ' Finally is not only for failures. Here the import succeeds and the very
+    ' same cleanup still runs, which is why files never leak open in either case.
     Set successfulImport = ROneCOne.Action( _
         "ExceptionsDemoUsage.ImportValidSales").Takes()
     Set importAttempt = ROneCOne.Try(successfulImport) _

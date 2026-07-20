@@ -1,8 +1,26 @@
 Attribute VB_Name = "CollectionsDemoUsage"
 Option Explicit
 
-' This tutorial filters, sorts, and summarizes numbers and Customer objects.
-' Run the public macro first, then read each small procedure from top to bottom.
+' ============================================================================
+' ROneCOne tutorial: collections and LINQ-style queries
+' ----------------------------------------------------------------------------
+' This is the broad tour. It shows how to hold data in a typed list and then
+' ask questions of it: filter to the rows you want, reshape them, sort them,
+' and summarize them, without writing loops, counters, or temporary arrays.
+'
+' The queries read almost like sentences. "Where Age at least 40" keeps the
+' rows whose Age is 40 or more; "Map CustomerName" pulls out just the names;
+' "OrderBy City" sorts them. A query is also lazy: it does no work until you
+' ask for the result (for example with ToList), so it always sees the latest
+' data, even rows added after the query was written.
+'
+' The demo works with plain numbers first, then with ordinary Customer objects
+' of your own class, to show the same queries apply to both. Read the public
+' macro, then each small procedure top to bottom.
+'
+' To run it: press Alt+F8, choose RunROneCOneCollectionsDemo, and click Run.
+' Results land on the "Examples" and "User Class LINQ" worksheets.
+' ============================================================================
 
 Private Const BASIC_EXAMPLES_SHEET As String = "Examples"
 Private Const BENCHMARK_ELEMENT_COUNT As Long = 10000
@@ -52,22 +70,33 @@ Private Sub WritePrimitiveCollectionExamples()
     Dim total As Long
     Dim x As ROneCOne
 
+    ' A typed list holds one kind of value. This one holds Long whole numbers.
+    ' Because it is typed, adding the wrong kind of value is refused rather than
+    ' silently stored; RaisesExpectedTypeMismatch confirms that guard fires.
     Set numbers = ROneCOne.ListOf( _
         vbLong, CLng(5), CLng(10), CLng(15))
     strictTypeRejected = RaisesExpectedTypeMismatch(numbers)
 
-    ' ListFrom infers the exact user class from its first value.
+    ' ListFrom builds a list from objects you already have and figures out the
+    ' element type from the first one, so this becomes a list of DemoCustomer.
     Set ada = CreateCustomer("Ada", CLng(36), "London")
     Set grace = CreateCustomer("Grace", CLng(40), "Arlington")
     Set customers = ROneCOne.ListFrom(ada, grace)
 
-    ' The query runs when ToList asks for results, so it sees the later Add.
+    ' Queries are lazy. "filtered" is defined here as "numbers greater than 10",
+    ' but it does not actually look at the numbers until ToList asks for them on
+    ' the last line. By then 30 has been added, so the result includes it. The
+    ' query describes what you want; ToList is the moment it runs. Element is a
+    ' stand-in for "each number" while the condition is being described.
     Set numbers = ROneCOne.ListOf(vbLong, CLng(5), CLng(20))
     Set x = numbers.Element
     Set filtered = numbers.Where(x.GreaterThan(CLng(10)))
     numbers.Add CLng(30)
     Set filtered = filtered.ToList
 
+    ' Query steps chain left to right, each feeding the next. Read this as: take
+    ' the numbers 1 through 6, keep the even ones, multiply each by 10, sort
+    ' high to low, and keep the first two. Range(1, 6) means "6 numbers from 1".
     Set projected = ROneCOne.Range(CLng(1), CLng(6)) _
         .Where(x.Modulo(CLng(2)).EqualTo(CLng(0))) _
         .Map(x.Multiply(CLng(10)), vbLong) _
@@ -75,6 +104,8 @@ Private Sub WritePrimitiveCollectionExamples()
         .Take(CLng(2)) _
         .ToList
 
+    ' The same chaining shapes a sequence: remove duplicates, add a value at the
+    ' front and the back, reverse the order, then drop the first item.
     Set sequence = ROneCOne.ListOf(vbLong, CLng(2), CLng(2), CLng(3))
     Set sequence = sequence.Distinct _
         .Prepend(CLng(1)) _
@@ -83,6 +114,8 @@ Private Sub WritePrimitiveCollectionExamples()
         .Skip(CLng(1)) _
         .ToList
 
+    ' ForEach runs one action against every element. Here it adds each number
+    ' 1 through 4 into a running total (1 + 2 + 3 + 4 = 10) via a small handler.
     Set numbers = ROneCOne.Range(CLng(1), CLng(5))
     Set enumerationValues = ROneCOne.Range(CLng(1), CLng(4))
     mForEachTotal = 0
@@ -137,6 +170,10 @@ Private Sub WriteUserClassLinqExamples()
     Dim strings As ROneCOne
     Dim stringMatches As ROneCOne
 
+    ' The same queries now run over ordinary objects of your own class. Nothing
+    ' about DemoCustomer knows about ROneCOne; you write a normal class and query
+    ' it by property name. Each customer here also has a Manager and, later,
+    ' a list of direct Reports, so the demo can show nested queries too.
     Set ada = CreateCustomer("Ada", CLng(36), "London")
     Set grace = CreateCustomer("Grace", CLng(40), "Arlington")
     Set grace.Manager = ada
@@ -164,7 +201,8 @@ Private Sub WriteUserClassLinqExamples()
         .ToList
     Set firstCustomer = orderedCustomers.First
 
-    ' A Condition is a reusable yes-or-no rule.
+    ' A Condition is a reusable yes-or-no rule you can name once and pass around.
+    ' Exists is true if any customer matches; All is true only if every one does.
     anyLondon = customers.Exists( _
         customers.Condition("City").EqualTo("London"))
     allExperienced = customers.All( _
@@ -179,9 +217,15 @@ Private Sub WriteUserClassLinqExamples()
         .ToList
     Set distinctCities = customers.DistinctBy("City").ToList
 
-    ' ?. avoids an error when a customer has no Manager.
+    ' The "?." in "Manager?.Age" is a safety valve: if a customer has no Manager,
+    ' the path stops instead of erroring, and that customer just does not match.
     Set managed = customers.Where("Manager?.Age").AtLeast(CLng(40)).ToList
 
+    ' When the built-in rules are not quite what you need, you can supply your
+    ' own. An equality comparer decides when two values count as "the same"; a
+    ' comparer decides their sort order. These two treat text case-insensitively,
+    ' so "Ada" and "ADA" are one value here. SingleItem asks for the one and only
+    ' customer that matches, and complains if there is not exactly one.
     Set allowedCities = ROneCOne.ListOf( _
         vbString, "London", "Cleveland")
     Set equalityComparer = ROneCOne.EqualityComparer( _
@@ -193,6 +237,11 @@ Private Sub WriteUserClassLinqExamples()
     Set singleCustomer = customers.SingleItem( _
         customers.Match("CustomerName", "Grace"))
 
+    ' Give each customer a list of direct reports, so a customer now contains a
+    ' collection of other customers. That lets you ask questions about the inner
+    ' list from the outer one (below): which customers have any report aged 40+,
+    ' all reports past a threshold, or none matching, and it shows a filter can
+    ' be driven by an expression comparing one field to a list of allowed values.
     Set ada.Reports = ROneCOne.ListFrom(grace, katherine)
     Set grace.Reports = ROneCOne.ListFrom(ada)
     Set katherine.Reports = ROneCOne.ListLike(ada)
@@ -278,6 +327,9 @@ Private Sub RunCollectionBenchmark()
     Dim started As Double
     Dim x As ROneCOne
 
+    ' The same operations, now at ten thousand elements, timed so you can see
+    ' they stay fast enough for everyday workbook use: filter, then (below)
+    ' object filter, multi-key sort, and dictionary build plus indexed lookup.
     started = Timer
     Set numbers = ROneCOne.Range(CLng(1), BENCHMARK_ELEMENT_COUNT)
     Set x = numbers.Element

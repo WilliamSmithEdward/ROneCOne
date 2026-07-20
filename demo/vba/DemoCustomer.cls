@@ -12,8 +12,19 @@ Attribute VB_TemplateDerived = False
 Attribute VB_Customizable = False
 Option Explicit
 
-' A deliberately ordinary user-defined class used to prove that ROneCOne
-' collections and LINQ operators preserve concrete VBA object types.
+' ============================================================================
+' A plain customer object used by the collections tutorial
+' ----------------------------------------------------------------------------
+' This is an everyday VBA class with no ROneCOne magic in it: a customer has a
+' name, an age, a city, an optional manager (another customer), and a list of
+' direct reports. It exists so the collections demo can hold real objects of
+' your own making, not just numbers and text.
+'
+' The point it proves: when you put DemoCustomer objects into a ROneCOne list
+' and run queries over them, what comes back out is still a DemoCustomer, with
+' all its properties intact. Your objects go in and come out unchanged, so you
+' keep working with them exactly as you defined them here.
+' ============================================================================
 
 Private mAge As Long
 Private mCity As String
