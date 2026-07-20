@@ -29,7 +29,7 @@ terminals, predicate algebra, collection membership, null-safe paths, custom com
 quantifiers, stable composite ordering, indexed hash collections, capacity control, and enumerator
 refresh after mutation. Dedicated advanced-collection and task/data/provider suites cover
 specialized families, scheduler state, cancellation, indexed data relations, and provider
-capabilities. The current live total is 416 assertions across all four suites.
+capabilities. The current live total is 444 assertions across all four suites.
 
 The invocation benchmark has a configurable release ceiling (`-MaxBenchmarkSeconds`, default
 `0.5` for 10,000 calls). The v0.1.0 measurements are stored in
@@ -77,13 +77,17 @@ samples with a 0.5234375-second median. The same three processes repeat every es
 performance gate and all 425 live assertions. Measurements are recorded in
 `benchmarks/v1.2.0-baseline.json`.
 
-The v2.0.0 baseline follows the removal of the native execution slice and the renaming of the
+The v1.3.0 baseline follows the removal of the native execution slice, the renaming of the
 cooperative scheduling call to `Task.Run` ([ADR 0001](decisions/0001-remove-native-task-run.md),
-[ADR 0002](decisions/0002-task-run-names-the-cooperative-scheduler.md)). The task scenario
-becomes 1,000 cooperative `Task.Run(...).Await` lifecycles against the retained 1.5-second
-gate, roughly ten times faster than the removed native path measured on the same machine. Three
-fresh processes repeat every established gate and all 416 live assertions. Measurements are
-recorded in `benchmarks/v2.0.0-baseline.json`.
+[ADR 0002](decisions/0002-task-run-names-the-cooperative-scheduler.md)), lossless numeric
+widening, the worksheet Range bridge, and array-backed element storage
+([ADR 0003](decisions/0003-lossless-numeric-widening.md) through
+[ADR 0005](decisions/0005-array-backed-collection-storage.md)). The task scenario is 1,000
+cooperative `Task.Run(...).Await` lifecycles against the retained 1.5-second gate, roughly ten
+times faster than the removed native path measured on the same machine. The collection suite adds
+numeric-widening, indexed-access-scaling, and expression-display contracts; the task and data
+suite adds the Range bridge contract. Three fresh processes repeat every established gate and all
+444 live assertions. Measurements are recorded in `benchmarks/v1.3.0-baseline.json`.
 
 pyVBAanalysis 1.2.0 treats a VBA bang identifier such as `!Age` as an ordinary variable token.
 Live bang examples therefore declare the token name in their local scope even though VBA uses it

@@ -6,7 +6,7 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
-## Unreleased
+## 1.3.0 - 2026-07-20
 
 ### Changed
 
@@ -15,6 +15,15 @@ checksums for each version are on the
   O(1), and a value replacement is O(1). A `for i: list(i)` loop over ten thousand elements drops
   from quadratic (it previously exceeded the test deadline) to linear. The public API is
   unchanged. See [ADR 0005](docs/decisions/0005-array-backed-collection-storage.md).
+- Rebuilt the Tasks demo and guide around cooperative coordination: scheduling, `WhenAll`,
+  continuations, cancellation, progress, timeouts, and yielding.
+- The task benchmark now measures 1,000 cooperative `Task.Run(...).Await` lifecycles.
+- Rewrote the README and the documentation surface for a general audience: a code-led README,
+  an indexed `docs/` directory, and standardized user guides and references, with no
+  parallelism claims anywhere.
+- Rewrote the inline documentation in every demo module in a tutorial voice, with a
+  plain-language header explaining each concept and how to run its macro, so a non-technical
+  reader can follow every example.
 
 ### Added
 
@@ -32,6 +41,10 @@ checksums for each version are on the
   promotes to the declared type without loss and is stored as that type. Narrowing,
   cross-family, and Boolean/Date/String conversions still raise `TypeMismatchError` atomically.
   See [ADR 0003](docs/decisions/0003-lossless-numeric-widening.md).
+- Architecture decision records under `docs/decisions/`: the native-slice removal, the
+  `Task.Run` rename, lossless numeric widening, the worksheet Range bridge, array-backed
+  storage, the measured deferral of query-plan and DISPID optimizations, the declined
+  background completion pump, and the reaffirmed single-file runtime (ADR 0001 through 0008).
 
 ### Removed
 
@@ -50,12 +63,6 @@ checksums for each version are on the
   `[Empty]` alias (`EmptyOf` remains), the duplicate public `TaskFromResult`
   (`Task.FromResult` remains), the expired `DemoCustomerQuery` packager shim, and the reserved
   `.ronecone.env.example` schema the runtime never read.
-
-### Changed
-
-- Rebuilt the Tasks demo and guide around cooperative coordination: scheduling, `WhenAll`,
-  continuations, cancellation, progress, timeouts, and yielding.
-- The task benchmark now measures 1,000 cooperative `Task.Run(...).Await` lifecycles.
 
 ## 1.2.0 - 2026-07-19
 
