@@ -18,6 +18,8 @@ checksums for each version are on the
 
 ### Added
 
+- `ToDisplayString`, which renders a deferred expression, lambda, or delegate as readable
+  pseudocode (for example `(x.Age >= 40)`) so a query can be inspected while debugging.
 - A worksheet Range bridge built on single bulk `Range.Value` calls:
   `ROneCOne.DataTableFromRange`, `DataTable.LoadFromRange`, `ROneCOne.ListFromRange`, and a
   role-dispatched `ToRange` that writes a DataTable grid, a DataView's visible grid, or a scalar

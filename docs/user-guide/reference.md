@@ -84,6 +84,7 @@ Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 | Function | `Func`, `AsFunc` |
 | Action | `Action`, `Execute` |
 | Signature | `Takes`, `Returns` |
+| Readable form | `ToDisplayString` |
 | Dynamic call | `DynamicInvoke` |
 | Multicast | `Combine`, `Remove`, `GetInvocationList` |
 | Composition | `PipeTo` |

@@ -70,6 +70,7 @@ class SourceContractTests(unittest.TestCase):
             "Returns",
             "Combine",
             "GetInvocationList",
+            "ToDisplayString",
             "PipeTo",
             "Add",
             "Subtract",

@@ -112,6 +112,14 @@ Debug.Print calculateTotal.InvocationCount
 
 Metadata makes dynamically bound behavior easier to diagnose without changing the target code.
 
+`ToDisplayString` renders an expression or deferred condition as readable pseudocode, which is
+useful when you want to see what a stored rule actually checks:
+
+```vba
+Debug.Print applyDiscount.ToDisplayString          ' (x * 0.9)
+Debug.Print customers.Condition("Age").AtLeast(40).ToDisplayString  ' (x.Age >= 40)
+```
+
 ## Native and ByRef work
 
 ROneCOne also supports signature-bound Windows x64 native calls and true native `ByRef` variables.

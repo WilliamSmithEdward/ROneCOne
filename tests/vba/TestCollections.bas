@@ -52,6 +52,8 @@ Public Sub RunROneCOneCollectionTests()
     TestTerminals
     mCurrentTest = "TestForEach"
     TestForEach
+    mCurrentTest = "TestExpressionDisplay"
+    TestExpressionDisplay
     mCurrentTest = vbNullString
 
     With ThisWorkbook.Worksheets("Collection Results")
@@ -786,6 +788,22 @@ Private Sub TestNumericWidening()
     ' A Func declared to return Double accepts a Long-producing body.
     Set typedFunc = ROneCOne.Value(CLng(42)).AsFunc.Returns(vbDouble)
     AssertEqual "widened func result type", "Double", TypeName(typedFunc.Run())
+End Sub
+
+Private Sub TestExpressionDisplay()
+    Dim customers As ROneCOne
+    Dim price As ROneCOne
+    Dim rule As ROneCOne
+
+    ' A reusable pricing rule renders as the arithmetic a reader would expect.
+    Set price = ROneCOne.Var(vbDouble)
+    Set rule = price.Multiply(0.9).AsFunc
+    AssertEqual "lambda display", "(x * 0.9)", rule.ToDisplayString
+
+    ' A deferred member condition prints as readable pseudocode.
+    Set customers = ROneCOne.ListOf(vbObject)
+    AssertEqual "member condition display", "(x.Age >= 40)", _
+        customers.Condition("Age").AtLeast(40).ToDisplayString
 End Sub
 
 Private Sub TestIndexedAccessScales()

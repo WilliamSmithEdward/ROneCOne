@@ -6324,6 +6324,161 @@ Attribute GetInvocationList.VB_Description = "Returns a typed copy of the invoca
     Set GetInvocationList = result
 End Function
 
+Public Function ToDisplayString() As String
+Attribute ToDisplayString.VB_Description = _
+    "Renders an expression, lambda, or delegate as readable text for debugging."
+    Dim parameters As Collection
+
+    If mRole = ROLE_LAMBDA Then
+        ToDisplayString = RenderExpressionNode(mLeft, mParameters)
+    ElseIf mRole = ROLE_VALUE Or mRole = ROLE_PARAMETER Or _
+        mRole = ROLE_EXPRESSION Then
+        Set parameters = New Collection
+        ToDisplayString = RenderExpressionNode(Me, parameters)
+    ElseIf IsDelegateRole(mRole) Then
+        ToDisplayString = BuildSignature(Me)
+    Else
+        RaiseContractError ERROR_INVALID_OPERATION, "ToDisplayString", _
+            "ToDisplayString requires an expression or delegate."
+    End If
+End Function
+
+Private Function RenderExpressionNode( _
+    ByVal node As ROneCOne, _
+    ByVal parameters As Collection _
+) As String
+    Select Case node.InternalRole
+        Case ROLE_VALUE
+            RenderExpressionNode = RenderExpressionLiteral(node)
+        Case ROLE_PARAMETER
+            RenderExpressionNode = ParameterDisplayName(node, parameters)
+        Case ROLE_EXPRESSION
+            RenderExpressionNode = RenderExpressionOperator(node, parameters)
+        Case Else
+            RenderExpressionNode = "?"
+    End Select
+End Function
+
+Private Function RenderExpressionLiteral(ByVal node As ROneCOne) As String
+    Dim scalarValue As Variant
+
+    If node.InternalHasObjectValue Then
+        If node.InternalObjectValue Is Nothing Then
+            RenderExpressionLiteral = "Nothing"
+        Else
+            RenderExpressionLiteral = "{" & TypeName(node.InternalObjectValue) & "}"
+        End If
+        Exit Function
+    End If
+    scalarValue = node.InternalScalarValue
+    If IsNull(scalarValue) Then
+        RenderExpressionLiteral = "Null"
+    ElseIf VarType(scalarValue) = vbString Then
+        RenderExpressionLiteral = """" & CStr(scalarValue) & """"
+    ElseIf VarType(scalarValue) = vbBoolean Then
+        RenderExpressionLiteral = IIf(CBool(scalarValue), "True", "False")
+    Else
+        RenderExpressionLiteral = CStr(scalarValue)
+    End If
+End Function
+
+Private Function ParameterDisplayName( _
+    ByVal node As ROneCOne, _
+    ByVal parameters As Collection _
+) As String
+    Dim index As Long
+
+    For index = 1 To parameters.Count
+        If parameters.Item(index) Is node Then
+            If index <= 3 Then
+                ParameterDisplayName = Mid$("xyz", index, 1)
+            Else
+                ParameterDisplayName = "p" & CStr(index)
+            End If
+            Exit Function
+        End If
+    Next index
+    ParameterDisplayName = "x"
+End Function
+
+Private Function RenderExpressionOperator( _
+    ByVal node As ROneCOne, _
+    ByVal parameters As Collection _
+) As String
+    Dim leftText As String
+    Dim rightText As String
+
+    leftText = RenderExpressionNode(node.InternalLeft, parameters)
+    If Not node.InternalRight Is Nothing Then
+        rightText = RenderExpressionNode(node.InternalRight, parameters)
+    End If
+
+    Select Case node.InternalOperator
+        Case OP_ADD
+            RenderExpressionOperator = "(" & leftText & " + " & rightText & ")"
+        Case OP_SUBTRACT
+            RenderExpressionOperator = "(" & leftText & " - " & rightText & ")"
+        Case OP_MULTIPLY
+            RenderExpressionOperator = "(" & leftText & " * " & rightText & ")"
+        Case OP_DIVIDE
+            RenderExpressionOperator = "(" & leftText & " / " & rightText & ")"
+        Case OP_MODULO
+            RenderExpressionOperator = "(" & leftText & " Mod " & rightText & ")"
+        Case OP_CONCAT
+            RenderExpressionOperator = "(" & leftText & " & " & rightText & ")"
+        Case OP_EQUAL, OP_STRING_EQUAL
+            RenderExpressionOperator = "(" & leftText & " = " & rightText & ")"
+        Case OP_NOT_EQUAL, OP_STRING_NOT_EQUAL
+            RenderExpressionOperator = "(" & leftText & " <> " & rightText & ")"
+        Case OP_LESS_THAN
+            RenderExpressionOperator = "(" & leftText & " < " & rightText & ")"
+        Case OP_LESS_THAN_OR_EQUAL
+            RenderExpressionOperator = "(" & leftText & " <= " & rightText & ")"
+        Case OP_GREATER_THAN
+            RenderExpressionOperator = "(" & leftText & " > " & rightText & ")"
+        Case OP_GREATER_THAN_OR_EQUAL
+            RenderExpressionOperator = "(" & leftText & " >= " & rightText & ")"
+        Case OP_AND_ALSO
+            RenderExpressionOperator = "(" & leftText & " And " & rightText & ")"
+        Case OP_OR_ELSE
+            RenderExpressionOperator = "(" & leftText & " Or " & rightText & ")"
+        Case OP_NEGATE
+            RenderExpressionOperator = "-" & leftText
+        Case OP_NOT
+            RenderExpressionOperator = "Not " & leftText
+        Case OP_MEMBER_VALUE, OP_MEMBER_OBJECT
+            RenderExpressionOperator = leftText & "." & node.InternalMethodName
+        Case OP_SAFE_MEMBER_VALUE, OP_SAFE_MEMBER_OBJECT
+            RenderExpressionOperator = leftText & "?." & node.InternalMethodName
+        Case OP_STARTS_WITH
+            RenderExpressionOperator = leftText & ".StartsWith(" & rightText & ")"
+        Case OP_ENDS_WITH
+            RenderExpressionOperator = leftText & ".EndsWith(" & rightText & ")"
+        Case OP_CONTAINS_TEXT
+            RenderExpressionOperator = leftText & ".Contains(" & rightText & ")"
+        Case OP_MATCHES_PATTERN
+            RenderExpressionOperator = leftText & ".Like(" & rightText & ")"
+        Case OP_IS_NOTHING
+            RenderExpressionOperator = leftText & " Is Nothing"
+        Case OP_IS_NOT_NOTHING
+            RenderExpressionOperator = leftText & " Is Not Nothing"
+        Case OP_IS_NULL_OR_EMPTY
+            RenderExpressionOperator = leftText & " Is Null Or Empty"
+        Case OP_IN_SEQUENCE
+            RenderExpressionOperator = leftText & " In [...]"
+        Case OP_NOT_IN_SEQUENCE
+            RenderExpressionOperator = leftText & " Not In [...]"
+        Case OP_ANY_MATCH
+            RenderExpressionOperator = leftText & ".Any(...)"
+        Case OP_ALL_MATCH
+            RenderExpressionOperator = leftText & ".All(...)"
+        Case OP_NONE_MATCH
+            RenderExpressionOperator = leftText & ".None(...)"
+        Case Else
+            RenderExpressionOperator = leftText
+    End Select
+End Function
+
 Public Sub ForEach(ByVal action As ROneCOne)
 Attribute ForEach.VB_Description = "Executes an Action once for every sequence element."
     Dim actionDelegate As ROneCOne
