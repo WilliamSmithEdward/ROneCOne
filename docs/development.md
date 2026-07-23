@@ -165,7 +165,9 @@ powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
 Development-only VBIDE trust is used once during each conversion to seed an otherwise empty
 `vbaProject.bin`. pyOpenVBA replaces that seed. Neither final workbook nor the runtime uses VBIDE
 automation. Every core capability gets a separate workbook with its own macro, examples,
-benchmark, live execution gate, and all-sheet render pass.
+benchmark, live execution gate, and all-sheet render pass. Renders accumulate in the ignored
+`demo\.working` directory across runs; pass `-Clean` to the first render call of a batch to drop
+every stale PNG set first.
 
 The collections workbook packages one demo-only class, `DemoCustomer`, as the user model. Typed
 member expressions remove the need for a predicate/selector adapter class. The public

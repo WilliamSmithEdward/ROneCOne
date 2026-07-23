@@ -6,7 +6,8 @@ param(
     [ValidateRange(10, 180)]
     [int]$TimeoutSeconds = 45,
     [ValidateRange(0, 15)]
-    [int]$LateExcelGraceSeconds = 8
+    [int]$LateExcelGraceSeconds = 8,
+    [switch]$Clean
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,6 +38,12 @@ if (-not [string]::IsNullOrWhiteSpace($NodeModulesPath)) {
 
 $scriptPath = Join-Path $PSScriptRoot "render_demo_workbook.cjs"
 $workingDirectory = Join-Path $PSScriptRoot "..\demo\.working"
+if ($Clean) {
+    # Renders accumulate one PNG set per prefix per run and are never read
+    # back; -Clean drops every stale set before this render writes its own.
+    Remove-Item -Path (Join-Path $workingDirectory "*.png") `
+        -Force -ErrorAction SilentlyContinue
+}
 $resolvedWorkbook = (Resolve-Path -LiteralPath $WorkbookPath).Path
 $workbookLock = Join-Path `
     (Split-Path -Parent $resolvedWorkbook) `
