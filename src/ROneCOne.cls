@@ -104,6 +104,7 @@ Private Const ROLE_DB_NULL As Long = 43
 Private Const ROLE_USING As Long = 44
 Private Const ROLE_HTTP_CLIENT As Long = 45
 Private Const ROLE_HTTP_RESPONSE As Long = 46
+Private Const ROLE_JSON_FACTORY As Long = 47
 
 Private Const TASK_WORK As Long = 1
 Private Const TASK_COMPLETED As Long = 2
@@ -241,9 +242,30 @@ Private Const ERROR_BYREF_INVOCATION As Long = vbObjectError + 4108
 Private Const ERROR_TIMEOUT As Long = vbObjectError + 4109
 Private Const ERROR_CANCELED As Long = vbObjectError + 4110
 Private Const ERROR_HTTP_REQUEST As Long = vbObjectError + 4111
+Private Const ERROR_JSON_PARSE As Long = vbObjectError + 4112
 
 Private Const HTTP_PROG_ID As String = "WinHttp.WinHttpRequest.5.1"
 Private Const HTTP_DEFAULT_TIMEOUT_MS As Long = 30000
+
+' Reader state for the JSON parser: a 1-based cursor over the input plus a
+' byte snapshot of the same text as UTF-16 code units, so scanning loops read
+' character codes without allocating a one-character string per position.
+' The parsing strategy is adapted, with its author's permission, from
+' ModernJsonInVBA by William Smith Edward.
+Private Type JsonReader
+    text As String
+    bytes() As Byte
+    pos As Long
+    textLen As Long
+End Type
+
+' Growable string buffer: VBA concatenation in a loop is quadratic, so JSON
+' text is written with Mid$ assignment into a doubling buffer instead.
+Private Type JsonTextBuilder
+    buffer As String
+    used As Long
+    capacity As Long
+End Type
 
 Private mRole As Long
 Private mOperator As Long
@@ -342,6 +364,8 @@ Private mOriginalItems() As ROneCOne
 Private mOriginalItemsCount As Long
 Private mPrimaryKey As Collection
 Private mDataIndex As ROneCOne
+Private mDataIndexDirty As Boolean
+Private mUniqueIndexes As Collection
 Private mDataTables As Collection
 Private mDataRelations As Collection
 Private mRelationParentColumns As Collection
@@ -366,6 +390,8 @@ Private mHttpReasonPhrase As String
 Private mHttpContent As String
 Private mHttpRawHeaders As String
 Private mHttpBytes As Variant
+Private mJsonDecimalSeparator As String
+Private mJsonSeparatorKnown As Boolean
 Private mConnectionString As String
 Private mCommandText As String
 Private mProviderName As String
@@ -1429,6 +1455,7 @@ Attribute AsUnique.VB_Description = "Marks a DataColumn as unique and fluent."
     RequireDataColumn Me, "AsUnique"
     mUnique = True
     If Not allowNull Then mAllowDBNull = False
+    If Not mSource Is Nothing Then mSource.InternalMarkDataIndexDirty
     Set AsUnique = Me
 End Function
 
@@ -1602,6 +1629,7 @@ Attribute AddColumn.VB_Description = "Adds a DataColumn to a DataTable schema."
     For index = 1 To mItemsCount
         mItems(index).InternalAppendRowCell DefaultDataColumnValue(column)
     Next index
+    If column.InternalUnique Then mDataIndexDirty = True
     mVersion = mVersion + 1
 End Sub
 
@@ -1688,7 +1716,9 @@ Attribute AddRow.VB_Description = "Adds a detached DataRow after validating cons
     ValidateForeignKeyConstraints row
     ArrAppend mItems, mItemsCount, row
     row.ConfigureRowState ROW_STATE_ADDED
-    RebuildPrimaryKeyIndex
+    ' Validation just proved the tokens absent, so the new row slots into
+    ' the constraint indexes incrementally; a bulk load stays linear.
+    IndexDataRow row
     mVersion = mVersion + 1
 End Sub
 
@@ -2001,7 +2031,7 @@ Attribute Delete.VB_Description = "Marks a DataRow as deleted."
             "A detached DataRow cannot be deleted."
     End If
     mRowState = ROW_STATE_DELETED
-    mSource.RebuildPrimaryKeyIndex
+    mSource.InternalMarkDataIndexDirty
     mSource.TouchDataVersion
 End Sub
 
@@ -2145,6 +2175,7 @@ Attribute Find.VB_Description = "Finds a DataRow by its single or composite prim
         RaiseContractError ERROR_INVALID_ARGUMENT, "Find", _
             "The key value count must match the primary-key column count."
     End If
+    EnsureDataIndexesCurrent
     keyToken = PrimaryKeyTokenFromArguments(arguments)
     If mDataIndex.ContainsKey(keyToken) Then Set Find = mDataIndex.Item(keyToken)
 End Function
@@ -2289,6 +2320,155 @@ Attribute ToTable.VB_Description = "Materializes a DataView as an independent Da
     Next row
     result.AcceptChanges
     Set ToTable = result
+End Function
+
+Public Property Get Json() As ROneCOne
+Attribute Json.VB_Description = "Gets the System.Text.Json-style serializer surface."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigureJsonFactory
+    Set Json = factory
+End Property
+
+Public Function Serialize( _
+    ByVal value As Variant, _
+    Optional ByVal writeIndented As Boolean = False _
+) As String
+Attribute Serialize.VB_Description = "Serializes a value, collection, or table to JSON text."
+    Dim builder As JsonTextBuilder
+
+    RequireJsonFactory "Serialize"
+    JsonBuilderInit builder, 512
+    If writeIndented Then
+        JsonWriteValuePretty builder, value, 0
+    Else
+        JsonWriteValue builder, value
+    End If
+    Serialize = JsonBuilderText(builder)
+End Function
+
+Public Function Deserialize(ByVal jsonText As String) As Variant
+Attribute Deserialize.VB_Description = "Parses JSON text into dictionaries, lists, and scalars."
+    Dim reader As JsonReader
+
+    RequireJsonFactory "Deserialize"
+    JsonReaderInit reader, jsonText
+    AssignVariant Deserialize, JsonReadValue(reader)
+    JsonSkipWhitespace reader
+    If reader.pos <= reader.textLen Then
+        RaiseJsonError "Unexpected trailing characters at position " & _
+            CStr(reader.pos)
+    End If
+End Function
+
+Public Function DeserializeTable( _
+    ByVal jsonText As String, _
+    Optional ByVal tableName As String = "Json", _
+    Optional ByVal arrayPath As String = "$" _
+) As ROneCOne
+Attribute DeserializeTable.VB_Description = "Parses a JSON array of objects into a typed DataTable."
+    RequireJsonFactory "DeserializeTable"
+    Set DeserializeTable = BuildTableFromJsonArray( _
+        ResolveJsonArray(Deserialize(jsonText), arrayPath), tableName)
+End Function
+
+Public Function DeserializeInto( _
+    ByVal jsonText As String, _
+    ByVal instance As Object _
+) As Object
+Attribute DeserializeInto.VB_Description = "Binds JSON members onto an existing instance."
+    Dim tree As Variant
+
+    RequireJsonFactory "DeserializeInto"
+    If instance Is Nothing Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "DeserializeInto", _
+            "The target instance cannot be Nothing."
+    End If
+    AssignVariant tree, Deserialize(jsonText)
+    RequireJsonObjectValue tree, "DeserializeInto"
+    BindJsonObjectInto instance, tree
+    Set DeserializeInto = instance
+End Function
+
+Public Function DeserializeObjects( _
+    ByVal jsonText As String, _
+    ByVal factory As ROneCOne, _
+    Optional ByVal arrayPath As String = "$" _
+) As ROneCOne
+Attribute DeserializeObjects.VB_Description = "Parses a JSON array into factory-built objects."
+    Dim element As Variant
+    Dim instance As Object
+    Dim result As ROneCOne
+    Dim rows As ROneCOne
+
+    RequireJsonFactory "DeserializeObjects"
+    ValidateJsonObjectFactory factory, "DeserializeObjects"
+    Set rows = ResolveJsonArray(Deserialize(jsonText), arrayPath)
+    Set result = Nothing
+    For Each element In rows
+        RequireJsonObjectValue element, "DeserializeObjects"
+        Set instance = InvokeJsonObjectFactory(factory, "DeserializeObjects")
+        BindJsonObjectInto instance, element
+        If result Is Nothing Then Set result = ROneCOne.ListLike(instance)
+        result.Add instance
+    Next element
+    If result Is Nothing Then
+        Set result = New ROneCOne
+        result.ConfigureList vbObject, "Object"
+    End If
+    Set DeserializeObjects = result
+End Function
+
+Public Function DataTableFromObjects( _
+    ByVal source As Variant, _
+    ByVal propertyNames As Variant, _
+    Optional ByVal tableName As String = "Objects" _
+) As ROneCOne
+Attribute DataTableFromObjects.VB_Description = "Builds a DataTable from typed objects."
+    Set DataTableFromObjects = BuildTableFromObjects(source, _
+        propertyNames, tableName)
+End Function
+
+Public Function ToObjects(ByVal factory As ROneCOne) As ROneCOne
+Attribute ToObjects.VB_Description = "Maps DataTable rows onto factory-built typed objects."
+    Dim cells As Collection
+    Dim columnIndex As Long
+    Dim instance As Object
+    Dim result As ROneCOne
+    Dim rowIndex As Long
+    Dim wrapped As ROneCOne
+
+    RequireDataTable Me, "ToObjects"
+    ValidateJsonObjectFactory factory, "ToObjects"
+    Set result = Nothing
+    For rowIndex = 1 To mItemsCount
+        If mItems(rowIndex).RowState <> "Deleted" Then
+            Set instance = InvokeJsonObjectFactory(factory, "ToObjects")
+            Set cells = mItems(rowIndex).InternalDataRows
+            For columnIndex = 1 To mKeysCount
+                Set wrapped = cells.Item(columnIndex)
+                If Not IsNullDataValue(wrapped) Then
+                    AssignInstanceProperty instance, _
+                        mKeys(columnIndex).ColumnName, wrapped
+                End If
+            Next columnIndex
+            If result Is Nothing Then Set result = ROneCOne.ListLike(instance)
+            result.Add instance
+        End If
+    Next rowIndex
+    If result Is Nothing Then
+        Set result = New ROneCOne
+        result.ConfigureList vbObject, "Object"
+    End If
+    Set ToObjects = result
+End Function
+
+Public Function ToJson( _
+    Optional ByVal writeIndented As Boolean = False _
+) As String
+Attribute ToJson.VB_Description = "Serializes this collection, table, or row to JSON text."
+    ToJson = ROneCOne.Json.Serialize(Me, writeIndented)
 End Function
 
 Public Function HttpClient() As ROneCOne
@@ -6841,6 +7021,11 @@ Attribute HttpRequestError.VB_Description = "Gets the ROneCOne HTTP request-fail
     HttpRequestError = ERROR_HTTP_REQUEST
 End Property
 
+Public Property Get JsonError() As Long
+Attribute JsonError.VB_Description = "Gets the ROneCOne JSON parse and write error number."
+    JsonError = ERROR_JSON_PARSE
+End Property
+
 Public Property Get UnboundParameterError() As Long
 Attribute UnboundParameterError.VB_Description = "Gets the unbound-parameter error number."
     UnboundParameterError = ERROR_UNBOUND_PARAMETER
@@ -7676,6 +7861,10 @@ Friend Sub ConfigureHttpClient()
     Set mHttpHeaderValues = New Collection
 End Sub
 
+Friend Sub ConfigureJsonFactory()
+    mRole = ROLE_JSON_FACTORY
+End Sub
+
 Friend Sub ConfigureHttpResponse(ByVal request As Object)
     mRole = ROLE_HTTP_RESPONSE
     Set mProviderObject = request
@@ -7737,6 +7926,9 @@ End Sub
 Friend Property Get InternalHttpBytes() As Variant
 Attribute InternalHttpBytes.VB_MemberFlags = "40"
     InternalHttpBytes = mHttpBytes
+    ' The task's result now owns the only needed copy; releasing this one
+    ' keeps a large download from being held twice until the response dies.
+    mHttpBytes = Empty
 End Property
 
 Friend Sub ConfigureCompletedTask(ByVal result As ROneCOne)
@@ -7866,6 +8058,7 @@ Friend Sub ConfigureDataTable(ByVal tableName As String)
     ArrReset mKeys, mKeysCount
     Set mPrimaryKey = New Collection
     Set mDataIndex = ROneCOne.DictionaryOf(vbString, ROneCOne.Exception)
+    Set mUniqueIndexes = New Collection
 End Sub
 
 Friend Sub ConfigureDBNull()
@@ -8214,6 +8407,26 @@ Friend Sub InternalAddTaskChild(ByVal taskValue As ROneCOne)
     mTaskChildren.Add taskValue
 End Sub
 
+Friend Property Get InternalPairCount() As Long
+Attribute InternalPairCount.VB_MemberFlags = "40"
+    InternalPairCount = mKeysCount
+End Property
+
+Friend Function InternalPairKeyText(ByVal position As Long) As String
+    InternalPairKeyText = CStr(mKeys(position).InternalScalarValue)
+End Function
+
+Friend Function InternalPairValue(ByVal position As Long) As Variant
+    Dim wrapped As ROneCOne
+
+    Set wrapped = mItems(position)
+    If wrapped.InternalHasObjectValue Then
+        Set InternalPairValue = wrapped.InternalObjectValue
+    Else
+        InternalPairValue = wrapped.InternalScalarValue
+    End If
+End Function
+
 Friend Sub InternalAppendCollectionItem(ByVal wrapped As ROneCOne)
     ArrAppend mItems, mItemsCount, wrapped
 End Sub
@@ -8310,11 +8523,7 @@ Friend Function MaterializeWrapped() As Collection
 
     RequireSequence Me, "Materialize"
     If mRole = ROLE_LIST Then
-        Set values = New Collection
-        For Each wrapped In ArrSnapshot(mItems, mItemsCount)
-            values.Add wrapped
-        Next wrapped
-        Set MaterializeWrapped = values
+        Set MaterializeWrapped = ArrSnapshot(mItems, mItemsCount)
         Exit Function
     End If
     If mRole = ROLE_DATA_VIEW Then
@@ -8326,18 +8535,16 @@ Friend Function MaterializeWrapped() As Collection
             Set MaterializeWrapped = mSource.MaterializeWrapped
             Exit Function
         End If
-        Set values = New Collection
         If IsDictionaryCollection Then
+            Set values = New Collection
             For entryIndex = 1 To mItemsCount
                 values.Add CreateDictionaryEntry( _
                     mKeys(entryIndex), mItems(entryIndex))
             Next entryIndex
+            Set MaterializeWrapped = values
         Else
-            For Each wrapped In ArrSnapshot(mItems, mItemsCount)
-                values.Add wrapped
-            Next wrapped
+            Set MaterializeWrapped = ArrSnapshot(mItems, mItemsCount)
         End If
-        Set MaterializeWrapped = values
         Exit Function
     End If
 
@@ -9025,6 +9232,1267 @@ Private Sub RequireDbAdapter( _
             "This operation requires a DbDataAdapter."
     End If
 End Sub
+
+' ---------------------------------------------------------------------------
+' JSON engine. The reader/writer mechanics follow ModernJsonInVBA (used with
+' its author's permission): byte-snapshot character scanning, bounded-chunk
+' string reading with an escape-free fast path, inline accumulation of short
+' integers, culture-invariant number writing, and RFC 8259 strictness with
+' position-carrying errors. The model is runtime-native: a JSON object is an
+' ordered String-to-Variant dictionary, a JSON array is a Variant list.
+' ---------------------------------------------------------------------------
+
+Private Sub RequireJsonFactory(ByVal memberName As String)
+    If mRole <> ROLE_JSON_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " is called through ROneCOne.Json."
+    End If
+End Sub
+
+Private Sub RaiseJsonError(ByVal message As String)
+    Err.Raise ERROR_JSON_PARSE, "ROneCOne.JsonException", message
+End Sub
+
+Private Sub AssignVariant(ByRef target As Variant, ByVal value As Variant)
+    If IsObject(value) Then
+        Set target = value
+    Else
+        target = value
+    End If
+End Sub
+
+Private Sub JsonReaderInit(ByRef reader As JsonReader, ByVal jsonText As String)
+    reader.text = jsonText
+    reader.pos = 1
+    reader.textLen = Len(jsonText)
+    If reader.textLen > 0 Then reader.bytes = jsonText
+End Sub
+
+Private Function JsonCodeAt(ByRef reader As JsonReader) As Long
+    Dim offset As Long
+
+    If reader.pos > reader.textLen Then
+        JsonCodeAt = -1
+    Else
+        offset = (reader.pos - 1) * 2
+        JsonCodeAt = reader.bytes(offset) + reader.bytes(offset + 1) * 256&
+    End If
+End Function
+
+Private Sub JsonSkipWhitespace(ByRef reader As JsonReader)
+    Dim offset As Long
+
+    Do While reader.pos <= reader.textLen
+        offset = (reader.pos - 1) * 2
+        Select Case reader.bytes(offset) + reader.bytes(offset + 1) * 256&
+            Case 32, 9, 13, 10
+                reader.pos = reader.pos + 1
+            Case Else
+                Exit Do
+        End Select
+    Loop
+End Sub
+
+Private Sub JsonExpectChar( _
+    ByRef reader As JsonReader, _
+    ByVal expectedCode As Long, _
+    ByVal expectedChar As String _
+)
+    JsonSkipWhitespace reader
+    If JsonCodeAt(reader) = expectedCode Then
+        reader.pos = reader.pos + 1
+        Exit Sub
+    End If
+    RaiseJsonError "Expected '" & expectedChar & "' at position " & _
+        CStr(reader.pos)
+End Sub
+
+Private Sub JsonExpectLiteral(ByRef reader As JsonReader, ByVal literal As String)
+    If Mid$(reader.text, reader.pos, Len(literal)) <> literal Then
+        RaiseJsonError "Expected literal '" & literal & _
+            "' near position " & CStr(reader.pos)
+    End If
+    reader.pos = reader.pos + Len(literal)
+End Sub
+
+Private Function JsonReadValue(ByRef reader As JsonReader) As Variant
+    JsonSkipWhitespace reader
+    Select Case JsonCodeAt(reader)
+        Case 34
+            JsonReadValue = JsonReadString(reader)
+        Case 116
+            JsonExpectLiteral reader, "true"
+            JsonReadValue = True
+        Case 102
+            JsonExpectLiteral reader, "false"
+            JsonReadValue = False
+        Case 110
+            JsonExpectLiteral reader, "null"
+            JsonReadValue = Null
+        Case 45, 48 To 57
+            JsonReadValue = JsonReadNumber(reader)
+        Case 91
+            Set JsonReadValue = JsonReadArray(reader)
+        Case 123
+            Set JsonReadValue = JsonReadObject(reader)
+        Case Else
+            RaiseJsonError "Unexpected token at position " & CStr(reader.pos)
+    End Select
+End Function
+
+Private Function JsonReadArray(ByRef reader As JsonReader) As ROneCOne
+    Dim element As Variant
+    Dim result As ROneCOne
+
+    reader.pos = reader.pos + 1
+    Set result = ROneCOne.ListOf(vbVariant)
+    JsonSkipWhitespace reader
+    If JsonCodeAt(reader) = 93 Then
+        reader.pos = reader.pos + 1
+        Set JsonReadArray = result
+        Exit Function
+    End If
+    Do
+        AssignVariant element, JsonReadValue(reader)
+        result.Add element
+        JsonSkipWhitespace reader
+        Select Case JsonCodeAt(reader)
+            Case 44
+                reader.pos = reader.pos + 1
+            Case 93
+                reader.pos = reader.pos + 1
+                Exit Do
+            Case Else
+                RaiseJsonError "Expected ',' or ']' at position " & _
+                    CStr(reader.pos)
+        End Select
+    Loop
+    Set JsonReadArray = result
+End Function
+
+Private Function JsonReadObject(ByRef reader As JsonReader) As ROneCOne
+    Dim key As String
+    Dim result As ROneCOne
+    Dim value As Variant
+
+    reader.pos = reader.pos + 1
+    Set result = ROneCOne.OrderedDictionaryOf(vbString, vbVariant)
+    JsonSkipWhitespace reader
+    If JsonCodeAt(reader) = 125 Then
+        reader.pos = reader.pos + 1
+        Set JsonReadObject = result
+        Exit Function
+    End If
+    Do
+        JsonSkipWhitespace reader
+        If JsonCodeAt(reader) <> 34 Then
+            RaiseJsonError "Expected a quoted member name at position " & _
+                CStr(reader.pos)
+        End If
+        key = JsonReadString(reader)
+        JsonExpectChar reader, 58, ":"
+        AssignVariant value, JsonReadValue(reader)
+        ' A duplicate member name keeps the last value, matching how
+        ' System.Text.Json deserializes into a dictionary.
+        result.Item(key) = value
+        JsonSkipWhitespace reader
+        Select Case JsonCodeAt(reader)
+            Case 44
+                reader.pos = reader.pos + 1
+            Case 125
+                reader.pos = reader.pos + 1
+                Exit Do
+            Case Else
+                RaiseJsonError "Expected ',' or '}' at position " & _
+                    CStr(reader.pos)
+        End Select
+    Loop
+    Set JsonReadObject = result
+End Function
+
+Private Function JsonReadNumber(ByRef reader As JsonReader) As Variant
+    Dim accumulated As Long
+    Dim code As Long
+    Dim digitCount As Long
+    Dim integral As Boolean
+    Dim negative As Boolean
+    Dim numberText As String
+    Dim startPos As Long
+
+    startPos = reader.pos
+    code = JsonCodeAt(reader)
+    If code = 45 Then
+        negative = True
+        reader.pos = reader.pos + 1
+        code = JsonCodeAt(reader)
+    End If
+    If code = 48 Then
+        digitCount = 1
+        reader.pos = reader.pos + 1
+        code = JsonCodeAt(reader)
+        If code >= 48 And code <= 57 Then
+            RaiseJsonError "Leading zeros are not allowed at position " & _
+                CStr(reader.pos)
+        End If
+    ElseIf code >= 49 And code <= 57 Then
+        Do
+            If digitCount < 9 Then accumulated = accumulated * 10 + (code - 48)
+            digitCount = digitCount + 1
+            reader.pos = reader.pos + 1
+            code = JsonCodeAt(reader)
+        Loop While code >= 48 And code <= 57
+    Else
+        RaiseJsonError "Invalid number at position " & CStr(reader.pos)
+    End If
+    integral = True
+    If code = 46 Then
+        integral = False
+        reader.pos = reader.pos + 1
+        code = JsonCodeAt(reader)
+        If Not (code >= 48 And code <= 57) Then
+            RaiseJsonError "Invalid fraction at position " & CStr(reader.pos)
+        End If
+        Do
+            reader.pos = reader.pos + 1
+            code = JsonCodeAt(reader)
+        Loop While code >= 48 And code <= 57
+    End If
+    If code = 101 Or code = 69 Then
+        integral = False
+        reader.pos = reader.pos + 1
+        code = JsonCodeAt(reader)
+        If code = 43 Or code = 45 Then
+            reader.pos = reader.pos + 1
+            code = JsonCodeAt(reader)
+        End If
+        If Not (code >= 48 And code <= 57) Then
+            RaiseJsonError "Invalid exponent at position " & CStr(reader.pos)
+        End If
+        Do
+            reader.pos = reader.pos + 1
+            code = JsonCodeAt(reader)
+        Loop While code >= 48 And code <= 57
+    End If
+    If integral And digitCount <= 9 Then
+        ' Short integers were accumulated during the scan: no substring,
+        ' no conversion call.
+        If negative Then
+            JsonReadNumber = -accumulated
+        Else
+            JsonReadNumber = accumulated
+        End If
+        Exit Function
+    End If
+    numberText = Mid$(reader.text, startPos, reader.pos - startPos)
+    If integral Then
+        On Error Resume Next
+        JsonReadNumber = CLng(numberText)
+        If Err.Number = 0 Then
+            On Error GoTo 0
+            Exit Function
+        End If
+        Err.Clear
+        JsonReadNumber = CLngLng(numberText)
+        If Err.Number = 0 Then
+            On Error GoTo 0
+            Exit Function
+        End If
+        Err.Clear
+        On Error GoTo 0
+    End If
+    JsonReadNumber = CDbl(numberText)
+End Function
+
+Private Function JsonReadString(ByRef reader As JsonReader) As String
+    Dim builder As JsonTextBuilder
+    Dim chunk As String
+    Dim chunkStart As Long
+    Dim cursor As Long
+    Dim escapeAt As Long
+    Dim escapeChar As String
+    Dim quoteAt As Long
+
+    ' The candidate closing quote is found with InStr and escapes are probed
+    ' only within that bounded chunk, so an escape-free string (the common
+    ' case) is returned with a single Mid$ and never touches the builder.
+    reader.pos = reader.pos + 1
+    quoteAt = InStr(reader.pos, reader.text, """", vbBinaryCompare)
+    If quoteAt = 0 Then RaiseJsonError "Unterminated string"
+    chunkStart = reader.pos
+    chunk = Mid$(reader.text, chunkStart, quoteAt - chunkStart)
+    escapeAt = InStr(1, chunk, "\", vbBinaryCompare)
+    If escapeAt = 0 Then
+        JsonValidateStringRange reader, chunkStart, quoteAt - 1
+        reader.pos = quoteAt + 1
+        JsonReadString = chunk
+        Exit Function
+    End If
+    JsonBuilderInit builder, Len(chunk) + 16
+    cursor = 1
+    Do
+        If escapeAt > cursor Then
+            JsonValidateStringRange reader, chunkStart + cursor - 1, _
+                chunkStart + escapeAt - 2
+            JsonBuilderAppend builder, Mid$(chunk, cursor, escapeAt - cursor)
+        End If
+        If escapeAt = Len(chunk) Then
+            ' The escape is the quote candidate itself: an escaped quote.
+            JsonBuilderAppend builder, """"
+            chunkStart = quoteAt + 1
+            quoteAt = InStr(chunkStart, reader.text, """", vbBinaryCompare)
+            If quoteAt = 0 Then RaiseJsonError "Unterminated string"
+            chunk = Mid$(reader.text, chunkStart, quoteAt - chunkStart)
+            cursor = 1
+        Else
+            escapeChar = Mid$(chunk, escapeAt + 1, 1)
+            Select Case escapeChar
+                Case "\"
+                    JsonBuilderAppend builder, "\"
+                    cursor = escapeAt + 2
+                Case "/"
+                    JsonBuilderAppend builder, "/"
+                    cursor = escapeAt + 2
+                Case """"
+                    JsonBuilderAppend builder, """"
+                    cursor = escapeAt + 2
+                Case "b"
+                    JsonBuilderAppend builder, Chr$(8)
+                    cursor = escapeAt + 2
+                Case "f"
+                    JsonBuilderAppend builder, Chr$(12)
+                    cursor = escapeAt + 2
+                Case "n"
+                    JsonBuilderAppend builder, vbLf
+                    cursor = escapeAt + 2
+                Case "r"
+                    JsonBuilderAppend builder, vbCr
+                    cursor = escapeAt + 2
+                Case "t"
+                    JsonBuilderAppend builder, vbTab
+                    cursor = escapeAt + 2
+                Case "u"
+                    reader.pos = chunkStart + escapeAt + 1
+                    JsonBuilderAppend builder, JsonReadUnicodeEscape(reader)
+                    cursor = reader.pos - chunkStart + 1
+                Case Else
+                    RaiseJsonError "Invalid escape '\" & escapeChar & _
+                        "' at position " & CStr(chunkStart + escapeAt)
+            End Select
+        End If
+        escapeAt = InStr(cursor, chunk, "\", vbBinaryCompare)
+        If escapeAt = 0 Then
+            If cursor <= Len(chunk) Then
+                JsonValidateStringRange reader, chunkStart + cursor - 1, _
+                    quoteAt - 1
+                JsonBuilderAppend builder, Mid$(chunk, cursor)
+            End If
+            reader.pos = quoteAt + 1
+            JsonReadString = JsonBuilderText(builder)
+            Exit Function
+        End If
+    Loop
+End Function
+
+Private Sub JsonValidateStringRange( _
+    ByRef reader As JsonReader, _
+    ByVal fromPos As Long, _
+    ByVal toPos As Long _
+)
+    Dim index As Long
+
+    For index = fromPos To toPos
+        If reader.bytes((index - 1) * 2) < 32 Then
+            If reader.bytes((index - 1) * 2 + 1) = 0 Then
+                RaiseJsonError "Unescaped control character in string at " & _
+                    "position " & CStr(index)
+            End If
+        End If
+    Next index
+End Sub
+
+Private Function JsonReadUnicodeEscape(ByRef reader As JsonReader) As String
+    Dim high As Long
+    Dim low As Long
+
+    high = JsonReadHex4(reader)
+    If high >= &HD800& And high <= &HDBFF& Then
+        If Mid$(reader.text, reader.pos, 2) <> "\u" Then
+            RaiseJsonError "Invalid surrogate pair"
+        End If
+        reader.pos = reader.pos + 2
+        low = JsonReadHex4(reader)
+        If low < &HDC00& Or low > &HDFFF& Then
+            RaiseJsonError "Invalid surrogate pair"
+        End If
+        JsonReadUnicodeEscape = ChrW$(high) & ChrW$(low)
+        Exit Function
+    End If
+    If high >= &HDC00& And high <= &HDFFF& Then
+        RaiseJsonError "Invalid surrogate pair"
+    End If
+    JsonReadUnicodeEscape = ChrW$(high)
+End Function
+
+Private Function JsonReadHex4(ByRef reader As JsonReader) As Long
+    Dim code As Long
+    Dim index As Long
+    Dim value As Long
+
+    If reader.pos + 3 > reader.textLen Then
+        RaiseJsonError "Incomplete \uXXXX escape"
+    End If
+    For index = 0 To 3
+        code = reader.bytes((reader.pos + index - 1) * 2) + _
+            reader.bytes((reader.pos + index - 1) * 2 + 1) * 256&
+        Select Case code
+            Case 48 To 57
+                value = value * 16 + (code - 48)
+            Case 65 To 70
+                value = value * 16 + (code - 55)
+            Case 97 To 102
+                value = value * 16 + (code - 87)
+            Case Else
+                RaiseJsonError "Invalid \uXXXX escape"
+        End Select
+    Next index
+    reader.pos = reader.pos + 4
+    JsonReadHex4 = value
+End Function
+
+Private Sub JsonBuilderInit( _
+    ByRef builder As JsonTextBuilder, _
+    Optional ByVal initialCapacity As Long = 256 _
+)
+    If initialCapacity < 16 Then initialCapacity = 16
+    builder.buffer = Space$(initialCapacity)
+    builder.used = 0
+    builder.capacity = initialCapacity
+End Sub
+
+Private Sub JsonBuilderAppend(ByRef builder As JsonTextBuilder, ByVal text As String)
+    Dim addLength As Long
+    Dim newCapacity As Long
+
+    addLength = Len(text)
+    If addLength = 0 Then Exit Sub
+    If builder.used + addLength > builder.capacity Then
+        newCapacity = builder.capacity
+        Do While builder.used + addLength > newCapacity
+            newCapacity = newCapacity * 2
+        Loop
+        builder.buffer = builder.buffer & Space$(newCapacity - builder.capacity)
+        builder.capacity = newCapacity
+    End If
+    Mid$(builder.buffer, builder.used + 1, addLength) = text
+    builder.used = builder.used + addLength
+End Sub
+
+Private Function JsonBuilderText(ByRef builder As JsonTextBuilder) As String
+    If builder.used > 0 Then
+        JsonBuilderText = Left$(builder.buffer, builder.used)
+    End If
+End Function
+
+Private Sub JsonWriteValue(ByRef builder As JsonTextBuilder, ByVal value As Variant)
+    Select Case VarType(value)
+        Case vbString
+            JsonBuilderAppend builder, """"
+            JsonWriteEscaped builder, CStr(value)
+            JsonBuilderAppend builder, """"
+        Case vbBoolean
+            If value Then
+                JsonBuilderAppend builder, "true"
+            Else
+                JsonBuilderAppend builder, "false"
+            End If
+        Case vbByte, vbInteger, vbLong, vbLongLong
+            JsonBuilderAppend builder, CStr(value)
+        Case vbSingle, vbDouble, vbCurrency, vbDecimal
+            JsonBuilderAppend builder, JsonNumberText(CDbl(value))
+        Case vbDate
+            ' Dates travel as ISO 8601 text, matching System.Text.Json.
+            JsonBuilderAppend builder, """" & _
+                Format$(value, "yyyy-mm-dd\Thh:nn:ss") & """"
+        Case vbNull, vbEmpty
+            JsonBuilderAppend builder, "null"
+        Case vbObject, vbDataObject
+            If value Is Nothing Then
+                JsonBuilderAppend builder, "null"
+            ElseIf TypeOf value Is ROneCOne Then
+                JsonWriteRuntimeValue builder, value
+            ElseIf TypeName(value) = "Collection" Then
+                JsonWriteVbaCollection builder, value
+            Else
+                RaiseJsonError "Objects of type '" & TypeName(value) & _
+                    "' are not serializable; map them with " & _
+                    "DataTableFromObjects first."
+            End If
+        Case Else
+            If IsArray(value) Then
+                JsonWriteVariantArray builder, value
+            Else
+                JsonBuilderAppend builder, """"
+                JsonWriteEscaped builder, CStr(value)
+                JsonBuilderAppend builder, """"
+            End If
+    End Select
+End Sub
+
+Private Sub JsonWriteRuntimeValue( _
+    ByRef builder As JsonTextBuilder, _
+    ByVal value As ROneCOne _
+)
+    Dim pairIndex As Long
+    Dim row As ROneCOne
+    Dim wrapped As ROneCOne
+
+    Select Case value.InternalRole
+        Case ROLE_DATA_TABLE
+            JsonBuilderAppend builder, "["
+            Dim firstRow As Boolean
+            firstRow = True
+            For Each row In value.InternalDataRows
+                If row.RowState <> "Deleted" Then
+                    If Not firstRow Then JsonBuilderAppend builder, ","
+                    firstRow = False
+                    JsonWriteDataRow builder, row
+                End If
+            Next row
+            JsonBuilderAppend builder, "]"
+        Case ROLE_DATA_ROW
+            JsonWriteDataRow builder, value
+        Case ROLE_DATA_VIEW
+            JsonBuilderAppend builder, "["
+            Dim firstViewRow As Boolean
+            firstViewRow = True
+            For Each wrapped In value.MaterializeWrapped
+                If Not firstViewRow Then JsonBuilderAppend builder, ","
+                firstViewRow = False
+                JsonWriteDataRow builder, JsonUnwrapObject(wrapped)
+            Next wrapped
+            JsonBuilderAppend builder, "]"
+        Case Else
+            If value.IsDictionaryCollection Then
+                JsonBuilderAppend builder, "{"
+                For pairIndex = 1 To value.InternalPairCount
+                    If pairIndex > 1 Then JsonBuilderAppend builder, ","
+                    JsonBuilderAppend builder, """"
+                    JsonWriteEscaped builder, value.InternalPairKeyText(pairIndex)
+                    JsonBuilderAppend builder, """:"
+                    JsonWriteValue builder, value.InternalPairValue(pairIndex)
+                Next pairIndex
+                JsonBuilderAppend builder, "}"
+            ElseIf JsonIsSequenceRole(value) Then
+                JsonBuilderAppend builder, "["
+                Dim firstElement As Boolean
+                firstElement = True
+                For Each wrapped In value.MaterializeWrapped
+                    If Not firstElement Then JsonBuilderAppend builder, ","
+                    firstElement = False
+                    JsonWriteValue builder, JsonUnwrapValue(wrapped)
+                Next wrapped
+                JsonBuilderAppend builder, "]"
+            Else
+                RaiseJsonError "This ROneCOne value is not serializable " & _
+                    "to JSON; serialize collections, tables, rows, or views."
+            End If
+    End Select
+End Sub
+
+Private Function JsonIsSequenceRole(ByVal value As ROneCOne) As Boolean
+    Select Case value.InternalRole
+        Case ROLE_LIST, ROLE_QUERY
+            JsonIsSequenceRole = True
+        Case Else
+            JsonIsSequenceRole = IsGenericCollectionRole(value.InternalRole)
+    End Select
+End Function
+
+Private Function JsonUnwrapValue(ByVal wrapped As ROneCOne) As Variant
+    If wrapped.InternalHasObjectValue Then
+        Set JsonUnwrapValue = wrapped.InternalObjectValue
+    Else
+        JsonUnwrapValue = wrapped.InternalScalarValue
+    End If
+End Function
+
+Private Function JsonUnwrapObject(ByVal wrapped As ROneCOne) As ROneCOne
+    If wrapped.InternalHasObjectValue Then
+        Set JsonUnwrapObject = wrapped.InternalObjectValue
+    Else
+        Set JsonUnwrapObject = wrapped
+    End If
+End Function
+
+Private Sub JsonWriteDataRow(ByRef builder As JsonTextBuilder, ByVal row As ROneCOne)
+    Dim cells As Collection
+    Dim columnIndex As Long
+    Dim columns As Collection
+    Dim table As ROneCOne
+    Dim wrapped As ROneCOne
+
+    Set table = row.InternalSource
+    Set columns = table.InternalDataColumns
+    Set cells = row.InternalDataRows
+    JsonBuilderAppend builder, "{"
+    For columnIndex = 1 To columns.Count
+        If columnIndex > 1 Then JsonBuilderAppend builder, ","
+        JsonBuilderAppend builder, """"
+        JsonWriteEscaped builder, columns.Item(columnIndex).ColumnName
+        JsonBuilderAppend builder, """:"
+        Set wrapped = cells.Item(columnIndex)
+        If IsNullDataValue(wrapped) Then
+            JsonBuilderAppend builder, "null"
+        Else
+            JsonWriteValue builder, JsonUnwrapValue(wrapped)
+        End If
+    Next columnIndex
+    JsonBuilderAppend builder, "}"
+End Sub
+
+Private Sub JsonWriteVbaCollection( _
+    ByRef builder As JsonTextBuilder, _
+    ByVal values As Collection _
+)
+    Dim element As Variant
+    Dim firstElement As Boolean
+
+    JsonBuilderAppend builder, "["
+    firstElement = True
+    For Each element In values
+        If Not firstElement Then JsonBuilderAppend builder, ","
+        firstElement = False
+        JsonWriteValue builder, element
+    Next element
+    JsonBuilderAppend builder, "]"
+End Sub
+
+Private Sub JsonWriteVariantArray( _
+    ByRef builder As JsonTextBuilder, _
+    ByVal values As Variant _
+)
+    Dim index As Long
+
+    On Error Resume Next
+    index = LBound(values, 2)
+    If Err.Number = 0 Then
+        On Error GoTo 0
+        RaiseJsonError "Two-dimensional arrays are not serializable; " & _
+            "load them into a DataTable first."
+    End If
+    Err.Clear
+    On Error GoTo 0
+    JsonBuilderAppend builder, "["
+    For index = LBound(values) To UBound(values)
+        If index > LBound(values) Then JsonBuilderAppend builder, ","
+        JsonWriteValue builder, values(index)
+    Next index
+    JsonBuilderAppend builder, "]"
+End Sub
+
+Private Sub JsonWriteEscaped(ByRef builder As JsonTextBuilder, ByVal text As String)
+    Dim bytes() As Byte
+    Dim escapeText As String
+    Dim index As Long
+    Dim length As Long
+    Dim runStart As Long
+
+    length = Len(text)
+    If length = 0 Then Exit Sub
+    bytes = text
+    runStart = 1
+    For index = 1 To length
+        If bytes((index - 1) * 2 + 1) = 0 Then
+            escapeText = vbNullString
+            Select Case bytes((index - 1) * 2)
+                Case 34
+                    escapeText = "\"""
+                Case 92
+                    escapeText = "\\"
+                Case 8
+                    escapeText = "\b"
+                Case 12
+                    escapeText = "\f"
+                Case 13
+                    escapeText = "\r"
+                Case 10
+                    escapeText = "\n"
+                Case 9
+                    escapeText = "\t"
+                Case 0 To 7, 11, 14 To 31
+                    escapeText = "\u" & Right$("0000" & _
+                        Hex$(bytes((index - 1) * 2)), 4)
+            End Select
+            If Len(escapeText) > 0 Then
+                If index > runStart Then
+                    JsonBuilderAppend builder, _
+                        Mid$(text, runStart, index - runStart)
+                End If
+                JsonBuilderAppend builder, escapeText
+                runStart = index + 1
+            End If
+        End If
+    Next index
+    If runStart = 1 Then
+        JsonBuilderAppend builder, text
+    ElseIf runStart <= length Then
+        JsonBuilderAppend builder, Mid$(text, runStart)
+    End If
+End Sub
+
+Private Function JsonNumberText(ByVal value As Double) As String
+    Dim result As String
+
+    ' CStr writes the locale decimal separator, which JSON forbids; the
+    ' separator is discovered once and swapped for a dot when needed.
+    If value >= -2147483648# And value <= 2147483647# Then
+        If Fix(value) = value Then
+            JsonNumberText = CStr(CLng(value))
+            Exit Function
+        End If
+    End If
+    result = CStr(value)
+    If Not mJsonSeparatorKnown Then
+        mJsonDecimalSeparator = Mid$(CStr(1.1), 2, 1)
+        mJsonSeparatorKnown = True
+    End If
+    If mJsonDecimalSeparator <> "." Then
+        result = Replace$(result, mJsonDecimalSeparator, ".")
+    End If
+    JsonNumberText = result
+End Function
+
+Private Sub JsonWriteValuePretty( _
+    ByRef builder As JsonTextBuilder, _
+    ByVal value As Variant, _
+    ByVal depth As Long _
+)
+    Dim element As Variant
+    Dim firstEntry As Boolean
+    Dim pairIndex As Long
+    Dim runtimeValue As ROneCOne
+    Dim wrapped As ROneCOne
+
+    ' Only containers carry line structure; scalars and every error path
+    ' stay with the compact writer.
+    If IsObject(value) Then
+        If Not value Is Nothing Then
+            If TypeOf value Is ROneCOne Then
+                Set runtimeValue = value
+                If runtimeValue.IsDictionaryCollection Then
+                    If runtimeValue.InternalPairCount = 0 Then
+                        JsonBuilderAppend builder, "{}"
+                        Exit Sub
+                    End If
+                    JsonBuilderAppend builder, "{" & vbLf
+                    firstEntry = True
+                    For pairIndex = 1 To runtimeValue.InternalPairCount
+                        If Not firstEntry Then
+                            JsonBuilderAppend builder, "," & vbLf
+                        End If
+                        firstEntry = False
+                        JsonBuilderAppend builder, JsonIndent(depth + 1) & """"
+                        JsonWriteEscaped builder, _
+                            runtimeValue.InternalPairKeyText(pairIndex)
+                        JsonBuilderAppend builder, """: "
+                        JsonWriteValuePretty builder, _
+                            runtimeValue.InternalPairValue(pairIndex), depth + 1
+                    Next pairIndex
+                    JsonBuilderAppend builder, vbLf & JsonIndent(depth) & "}"
+                    Exit Sub
+                End If
+                If JsonIsSequenceRole(runtimeValue) Then
+                    firstEntry = True
+                    For Each wrapped In runtimeValue.MaterializeWrapped
+                        If firstEntry Then JsonBuilderAppend builder, "[" & vbLf
+                        If Not firstEntry Then
+                            JsonBuilderAppend builder, "," & vbLf
+                        End If
+                        firstEntry = False
+                        JsonBuilderAppend builder, JsonIndent(depth + 1)
+                        JsonWriteValuePretty builder, _
+                            JsonUnwrapValue(wrapped), depth + 1
+                    Next wrapped
+                    If firstEntry Then
+                        JsonBuilderAppend builder, "[]"
+                    Else
+                        JsonBuilderAppend builder, vbLf & JsonIndent(depth) & "]"
+                    End If
+                    Exit Sub
+                End If
+            End If
+        End If
+    End If
+    JsonWriteValue builder, value
+End Sub
+
+Private Function JsonIndent(ByVal depth As Long) As String
+    JsonIndent = String$(depth * 2, " ")
+End Function
+
+Private Function ResolveJsonArray( _
+    ByVal root As Variant, _
+    ByVal arrayPath As String _
+) As ROneCOne
+    Dim current As Variant
+    Dim resolved As ROneCOne
+
+    AssignVariant current, ResolveJsonPath(root, arrayPath)
+    If IsObject(current) Then
+        If TypeOf current Is ROneCOne Then
+            Set resolved = current
+            If resolved.InternalRole = ROLE_LIST Then
+                Set ResolveJsonArray = resolved
+                Exit Function
+            End If
+        End If
+    End If
+    RaiseJsonError "The path '" & arrayPath & _
+        "' did not resolve to a JSON array."
+End Function
+
+Private Function ResolveJsonPath( _
+    ByVal root As Variant, _
+    ByVal path As String _
+) As Variant
+    Dim current As Variant
+    Dim cursor As Long
+    Dim elementIndex As Long
+    Dim segment As String
+    Dim stepChar As String
+    Dim target As ROneCOne
+    Dim trimmed As String
+
+    ' Supports "$", member steps ("$.data.items"), and zero-based index
+    ' steps ("$.rows[0].values"). Member names with dots are not addressable.
+    trimmed = Trim$(path)
+    If Len(trimmed) = 0 Then RaiseJsonError "The path cannot be empty."
+    If Left$(trimmed, 1) <> "$" Then
+        RaiseJsonError "The path must begin with '$'."
+    End If
+    AssignVariant current, root
+    cursor = 2
+    Do While cursor <= Len(trimmed)
+        stepChar = Mid$(trimmed, cursor, 1)
+        If stepChar = "." Then
+            cursor = cursor + 1
+            segment = vbNullString
+            Do While cursor <= Len(trimmed)
+                stepChar = Mid$(trimmed, cursor, 1)
+                If stepChar = "." Or stepChar = "[" Then Exit Do
+                segment = segment & stepChar
+                cursor = cursor + 1
+            Loop
+            If Len(segment) = 0 Then
+                RaiseJsonError "The path '" & path & _
+                    "' contains an empty member step."
+            End If
+            If Not JsonValueIsDictionary(current) Then
+                RaiseJsonError "The path step '" & segment & _
+                    "' requires a JSON object."
+            End If
+            Set target = current
+            If Not target.ContainsKey(segment) Then
+                RaiseJsonError "The path member '" & segment & _
+                    "' was not found."
+            End If
+            AssignVariant current, target.Item(segment)
+        ElseIf stepChar = "[" Then
+            cursor = cursor + 1
+            segment = vbNullString
+            Do While cursor <= Len(trimmed)
+                stepChar = Mid$(trimmed, cursor, 1)
+                If stepChar = "]" Then Exit Do
+                segment = segment & stepChar
+                cursor = cursor + 1
+            Loop
+            If stepChar <> "]" Or Len(segment) = 0 Then
+                RaiseJsonError "The path '" & path & _
+                    "' contains an invalid index step."
+            End If
+            cursor = cursor + 1
+            elementIndex = CLng(segment)
+            If Not JsonValueIsList(current) Then
+                RaiseJsonError "The path index [" & segment & _
+                    "] requires a JSON array."
+            End If
+            Set target = current
+            AssignVariant current, target.Item(elementIndex)
+        Else
+            RaiseJsonError "The path '" & path & _
+                "' contains an unexpected character '" & stepChar & "'."
+        End If
+    Loop
+    AssignVariant ResolveJsonPath, current
+End Function
+
+Private Function JsonValueIsDictionary(ByVal value As Variant) As Boolean
+    Dim candidate As ROneCOne
+
+    If Not IsObject(value) Then Exit Function
+    If Not TypeOf value Is ROneCOne Then Exit Function
+    Set candidate = value
+    JsonValueIsDictionary = candidate.IsDictionaryCollection
+End Function
+
+Private Function JsonValueIsList(ByVal value As Variant) As Boolean
+    Dim candidate As ROneCOne
+
+    If Not IsObject(value) Then Exit Function
+    If Not TypeOf value Is ROneCOne Then Exit Function
+    Set candidate = value
+    JsonValueIsList = (candidate.InternalRole = ROLE_LIST)
+End Function
+
+Private Sub RequireJsonObjectValue(ByVal value As Variant, ByVal memberName As String)
+    If Not JsonValueIsDictionary(value) Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            "The JSON value must be an object at this position."
+    End If
+End Sub
+
+Private Sub ValidateJsonObjectFactory( _
+    ByVal factory As ROneCOne, _
+    ByVal memberName As String _
+)
+    If factory Is Nothing Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "A zero-argument factory delegate is required."
+    End If
+    If Not IsDelegateRole(factory.InternalRole) Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "The factory must be a Func delegate returning a new instance."
+    End If
+    If factory.Arity <> 0 And factory.Arity <> -1 Then
+        RaiseContractError ERROR_ARITY_MISMATCH, memberName, _
+            "The factory delegate accepts no arguments."
+    End If
+    ' The factory returns an instance, so it must declare an object result;
+    ' otherwise the scalar invocation path would coerce the object and fail.
+    If Not factory.InternalHasReturnSignature Or _
+        factory.InternalReturnType <> vbObject Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "The factory must declare an object result, for example " & _
+            "ROneCOne.Func(""Module.NewItem"").Takes().Returns(vbObject)."
+    End If
+End Sub
+
+Private Function InvokeJsonObjectFactory( _
+    ByVal factory As ROneCOne, _
+    ByVal memberName As String _
+) As Object
+    Dim wrapped As ROneCOne
+
+    Set wrapped = factory.InvokeValue(New Collection)
+    If Not wrapped.InternalHasObjectValue Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            "The factory delegate must return an object instance."
+    End If
+    Set InvokeJsonObjectFactory = wrapped.InternalObjectValue
+End Function
+
+Private Sub BindJsonObjectInto(ByVal instance As Object, ByVal source As Variant)
+    Dim pairIndex As Long
+    Dim tree As ROneCOne
+    Dim value As Variant
+
+    ' Scalar members bind by name; null, object, and array members are left
+    ' for the caller, mirroring a flat DTO bind.
+    Set tree = source
+    For pairIndex = 1 To tree.InternalPairCount
+        AssignVariant value, tree.InternalPairValue(pairIndex)
+        If Not IsObject(value) Then
+            If Not IsNull(value) Then
+                CallByName instance, tree.InternalPairKeyText(pairIndex), _
+                    VbLet, value
+            End If
+        End If
+    Next pairIndex
+End Sub
+
+Private Sub AssignInstanceProperty( _
+    ByVal instance As Object, _
+    ByVal propertyName As String, _
+    ByVal wrapped As ROneCOne _
+)
+    If wrapped.InternalHasObjectValue Then
+        CallByName instance, propertyName, VbSet, wrapped.InternalObjectValue
+    Else
+        CallByName instance, propertyName, VbLet, wrapped.InternalScalarValue
+    End If
+End Sub
+
+Private Function BuildTableFromJsonArray( _
+    ByVal rows As ROneCOne, _
+    ByVal tableName As String _
+) As ROneCOne
+    Dim columnIndex As Long
+    Dim columnNames As ROneCOne
+    Dim columnTypes As ROneCOne
+    Dim element As Variant
+    Dim flatRows As Collection
+    Dim flat As ROneCOne
+    Dim table As ROneCOne
+    Dim values() As Variant
+
+    ' Pass one flattens each object (nested objects become dotted columns,
+    ' nested arrays become JSON text) and unifies column types; pass two
+    ' loads the rows in discovered column order.
+    Set columnNames = ROneCOne.OrderedDictionaryOf(vbString, vbLong)
+    Set flatRows = New Collection
+    For Each element In rows
+        RequireJsonObjectValue element, "DeserializeTable"
+        Set flat = ROneCOne.OrderedDictionaryOf(vbString, vbVariant)
+        FlattenJsonObjectInto element, vbNullString, flat, columnNames
+        flatRows.Add flat
+    Next element
+    Set table = ROneCOne.DataTable(tableName)
+    For columnIndex = 1 To columnNames.InternalPairCount
+        table.Column columnNames.InternalPairKeyText(columnIndex), _
+            JsonFinalColumnType(CLng(columnNames.InternalPairValue(columnIndex)))
+    Next columnIndex
+    For Each flat In flatRows
+        If columnNames.InternalPairCount > 0 Then
+            ReDim values(0 To columnNames.InternalPairCount - 1)
+            For columnIndex = 1 To columnNames.InternalPairCount
+                If flat.ContainsKey( _
+                    columnNames.InternalPairKeyText(columnIndex)) Then
+                    values(columnIndex - 1) = flat.Item( _
+                        columnNames.InternalPairKeyText(columnIndex))
+                Else
+                    values(columnIndex - 1) = Null
+                End If
+            Next columnIndex
+            table.LoadRow values
+        Else
+            table.LoadRow Array()
+        End If
+    Next flat
+    Set BuildTableFromJsonArray = table
+End Function
+
+Private Sub FlattenJsonObjectInto( _
+    ByVal source As ROneCOne, _
+    ByVal prefix As String, _
+    ByVal flat As ROneCOne, _
+    ByVal columnNames As ROneCOne _
+)
+    Dim columnName As String
+    Dim pairIndex As Long
+    Dim value As Variant
+
+    For pairIndex = 1 To source.InternalPairCount
+        If Len(prefix) = 0 Then
+            columnName = source.InternalPairKeyText(pairIndex)
+        Else
+            columnName = prefix & "." & source.InternalPairKeyText(pairIndex)
+        End If
+        AssignVariant value, source.InternalPairValue(pairIndex)
+        If JsonValueIsDictionary(value) Then
+            FlattenJsonObjectInto value, columnName, flat, columnNames
+        Else
+            If JsonValueIsList(value) Then
+                value = ROneCOne.Json.Serialize(value)
+            End If
+            flat.Item(columnName) = value
+            MergeJsonColumnType columnNames, columnName, value
+        End If
+    Next pairIndex
+End Sub
+
+Private Sub MergeJsonColumnType( _
+    ByVal columnNames As ROneCOne, _
+    ByVal columnName As String, _
+    ByVal value As Variant _
+)
+    Dim candidate As Long
+    Dim current As Long
+
+    If IsNull(value) Then
+        candidate = 0
+    Else
+        candidate = VarType(value)
+    End If
+    If Not columnNames.ContainsKey(columnName) Then
+        columnNames.Add columnName, candidate
+        Exit Sub
+    End If
+    current = CLng(columnNames.Item(columnName))
+    If current = candidate Or candidate = 0 Then Exit Sub
+    If current = 0 Then
+        columnNames.Item(columnName) = candidate
+    ElseIf JsonIsNumericType(current) And JsonIsNumericType(candidate) Then
+        columnNames.Item(columnName) = _
+            JsonWiderNumericType(current, candidate)
+    Else
+        columnNames.Item(columnName) = vbVariant
+    End If
+End Sub
+
+Private Function JsonIsNumericType(ByVal typeCode As Long) As Boolean
+    Select Case typeCode
+        Case vbLong, vbLongLong, vbDouble
+            JsonIsNumericType = True
+    End Select
+End Function
+
+Private Function JsonWiderNumericType( _
+    ByVal leftType As Long, _
+    ByVal rightType As Long _
+) As Long
+    If leftType = vbDouble Or rightType = vbDouble Then
+        JsonWiderNumericType = vbDouble
+    ElseIf leftType = vbLongLong Or rightType = vbLongLong Then
+        JsonWiderNumericType = vbLongLong
+    Else
+        JsonWiderNumericType = vbLong
+    End If
+End Function
+
+Private Function JsonFinalColumnType(ByVal typeCode As Long) As Long
+    If typeCode = 0 Then
+        JsonFinalColumnType = vbVariant
+    Else
+        JsonFinalColumnType = typeCode
+    End If
+End Function
+
+Private Function BuildTableFromObjects( _
+    ByVal source As Variant, _
+    ByVal propertyNames As Variant, _
+    Optional ByVal tableName As String = "Objects" _
+) As ROneCOne
+    Dim columnIndex As Long
+    Dim columnTyped() As Boolean
+    Dim columnTypes() As Long
+    Dim instance As Object
+    Dim instances As Collection
+    Dim names As Collection
+    Dim table As ROneCOne
+    Dim value As Variant
+    Dim values() As Variant
+
+    ' Explicit property names stand in for the reflection VBA does not have;
+    ' column types come from the first non-null value each property yields.
+    Set names = CollectJsonPropertyNames(propertyNames, _
+        "DataTableFromObjects")
+    Set instances = CollectJsonInstances(source, "DataTableFromObjects")
+    ReDim columnTypes(1 To names.Count)
+    ReDim columnTyped(1 To names.Count)
+    For Each instance In instances
+        For columnIndex = 1 To names.Count
+            If Not columnTyped(columnIndex) Then
+                value = CallByName(instance, names.Item(columnIndex), VbGet)
+                If Not IsNull(value) And Not IsEmpty(value) And _
+                    Not IsObject(value) Then
+                    columnTypes(columnIndex) = VarType(value)
+                    columnTyped(columnIndex) = True
+                End If
+            End If
+        Next columnIndex
+    Next instance
+    Set table = ROneCOne.DataTable(tableName)
+    For columnIndex = 1 To names.Count
+        If Not columnTyped(columnIndex) Then
+            columnTypes(columnIndex) = vbVariant
+        End If
+        table.Column CStr(names.Item(columnIndex)), columnTypes(columnIndex)
+    Next columnIndex
+    For Each instance In instances
+        ReDim values(0 To names.Count - 1)
+        For columnIndex = 1 To names.Count
+            value = CallByName(instance, names.Item(columnIndex), VbGet)
+            If IsEmpty(value) Then value = Null
+            values(columnIndex - 1) = value
+        Next columnIndex
+        table.LoadRow values
+    Next instance
+    Set BuildTableFromObjects = table
+End Function
+
+Private Function CollectJsonPropertyNames( _
+    ByVal propertyNames As Variant, _
+    ByVal memberName As String _
+) As Collection
+    Dim element As Variant
+    Dim names As Collection
+
+    Set names = New Collection
+    For Each element In JsonSourceElements(propertyNames, memberName)
+        If IsObject(element) Or VarType(element) <> vbString Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+                "Every property name must be text."
+        End If
+        names.Add CStr(element)
+    Next element
+    If names.Count = 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "At least one property name is required."
+    End If
+    Set CollectJsonPropertyNames = names
+End Function
+
+Private Function CollectJsonInstances( _
+    ByVal source As Variant, _
+    ByVal memberName As String _
+) As Collection
+    Dim element As Variant
+    Dim instances As Collection
+
+    Set instances = New Collection
+    For Each element In JsonSourceElements(source, memberName)
+        If Not IsObject(element) Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+                "Every source element must be an object instance."
+        End If
+        instances.Add element
+    Next element
+    Set CollectJsonInstances = instances
+End Function
+
+Private Function JsonSourceElements( _
+    ByVal values As Variant, _
+    ByVal memberName As String _
+) As Collection
+    Dim element As Variant
+    Dim elements As Collection
+    Dim sequence As ROneCOne
+
+    ' Element-typed helpers such as WrapElement belong to configured
+    ' collections; this JSON entry point runs on the root instance, so the
+    ' incoming values are normalized here without element validation.
+    Set elements = New Collection
+    If IsObject(values) Then
+        If values Is Nothing Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+                "The incoming values cannot be Nothing."
+        End If
+        If TypeOf values Is ROneCOne Then
+            Set sequence = values
+            RequireSequence sequence, memberName
+            For Each element In sequence
+                elements.Add element
+            Next element
+            Set JsonSourceElements = elements
+            Exit Function
+        End If
+        If TypeName(values) = "Collection" Then
+            For Each element In values
+                elements.Add element
+            Next element
+            Set JsonSourceElements = elements
+            Exit Function
+        End If
+    ElseIf IsArray(values) Then
+        For Each element In values
+            elements.Add element
+        Next element
+        Set JsonSourceElements = elements
+        Exit Function
+    End If
+    RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+        "Expected a ROneCOne sequence, VBA array, or Collection."
+End Function
 
 Private Sub RequireHttpClient(ByVal memberName As String)
     If mRole <> ROLE_HTTP_CLIENT Then
@@ -9745,7 +11213,9 @@ Private Sub SetDataRowItem(ByVal index As Variant, ByVal value As Variant)
         mSource.ValidateForeignKeyConstraints Me
     End If
     If mRowState = ROW_STATE_UNCHANGED Then mRowState = ROW_STATE_MODIFIED
-    If mRowState <> ROW_STATE_DETACHED Then mSource.RebuildPrimaryKeyIndex
+    If mRowState <> ROW_STATE_DETACHED Then
+        mSource.InternalDataRowKeyEdited column
+    End If
     mSource.TouchDataVersion
     On Error GoTo 0
     Exit Sub
@@ -9892,21 +11362,78 @@ Private Function BuildPrimaryKeyArguments( _
 End Function
 
 Friend Sub RebuildPrimaryKeyIndex()
-    Dim keyToken As String
-    Dim row As ROneCOne
+    Dim columnIndex As Long
+    Dim rowIndex As Long
 
+    ' One pass builds the primary-key index and one token index per Unique
+    ' column, so both constraint checks are probes rather than row scans.
+    ' Mutations mark these indexes dirty instead of rebuilding per operation;
+    ' EnsureDataIndexesCurrent flushes the flag before any probe.
     If mRole <> ROLE_DATA_TABLE Then Exit Sub
+    mDataIndexDirty = False
     Set mDataIndex = ROneCOne.DictionaryOf(vbString, ROneCOne.Exception)
-    If mPrimaryKey.Count = 0 Then Exit Sub
-    For Each row In ArrSnapshot(mItems, mItemsCount)
-        If row.RowState <> "Deleted" Then
-            keyToken = PrimaryKeyTokenForRow(row)
-            If Not mDataIndex.TryAdd(keyToken, row) Then
-                RaiseContractError ERROR_INVALID_OPERATION, "PrimaryKey", _
-                    "The composite primary key contains a duplicate value."
-            End If
+    Set mUniqueIndexes = New Collection
+    For columnIndex = 1 To mKeysCount
+        If mKeys(columnIndex).InternalUnique Then
+            mUniqueIndexes.Add ROneCOne.DictionaryOf(vbString, _
+                ROneCOne.Exception), CStr(columnIndex)
         End If
-    Next row
+    Next columnIndex
+    If mPrimaryKey.Count = 0 And mUniqueIndexes.Count = 0 Then Exit Sub
+    For rowIndex = 1 To mItemsCount
+        If mItems(rowIndex).RowState <> "Deleted" Then
+            IndexDataRow mItems(rowIndex)
+        End If
+    Next rowIndex
+End Sub
+
+Private Sub EnsureDataIndexesCurrent()
+    If mDataIndexDirty Or mDataIndex Is Nothing Then RebuildPrimaryKeyIndex
+End Sub
+
+Friend Sub InternalMarkDataIndexDirty()
+    mDataIndexDirty = True
+End Sub
+
+Friend Sub InternalDataRowKeyEdited(ByVal column As ROneCOne)
+    ' Only an edit to a primary-key or Unique column can change the token
+    ' indexes; every other field write leaves them untouched.
+    If ColumnInPrimaryKey(column) Or column.InternalUnique Then
+        mDataIndexDirty = True
+    End If
+End Sub
+
+Private Function ColumnInPrimaryKey(ByVal column As ROneCOne) As Boolean
+    Dim keyColumn As ROneCOne
+
+    For Each keyColumn In mPrimaryKey
+        If keyColumn Is column Then
+            ColumnInPrimaryKey = True
+            Exit Function
+        End If
+    Next keyColumn
+End Function
+
+Private Sub IndexDataRow(ByVal row As ROneCOne)
+    Dim cells As Collection
+    Dim columnIndex As Long
+    Dim uniqueIndex As ROneCOne
+
+    If mDataIndex Is Nothing Then Exit Sub
+    If mPrimaryKey.Count > 0 Then
+        If Not mDataIndex.TryAdd(PrimaryKeyTokenForRow(row), row) Then
+            RaiseContractError ERROR_INVALID_OPERATION, "PrimaryKey", _
+                "The composite primary key contains a duplicate value."
+        End If
+    End If
+    If mUniqueIndexes.Count = 0 Then Exit Sub
+    Set cells = row.InternalDataRows
+    For columnIndex = 1 To mKeysCount
+        If mKeys(columnIndex).InternalUnique Then
+            Set uniqueIndex = mUniqueIndexes.Item(CStr(columnIndex))
+            uniqueIndex.TryAdd DataIndexToken(cells.Item(columnIndex)), row
+        End If
+    Next columnIndex
 End Sub
 
 Private Function PrimaryKeyTokenForRow( _
@@ -9972,37 +11499,46 @@ Friend Sub ValidateDataRowConstraints( _
     ByVal row As ROneCOne, _
     ByVal changedColumn As ROneCOne _
 )
+    Dim cells As Collection
     Dim column As ROneCOne
     Dim columnIndex As Long
     Dim existing As ROneCOne
     Dim keyToken As String
+    Dim uniqueIndex As ROneCOne
     Dim wrapped As ROneCOne
 
-    columnIndex = 0
-    For Each column In ArrSnapshot(mKeys, mKeysCount)
-        Set wrapped = row.InternalDataRows.Item(columnIndex + 1)
-        ValidateDataColumnValue column, wrapped, "AddRow"
-        If column.InternalUnique Then
-            For Each existing In ArrSnapshot(mItems, mItemsCount)
-                If Not existing Is row Then
-                    If DataValuesEqual( _
-                        existing.InternalDataRows.Item(columnIndex + 1), _
-                        wrapped, "Unique") Then
+    ' A single-field edit validates only its own column; a new row validates
+    ' them all. Uniqueness is a token-index probe, never a row scan, and the
+    ' probe tolerates finding this row itself under its unchanged value.
+    EnsureDataIndexesCurrent
+    Set cells = row.InternalDataRows
+    For columnIndex = 1 To mKeysCount
+        Set column = mKeys(columnIndex)
+        If changedColumn Is Nothing Or column Is changedColumn Then
+            Set wrapped = cells.Item(columnIndex)
+            ValidateDataColumnValue column, wrapped, "AddRow"
+            If column.InternalUnique Then
+                Set uniqueIndex = mUniqueIndexes.Item(CStr(columnIndex))
+                keyToken = DataIndexToken(wrapped)
+                If uniqueIndex.ContainsKey(keyToken) Then
+                    Set existing = uniqueIndex.Item(keyToken)
+                    If Not existing Is row Then
                         RaiseContractError ERROR_INVALID_OPERATION, "AddRow", _
                             "A unique DataColumn contains a duplicate value."
                     End If
                 End If
-            Next existing
+            End If
         End If
-        columnIndex = columnIndex + 1
-    Next column
+    Next columnIndex
     If mPrimaryKey.Count > 0 Then
-        keyToken = PrimaryKeyTokenForRow(row)
-        If mDataIndex.ContainsKey(keyToken) Then
-            Set existing = mDataIndex.Item(keyToken)
-            If Not existing Is row Then
-                RaiseContractError ERROR_INVALID_OPERATION, "PrimaryKey", _
-                    "The composite primary key contains a duplicate value."
+        If changedColumn Is Nothing Or ColumnInPrimaryKey(changedColumn) Then
+            keyToken = PrimaryKeyTokenForRow(row)
+            If mDataIndex.ContainsKey(keyToken) Then
+                Set existing = mDataIndex.Item(keyToken)
+                If Not existing Is row Then
+                    RaiseContractError ERROR_INVALID_OPERATION, "PrimaryKey", _
+                        "The composite primary key contains a duplicate value."
+                End If
             End If
         End If
     End If

@@ -559,6 +559,41 @@ class SourceContractTests(unittest.TestCase):
         )
         self.assertEqual({"HTTP_PROG_ID"}, set(const_created))
 
+    def test_json_surface_is_present_and_runtime_native(self) -> None:
+        for member in (
+            "Public Property Get Json()",
+            "Public Function Serialize(",
+            "Public Function Deserialize(",
+            "Public Function DeserializeTable(",
+            "Public Function DeserializeInto(",
+            "Public Function DeserializeObjects(",
+            "Public Function DataTableFromObjects(",
+            "Public Function ToObjects(",
+            "Public Function ToJson(",
+            "Public Property Get JsonError()",
+        ):
+            self.assertIn(member, self.source)
+        # The parser reads character codes from a byte snapshot, returns
+        # escape-free strings with a single copy, accumulates short integers
+        # inline, and writes numbers with an invariant decimal separator.
+        for mechanism in (
+            "Private Type JsonReader",
+            "Private Type JsonTextBuilder",
+            "reader.bytes = jsonText",
+            "Private Function JsonReadNumber(",
+            "Private Function JsonReadString(",
+            "Private Function JsonNumberText(",
+            "mJsonDecimalSeparator",
+            '"ROneCOne.JsonException"',
+        ):
+            self.assertIn(mechanism, self.source)
+        # The model is runtime-native: objects deserialize into ordered
+        # dictionaries and arrays into Variant lists.
+        self.assertIn(
+            "ROneCOne.OrderedDictionaryOf(vbString, vbVariant)", self.source
+        )
+        self.assertIn("ROneCOne.ListOf(vbVariant)", self.source)
+
     def test_http_client_surface_is_present_and_awaitable(self) -> None:
         for member in (
             "Public Function HttpClient()",
@@ -719,6 +754,40 @@ class SourceContractTests(unittest.TestCase):
         self.assertIn("mVersion = mVersion + 1", function_body("WithFilter"))
         self.assertIn("mVersion = mVersion + 1", function_body("WithSort"))
         self.assertIn("InternalAppendRowCell", sub_body("AddColumn"))
+
+    def test_constraint_indexes_are_incremental_and_lazy(self) -> None:
+        def sub_body(name: str) -> str:
+            match = re.search(
+                rf"^(?:Friend|Private|Public) Sub {name}\(.*?^End Sub",
+                self.source,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+            self.assertIsNotNone(match, name)
+            assert match is not None
+            return match.group(0)
+
+        for member in (
+            "Private mDataIndexDirty As Boolean",
+            "Private mUniqueIndexes As Collection",
+            "Private Sub EnsureDataIndexesCurrent()",
+            "Private Sub IndexDataRow(",
+            "Friend Sub InternalMarkDataIndexDirty()",
+            "Friend Sub InternalDataRowKeyEdited(",
+        ):
+            self.assertIn(member, self.source)
+
+        # A new row slots into the constraint indexes incrementally, a
+        # single-field edit validates only its own column with index probes
+        # instead of row scans, and key edits defer one rebuild.
+        add_row = sub_body("AddRow")
+        self.assertIn("IndexDataRow row", add_row)
+        self.assertNotIn("RebuildPrimaryKeyIndex", add_row)
+        validate = sub_body("ValidateDataRowConstraints")
+        self.assertIn("EnsureDataIndexesCurrent", validate)
+        self.assertNotIn("ArrSnapshot(mItems", validate)
+        set_item = sub_body("SetDataRowItem")
+        self.assertIn("InternalDataRowKeyEdited", set_item)
+        self.assertNotIn("RebuildPrimaryKeyIndex", set_item)
 
     def test_worksheet_range_bridge_is_present(self) -> None:
         for member in (

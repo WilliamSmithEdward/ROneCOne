@@ -36,6 +36,10 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestDataViewAndMerge
     mCurrentTest = "TestSnapshotCachingAndViewRefresh"
     TestSnapshotCachingAndViewRefresh
+    mCurrentTest = "TestConstraintMaintenance"
+    TestConstraintMaintenance
+    mCurrentTest = "TestJsonSurface"
+    TestJsonSurface
     mCurrentTest = "TestRangeBridge"
     TestRangeBridge
     mCurrentTest = "TestRelationConstraints"
@@ -167,6 +171,179 @@ Private Sub TestHttpSurface()
     AssertEqual "http relative url needs base", _
         ROneCOne.InvalidArgumentError, badUrlError
 End Sub
+
+Private Sub TestConstraintMaintenance()
+    Dim capturedError As Long
+    Dim table As ROneCOne
+
+    ' Duplicate detection stays exact while the constraint indexes maintain
+    ' themselves incrementally on add and lazily after key edits or deletes.
+    Set table = ROneCOne.DataTable("ConstraintChecks")
+    table.Column("Id", vbLong).AsPrimaryKey
+    table.Column("Code", vbString).AsUnique
+    table.Column "Score", vbLong
+    table.LoadRow Array(1, "A", 10)
+    table.LoadRow Array(2, "B", 20)
+
+    capturedError = 0
+    On Error Resume Next
+    table.LoadRow Array(1, "C", 30)
+    capturedError = Err.Number
+    On Error GoTo 0
+    AssertEqual "constraint duplicate key rejected", _
+        ROneCOne.InvalidOperationError, capturedError
+    AssertEqual "constraint count after key reject", 2&, table.Rows.Count
+
+    capturedError = 0
+    On Error Resume Next
+    table.LoadRow Array(3, "A", 30)
+    capturedError = Err.Number
+    On Error GoTo 0
+    AssertEqual "constraint duplicate unique rejected", _
+        ROneCOne.InvalidOperationError, capturedError
+    AssertEqual "constraint count after unique reject", 2&, table.Rows.Count
+
+    ' An edit that would collide is rejected and the old value restored.
+    capturedError = 0
+    On Error Resume Next
+    table.Rows.Item(1).Item("Code") = "A"
+    capturedError = Err.Number
+    On Error GoTo 0
+    AssertEqual "constraint duplicate edit rejected", _
+        ROneCOne.InvalidOperationError, capturedError
+    AssertEqual "constraint edit restored", "B", _
+        CStr(table.Rows.Item(1).Item("Code"))
+
+    ' Non-key edits leave lookups untouched; key edits reindex lazily.
+    table.Rows.Item(0).Item("Score") = 11
+    AssertEqual "constraint find after data edit", 11&, _
+        CLng(table.Find(1).Item("Score"))
+    table.Rows.Item(1).Item("Id") = 20
+    AssertTrue "constraint old key gone", table.Find(2) Is Nothing
+    AssertEqual "constraint new key found", "B", _
+        CStr(table.Find(20).Item("Code"))
+
+    ' A deleted row leaves both indexes, so its key and unique value free up.
+    table.Rows.Item(0).Delete
+    AssertTrue "constraint deleted key gone", table.Find(1) Is Nothing
+    table.LoadRow Array(1, "A", 99)
+    AssertEqual "constraint reuse after delete", 99&, _
+        CLng(table.Find(1).Item("Score"))
+End Sub
+
+Private Sub TestJsonSurface()
+    Dim bound As GenericCustomer
+    Dim compact As String
+    Dim customers As ROneCOne
+    Dim factory As ROneCOne
+    Dim jsonErrorNumber As Long
+    Dim mapped As ROneCOne
+    Dim objects As ROneCOne
+    Dim table As ROneCOne
+    Dim tree As ROneCOne
+
+    ' Deserialize builds runtime-native values: objects become ordered
+    ' String-to-Variant dictionaries, arrays become Variant lists.
+    Set tree = ROneCOne.Json.Deserialize( _
+        "{""name"":""Ada"",""age"":36,""active"":true,""score"":1.5," & _
+        """tags"":[""x"",""y""],""nested"":{""city"":""London""}," & _
+        """missing"":null}")
+    AssertEqual "json member text", "Ada", tree.Item("name")
+    AssertEqual "json member long", 36&, tree.Item("age")
+    AssertTrue "json member boolean", CBool(tree.Item("active"))
+    AssertEqual "json member double", 1.5, tree.Item("score")
+    AssertTrue "json member null", IsNull(tree.Item("missing"))
+    AssertEqual "json nested array", "y", tree.Item("tags").Item(1)
+    AssertEqual "json nested object", "London", _
+        tree.Item("nested").Item("city")
+
+    ' Escapes, backslash-u decoding, and big integers follow the RFC.
+    AssertEqual "json escapes", "a""b\c" & ChrW$(233) & vbLf, _
+        ROneCOne.Json.Deserialize("""a\""b\\c\u00e9\n""")
+    AssertEqual "json long long", 12345678901^, _
+        ROneCOne.Json.Deserialize("12345678901")
+    jsonErrorNumber = 0
+    On Error Resume Next
+    ROneCOne.Json.Deserialize("{""a"":01}")
+    jsonErrorNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "json leading zero rejected", ROneCOne.JsonError, _
+        jsonErrorNumber
+    jsonErrorNumber = 0
+    On Error Resume Next
+    ROneCOne.Json.Deserialize("true false")
+    jsonErrorNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "json trailing text rejected", ROneCOne.JsonError, _
+        jsonErrorNumber
+
+    ' Serialize round-trips the model with invariant numbers and preserved
+    ' member order; pretty output parses back to the identical document.
+    compact = "{""a"":1,""b"":[true,null,""x""],""c"":{""d"":2.5}}"
+    AssertEqual "json round trip", compact, _
+        ROneCOne.Json.Serialize(ROneCOne.Json.Deserialize(compact))
+    AssertEqual "json pretty round trip", compact, _
+        ROneCOne.Json.Serialize(ROneCOne.Json.Deserialize( _
+            ROneCOne.Json.Serialize(ROneCOne.Json.Deserialize(compact), _
+                True)))
+    AssertEqual "json list sugar", "[1,2,3]", _
+        ROneCOne.ListOf(vbLong, 1, 2, 3).ToJson
+
+    ' A JSON array of objects becomes a typed DataTable: dotted columns for
+    ' nested objects, JSON text for nested arrays, DBNull for absences.
+    Set table = ROneCOne.Json.DeserializeTable( _
+        "[{""id"":1,""name"":""Ada"",""meta"":{""city"":""L""}," & _
+        """tags"":[1,2]},{""id"":2,""name"":""Bo"",""extra"":true}]")
+    AssertEqual "json table rows", 2&, table.Rows.Count
+    AssertEqual "json table columns", 5&, table.Columns.Count
+    AssertEqual "json table dotted column", "L", _
+        CStr(table.Rows.Item(0).Item("meta.city"))
+    AssertEqual "json table array cell", "[1,2]", _
+        CStr(table.Rows.Item(0).Item("tags"))
+    AssertTrue "json table missing cell", _
+        IsNull(table.Rows.Item(0).Item("extra"))
+    AssertTrue "json table boolean cell", _
+        CBool(table.Rows.Item(1).Item("extra"))
+    AssertTrue "json table to json", InStr(1, table.ToJson, _
+        """meta.city"":""L""") > 0
+
+    ' A nested array path addresses the table inside an envelope.
+    AssertEqual "json table at path", 1&, ROneCOne.Json.DeserializeTable( _
+        "{""data"":{""items"":[{""v"":7}]}}", "Items", _
+        "$.data.items").Rows.Count
+
+    ' Binding: JSON members onto an existing instance, an array of objects
+    ' through a factory, and DataTable rows to and from typed objects.
+    Set bound = New GenericCustomer
+    ROneCOne.Json.DeserializeInto _
+        "{""CustomerName"":""Grace"",""Age"":40,""Active"":true}", bound
+    AssertEqual "json bind name", "Grace", bound.CustomerName
+    AssertEqual "json bind age", 40&, bound.Age
+    AssertTrue "json bind boolean", bound.Active
+
+    Set factory = ROneCOne.Func("TestTasksAndData.NewGenericCustomer") _
+        .Takes().Returns(vbObject)
+    Set objects = ROneCOne.Json.DeserializeObjects( _
+        "[{""CustomerName"":""Ada"",""Age"":36}," & _
+        "{""CustomerName"":""Bo"",""Age"":50}]", factory)
+    AssertEqual "json objects count", 2&, objects.Count
+    AssertEqual "json objects typed", "Bo", objects.Item(1).CustomerName
+    AssertEqual "json objects bound age", 50&, objects.Item(1).Age
+
+    Set customers = ROneCOne.DataTableFromObjects(objects, _
+        Array("CustomerName", "Age"), "Customers")
+    AssertEqual "objects to table rows", 2&, customers.Rows.Count
+    AssertEqual "objects to table cell", "Ada", _
+        CStr(customers.Rows.Item(0).Item("CustomerName"))
+    Set mapped = customers.ToObjects(factory)
+    AssertEqual "table to objects round trip", 36&, mapped.Item(0).Age
+    AssertTrue "table to objects typed list", InStr(1, _
+        mapped.GenericTypeName, "GenericCustomer") > 0
+End Sub
+
+Public Function NewGenericCustomer() As GenericCustomer
+    Set NewGenericCustomer = New GenericCustomer
+End Function
 
 Private Sub TestSnapshotCachingAndViewRefresh()
     Dim enumerated As Long

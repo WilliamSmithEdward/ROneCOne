@@ -6,6 +6,36 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
+## Unreleased
+
+### Added
+
+- JSON serialization in the spirit of System.Text.Json: `ROneCOne.Json.Serialize` (compact or
+  indented) and `Deserialize` into runtime-native values, where a JSON object becomes an
+  ordered String-to-Variant dictionary and an array becomes a Variant list;
+  `DeserializeTable` lands an array of objects in a typed DataTable with dotted columns for
+  nested objects and an optional `$.data.items`-style path; `DeserializeInto`,
+  `DeserializeObjects`, `ToObjects`, and `DataTableFromObjects` bind JSON and DataTables to
+  your own classes through a factory delegate and explicit property names; and a `ToJson`
+  convenience serializes collections, tables, rows, and views. Parsing is RFC 8259 strict
+  with position-carrying typed errors (`ROneCOne.JsonError`), and the reader and writer
+  mechanics are adapted, with permission, from
+  [ModernJsonInVBA](https://github.com/WilliamSmithEdward/ModernJsonInVBA). See
+  [ADR 0013](docs/decisions/0013-json-in-the-spirit-of-system-text-json.md).
+
+### Fixed
+
+- Primary-key and unique-column enforcement no longer rebuilds or scans per operation. A new
+  row slots into the constraint indexes incrementally, a field write validates only its own
+  column with token-index probes instead of row scans, and only key-affecting edits or deletes
+  mark the indexes for one lazy rebuild. A live scenario of 2,000 loads, 2,000 edits, and
+  2,000 finds on a table with a primary key and a unique column previously exceeded the
+  harness's 30-second deadline; it now runs inside a new 1.5-second release gate. See
+  [ADR 0012](docs/decisions/0012-incremental-constraint-indexes.md).
+- List and generic-collection materialization builds one snapshot Collection instead of two,
+  and an `HttpResponse` releases its byte-array copy once `GetByteArrayAsync` hands the result
+  to its task.
+
 ## 1.4.0 - 2026-07-23
 
 ### Fixed

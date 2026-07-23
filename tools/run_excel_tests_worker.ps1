@@ -39,7 +39,11 @@ param(
 
     [Parameter(Mandatory = $true)]
     [ValidateRange(0.01, 60)]
-    [double]$MaxGenericReadBenchmarkSeconds
+    [double]$MaxGenericReadBenchmarkSeconds,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(0.01, 60)]
+    [double]$MaxConstraintBenchmarkSeconds
 )
 
 $ErrorActionPreference = "Stop"
@@ -214,7 +218,7 @@ public static class ROneCOneExcelProcess
     $taskDataSheet.Range("A3").Value2 = "Failed"
     $taskDataSheet.Range("A4").Value2 = "Status"
     $taskDataSheet.Range("A5").Value2 = "Error"
-    $collectionBenchmarkSheet.Range("A1:B25").ClearContents()
+    $collectionBenchmarkSheet.Range("A1:B28").ClearContents()
     $collectionBenchmarkSheet.Range("A1").Value2 = "ROneCOne collection benchmark"
     $collectionBenchmarkSheet.Range("A2").Value2 = "Source elements"
     $collectionBenchmarkSheet.Range("A3").Value2 = "Seconds"
@@ -273,6 +277,7 @@ public static class ROneCOneExcelProcess
     $listWriteSeconds = [double]$collectionBenchmarkSheet.Range("B18").Value2
     $rowsLoopSeconds = [double]$collectionBenchmarkSheet.Range("B21").Value2
     $genericReadSeconds = [double]$collectionBenchmarkSheet.Range("B24").Value2
+    $constraintSeconds = [double]$collectionBenchmarkSheet.Range("B27").Value2
 
     $stage = "validate observed results"
     if ($status -ne "PASS" -or $failed -ne 0) {
@@ -373,6 +378,10 @@ public static class ROneCOneExcelProcess
         $genericReadSeconds -gt $MaxGenericReadBenchmarkSeconds) {
         throw "Generic read benchmark missed gate: seconds=$genericReadSeconds maximum=$MaxGenericReadBenchmarkSeconds"
     }
+    if ($constraintSeconds -le 0 -or `
+        $constraintSeconds -gt $MaxConstraintBenchmarkSeconds) {
+        throw "Constraint benchmark missed gate: seconds=$constraintSeconds maximum=$MaxConstraintBenchmarkSeconds"
+    }
     if ([int]$collectionBenchmarkSheet.Range("B13").Value2 -ne 10000) {
         throw "Hash benchmark produced an invalid lookup result."
     }
@@ -387,6 +396,9 @@ public static class ROneCOneExcelProcess
     }
     if ([int]$collectionBenchmarkSheet.Range("B25").Value2 -ne 10000) {
         throw "Generic read benchmark produced an invalid final value."
+    }
+    if ([long]$collectionBenchmarkSheet.Range("B28").Value2 -ne 2001000) {
+        throw "Constraint benchmark produced an invalid key total."
     }
     if ([int]$collectionBenchmarkSheet.Range("B7").Value2 -ne 10000 -or `
         [int]$collectionBenchmarkSheet.Range("B8").Value2 -ne 10000) {
@@ -429,6 +441,8 @@ public static class ROneCOneExcelProcess
         rows_loop_gate_seconds = $MaxRowsLoopBenchmarkSeconds
         generic_read_seconds = $genericReadSeconds
         generic_read_gate_seconds = $MaxGenericReadBenchmarkSeconds
+        constraint_seconds = $constraintSeconds
+        constraint_gate_seconds = $MaxConstraintBenchmarkSeconds
     } | ConvertTo-Json -Compress
 }
 catch {

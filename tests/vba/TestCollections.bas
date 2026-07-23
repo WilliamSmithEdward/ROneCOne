@@ -474,6 +474,8 @@ Public Sub RunROneCOneCollectionBenchmark()
     Dim started As Double
     Dim values As ROneCOne
     Dim x As ROneCOne
+    Dim constraintElapsed As Double
+    Dim constraintTotal As Long
     Dim genericReadCheck As Long
     Dim genericReadElapsed As Double
     Dim hashElapsed100K As Double
@@ -591,6 +593,28 @@ Public Sub RunROneCOneCollectionBenchmark()
     genericReadElapsed = Timer - started
     If genericReadElapsed < 0 Then genericReadElapsed = genericReadElapsed + 86400#
 
+    ' Constraint scenario: 2,000 rows into a table with a primary key and a
+    ' unique column, then 2,000 non-key edits and 2,000 key lookups. Adds
+    ' must index incrementally, edits must validate only their own column,
+    ' and Find must stay a probe.
+    Set table = ROneCOne.DataTable("BenchmarkConstraints")
+    table.Column("Id", vbLong).AsPrimaryKey
+    table.Column("Code", vbString).AsUnique
+    table.Column "Score", vbLong
+    started = Timer
+    For index = 1 To 2000
+        table.LoadRow Array(index, "C" & CStr(index), index)
+    Next index
+    For index = 1 To 2000
+        table.Rows.Item(index - 1).Item("Score") = index * 2
+    Next index
+    constraintTotal = 0
+    For index = 1 To 2000
+        constraintTotal = constraintTotal + CLng(table.Find(index).Item("Id"))
+    Next index
+    constraintElapsed = Timer - started
+    If constraintElapsed < 0 Then constraintElapsed = constraintElapsed + 86400#
+
     With ThisWorkbook.Worksheets("Collection Benchmarks")
         .Range("B2").Value2 = 10000
         .Range("B3").Value2 = elapsed
@@ -616,6 +640,9 @@ Public Sub RunROneCOneCollectionBenchmark()
         .Range("B23").Value2 = 10000
         .Range("B24").Value2 = genericReadElapsed
         .Range("B25").Value2 = genericReadCheck
+        .Range("B26").Value2 = 6000
+        .Range("B27").Value2 = constraintElapsed
+        .Range("B28").Value2 = constraintTotal
     End With
 End Sub
 

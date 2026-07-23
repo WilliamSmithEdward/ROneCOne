@@ -10,7 +10,8 @@
 ROneCOne is a modern programming layer for Excel VBA. Import one class module, `ROneCOne.cls`,
 and ordinary workbook code gains typed collections, LINQ-style queries, await-style tasks,
 typed events, structured error handling, an in-memory data layer with local database access,
-and an awaitable HTTP client for calling web APIs.
+an awaitable HTTP client for calling web APIs, and JSON serialization in the spirit of
+System.Text.Json.
 
 Everything you already built keeps working. There is no installer, no add-in, no external
 reference, and no separate runtime to manage: the entire library is one file that travels inside
@@ -45,6 +46,7 @@ Tasks, typed events, and structured Try, Catch, and Finally flows.
 | Coordinate slow or multi-step work | Await-style Tasks with delays, timeouts, cancellation, progress, and continuations |
 | Model business data | DataTable, DataSet, DataView, relations, change tracking, and providers |
 | Call web APIs | An HttpClient with awaitable verbs, overlapped downloads, and typed failures |
+| Exchange JSON | Serialize and deserialize trees, tables, and your own classes, System.Text.Json style |
 | Build responsive workbook logic | Typed events with predictable subscription and delivery |
 | Handle failure deliberately | Structured Try, Catch, and Finally flows |
 | Deploy without a platform project | One importable class module with no outside dependency |
