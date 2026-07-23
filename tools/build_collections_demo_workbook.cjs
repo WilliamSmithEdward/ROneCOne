@@ -159,7 +159,7 @@ async function main() {
   ]];
   tableHeader(examples.getRange("A5:F5"));
   examples.getRange("A6:D13").values = [
-    ["Create a checked number list", "new List<long> { 5, 10, 15 }", "ROneCOne.ListOf(vbLong, CLng(5), CLng(10), CLng(15))", "List<Long>"],
+    ["Create a checked number list", "new List<long> { 5, 10, 15 }", "ROneCOne.ListOf(vbLong, 5, 10, 15)", "List<Long>"],
     ["Reject the wrong data type", "Compile-time element type", "values.Add \"not a Long\"", true],
     ["Use existing Customer objects", "new List<DemoCustomer> { ada, grace }", "ROneCOne.ListFrom(ada, grace)", "List<DemoCustomer>; second customer: Grace"],
     ["See newly added matches", "query observes later mutation", "Set element = values.Element\nSet query = values.Where(element.AtLeast(10))\nvalues.Add 30", "2 matches; last: 30"],
@@ -425,7 +425,7 @@ async function main() {
     ["Combined filter rules", "Composable immutable nodes", "Lists, missing values, and child records", "ENFORCED", 1, 0],
     ["Predictable sorting", "OrderBy + ThenBy chain", "Cached keys and O(n log n) merge sort", "ENFORCED", 1, 0],
     ["Fast key lookup", "Open addressing + direct value slots", "Average O(1) keyed lookup", "ENFORCED", 1, 0],
-    ["Enumeration", "Persistent list mirror", "Nested For Each works", "ENFORCED", 1, 0],
+    ["Enumeration", "Version-cached materialization", "Nested For Each works", "ENFORCED", 1, 0],
     ["One process", "In-process execution", "Never launches Excel", "ENFORCED", 1, 0],
     ["Privacy", "No transmission", "Workbook data stays local", "ENFORCED", 1, 0],
   ];

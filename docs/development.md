@@ -29,7 +29,7 @@ terminals, predicate algebra, collection membership, null-safe paths, custom com
 quantifiers, stable composite ordering, indexed hash collections, capacity control, and enumerator
 refresh after mutation. Dedicated advanced-collection and task/data/provider suites cover
 specialized families, scheduler state, cancellation, indexed data relations, and provider
-capabilities. The current live total is 444 assertions across all four suites.
+capabilities. The current live total is 505 assertions across all four suites.
 
 The invocation benchmark has a configurable release ceiling (`-MaxBenchmarkSeconds`, default
 `0.5` for 10,000 calls). The v0.1.0 measurements are stored in
@@ -88,6 +88,16 @@ times faster than the removed native path measured on the same machine. The coll
 numeric-widening, indexed-access-scaling, and expression-display contracts; the task and data
 suite adds the Range bridge contract. Three fresh processes repeat every established gate and all
 444 live assertions. Measurements are recorded in `benchmarks/v1.3.0-baseline.json`.
+
+The v1.4.0 baseline follows the in-place hash maintenance
+([ADR 0009](decisions/0009-in-place-hash-index-maintenance.md)), version-cached snapshots and
+O(1) positional access ([ADR 0010](decisions/0010-version-cached-positional-access.md)), and the
+awaitable HTTP client ([ADR 0011](decisions/0011-awaitable-http-client-over-winhttp.md)). Four
+scenarios join the gated set: 12,000 keyed mutations, 10,000 indexed list writes, 2,000
+positional row reads through `Rows`, and 10,000 positional hash-set reads, each against a
+1.5-second gate. The task and data suite adds twenty HTTP assertions against
+https://pokeapi.co. Three fresh processes repeat every gate and all 505 live assertions.
+Measurements are recorded in `benchmarks/v1.4.0-baseline.json`.
 
 The HTTP contract in the task and data suite, and the HTTP demo workbook, make live requests to
 https://pokeapi.co, so those runs need internet access; every other gate runs offline. No other
