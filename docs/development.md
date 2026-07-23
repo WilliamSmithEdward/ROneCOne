@@ -99,6 +99,15 @@ positional row reads through `Rows`, and 10,000 positional hash-set reads, each 
 https://pokeapi.co. Three fresh processes repeat every gate and all 505 live assertions.
 Measurements are recorded in `benchmarks/v1.4.0-baseline.json`.
 
+The v1.5.0 baseline follows the incremental constraint indexes
+([ADR 0012](decisions/0012-incremental-constraint-indexes.md)) and the JSON layer
+([ADR 0013](decisions/0013-json-in-the-spirit-of-system-text-json.md)). Two scenarios join the
+gated set: 6,000 operations on a table with a primary key and a unique column against a
+1.5-second gate, and a 1,000-row table round-tripped through `ToJson` and `DeserializeTable`
+against a 2.5-second gate. The task and data suite adds the JSON contracts, and the eighth demo
+workbook exercises the JSON surface offline. Three fresh processes repeat every gate and all
+548 live assertions. Measurements are recorded in `benchmarks/v1.5.0-baseline.json`.
+
 The HTTP contract in the task and data suite, and the HTTP demo workbook, make live requests to
 https://pokeapi.co, so those runs need internet access; every other gate runs offline. No other
 host is contacted.

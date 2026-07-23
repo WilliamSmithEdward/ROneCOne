@@ -206,7 +206,7 @@ const capabilities = [
     macro: "RunROneCOneJsonDemo",
     feature: "JSON",
     output: "ROneCOne_Json_Demo.xlsx",
-    benchmark: "Round-trip a 1,000-order table: ToJson + DeserializeTable",
+    benchmark: "Round-trip a 1,000-order table",
     benchmarkResult: "Round-tripped rows",
     architecture: [
       ["Single-file core", "ROneCOne.cls", "One import", "ENFORCED", 1, 0],
