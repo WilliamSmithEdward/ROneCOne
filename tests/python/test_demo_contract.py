@@ -13,6 +13,7 @@ EXCEPTIONS_DEMO = DEMO_VBA / "ExceptionsDemoUsage.bas"
 TASKS_DEMO = DEMO_VBA / "TasksDemoUsage.bas"
 DATA_DEMO = DEMO_VBA / "DataDemoUsage.bas"
 HTTP_DEMO = DEMO_VBA / "HttpDemoUsage.bas"
+JSON_DEMO = DEMO_VBA / "JsonDemoUsage.bas"
 CUSTOMER = DEMO_VBA / "DemoCustomer.cls"
 COLLECTIONS_BUILDER = ROOT / "tools" / "build_collections_demo_workbook.cjs"
 CAPABILITY_BUILDER = ROOT / "tools" / "build_capability_demo_workbooks.cjs"
@@ -189,6 +190,34 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("ROneCOne_Http_Demo.xlsx", builder)
         self.assertIn("pokeapi.co", builder)
 
+    def test_json_demo_round_trips_offline(self) -> None:
+        source = JSON_DEMO.read_text(encoding="utf-8")
+        builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")
+
+        self.assertIn("ROneCOne.Json.Deserialize(body)", source)
+        self.assertIn("ROneCOne.Json.Serialize(tree, True)", source)
+        self.assertIn(
+            'ROneCOne.Json.DeserializeTable(ordersJson, "Orders")', source
+        )
+        self.assertIn('"$.data.items"', source)
+        self.assertIn("ROneCOne.Json.DeserializeInto bindBody, customer", source)
+        self.assertIn(
+            'ROneCOne.Func("JsonDemoUsage.NewDemoCustomer")', source
+        )
+        self.assertIn(".Takes().Returns(vbObject)", source)
+        self.assertIn("ROneCOne.Json.DeserializeObjects(peopleJson, factory)", source)
+        self.assertIn("ROneCOne.DataTableFromObjects(people,", source)
+        self.assertIn("ROneCOne.JsonError", source)
+        self.assertIn("Public Function NewDemoCustomer() As DemoCustomer", source)
+        # The demo is self-contained: documents are literals, never downloads.
+        self.assertNotIn("ROneCOne.HttpClient()", source)
+        self.assertNotIn("GetAsync", source)
+        self.assertNotIn("http://", source)
+        self.assertNotIn("https://", source)
+        self.assertIn('"json"', builder)
+        self.assertIn("ROneCOne_Json_Demo.xlsx", builder)
+        self.assertIn("RunROneCOneJsonDemo", builder)
+
     def test_data_demo_leads_with_typed_data_and_provider_sugar(self) -> None:
         source = DATA_DEMO.read_text(encoding="utf-8")
 
@@ -210,6 +239,7 @@ class DemoContractTests(unittest.TestCase):
             "ROneCOne_Exceptions_Demo",
             "ROneCOne_Tasks_Demo",
             "ROneCOne_Data_Demo",
+            "ROneCOne_Json_Demo",
         ):
             self.assertIn(name, builder)
             self.assertIn(name, packager)
@@ -251,6 +281,8 @@ class DemoContractTests(unittest.TestCase):
             EXCEPTIONS_DEMO,
             TASKS_DEMO,
             DATA_DEMO,
+            HTTP_DEMO,
+            JSON_DEMO,
             CUSTOMER,
         ):
             with self.subTest(path=path.name):

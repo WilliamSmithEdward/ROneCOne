@@ -22,6 +22,10 @@ checksums for each version are on the
   mechanics are adapted, with permission, from
   [ModernJsonInVBA](https://github.com/WilliamSmithEdward/ModernJsonInVBA). See
   [ADR 0013](docs/decisions/0013-json-in-the-spirit-of-system-text-json.md).
+- An eighth demo workbook, `ROneCOne_Json_Demo.xlsm`, walks the whole JSON surface offline:
+  twelve validated examples cover parsing and navigation, compact and indented round-trips,
+  DataTable landing with dotted columns and envelope paths, class binding in both directions,
+  and RFC strictness, with a gated benchmark round-tripping a 1,000-row table.
 
 ### Fixed
 

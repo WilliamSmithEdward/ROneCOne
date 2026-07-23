@@ -7,6 +7,8 @@ param(
     [double]$MaxOrderingBenchmarkSeconds = 2.5,
     [ValidateRange(0.01, 60)]
     [double]$MaxTaskBenchmarkSeconds = 1.5,
+    [ValidateRange(0.01, 60)]
+    [double]$MaxJsonBenchmarkSeconds = 2.5,
     [switch]$Worker,
     [string]$ProcessInfoPath = "demo\.working\demo-processes.json"
 )
@@ -167,6 +169,11 @@ public static class ROneCOneDemoProcess
                 $benchmarkSeconds -gt $MaxTaskBenchmarkSeconds)) {
             throw "Task benchmark exceeded the $MaxTaskBenchmarkSeconds-second gate."
         }
+        if ($featureName -eq "JSON" -and `
+            ($benchmarkSeconds -le 0 -or `
+                $benchmarkSeconds -gt $MaxJsonBenchmarkSeconds)) {
+            throw "JSON benchmark exceeded the $MaxJsonBenchmarkSeconds-second gate."
+        }
         [pscustomobject]@{
             workbook = $resolvedWorkbook
             feature = $featureName
@@ -174,6 +181,7 @@ public static class ROneCOneDemoProcess
             examples_passing = $statuses.Count
             benchmark_seconds = $benchmarkSeconds
             task_gate_seconds = $MaxTaskBenchmarkSeconds
+            json_gate_seconds = $MaxJsonBenchmarkSeconds
             member_dispatch_seconds = $memberDispatchSeconds
             ordering_seconds = $orderingSeconds
             ordering_gate_seconds = $MaxOrderingBenchmarkSeconds
@@ -215,6 +223,7 @@ $arguments = @(
     "-ProcessInfoPath", "`"$resolvedProcessInfo`"",
     "-MaxOrderingBenchmarkSeconds", $MaxOrderingBenchmarkSeconds,
     "-MaxTaskBenchmarkSeconds", $MaxTaskBenchmarkSeconds,
+    "-MaxJsonBenchmarkSeconds", $MaxJsonBenchmarkSeconds,
     "-Worker"
 )
 $process = Start-Process `

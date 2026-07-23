@@ -199,6 +199,97 @@ const capabilities = [
       ],
     ],
   },
+  {
+    key: "json",
+    title: "ROneCOne JSON",
+    subtitle: "Parse, build, and bind JSON without leaving the workbook",
+    macro: "RunROneCOneJsonDemo",
+    feature: "JSON",
+    output: "ROneCOne_Json_Demo.xlsx",
+    benchmark: "Round-trip a 1,000-order table: ToJson + DeserializeTable",
+    benchmarkResult: "Round-tripped rows",
+    architecture: [
+      ["Single-file core", "ROneCOne.cls", "One import", "ENFORCED", 1, 0],
+      ["Strict parsing", "RFC 8259", "Malformed JSON raises a typed, positioned error", "ENFORCED", 1, 0],
+      ["Native model", "Dictionaries + lists", "A parsed tree is queryable immediately", "ENFORCED", 1, 0],
+      ["Locale-proof numbers", "Invariant separator", "Serialized numbers always use a dot", "ENFORCED", 1, 0],
+      ["Explicit binding", "Factories + property names", "No reflection, no Activator, no magic", "ENFORCED", 1, 0],
+    ],
+    examples: [
+      [
+        "Parse and read one member",
+        "JsonNode.Parse(json)[\"customer\"]",
+        "Set tree = ROneCOne.Json.Deserialize(body)\ntree.Item(\"customer\")",
+        "Ada",
+      ],
+      [
+        "Walk into nested data",
+        "node[\"address\"][\"city\"]",
+        "tree.Item(\"address\").Item(\"city\")",
+        "London",
+      ],
+      [
+        "Index into an array",
+        "node[\"tags\"][1]",
+        "tree.Item(\"tags\").Item(1)",
+        "priority",
+      ],
+      [
+        "Serialize a collection",
+        "JsonSerializer.Serialize(new[] { 1, 2, 3 })",
+        "ROneCOne.ListOf(vbLong, 1, 2, 3).ToJson",
+        "[1,2,3]",
+      ],
+      [
+        "Round-trip indented output",
+        "new JsonSerializerOptions { WriteIndented = true }",
+        "pretty = ROneCOne.Json.Serialize(tree, True)\nSet again = ROneCOne.Json.Deserialize(pretty)",
+        true,
+      ],
+      [
+        "Land an array in a DataTable",
+        "JsonSerializer.Deserialize<List<Order>>(json)",
+        "Set orders = ROneCOne.Json.DeserializeTable(ordersJson, \"Orders\")",
+        3,
+      ],
+      [
+        "Read a dotted nested column",
+        "flatten with a custom converter",
+        "orders.Rows.Item(0).Item(\"customer.city\")",
+        "London",
+      ],
+      [
+        "Address an envelope path",
+        "root.GetProperty(\"data\").GetProperty(\"items\")",
+        "ROneCOne.Json.DeserializeTable(envelope, \"Items\", \"$.data.items\")",
+        2,
+      ],
+      [
+        "Bind onto your class",
+        "JsonSerializer.Deserialize<Customer>(json)",
+        "ROneCOne.Json.DeserializeInto bindBody, customer\ncustomer.CustomerName",
+        "Grace",
+      ],
+      [
+        "Build objects through a factory",
+        "JsonSerializer.Deserialize<List<Customer>>(json)",
+        "Set factory = ROneCOne.Func(\"JsonDemoUsage.NewDemoCustomer\") _\n    .Takes().Returns(vbObject)\nSet people = ROneCOne.Json.DeserializeObjects(peopleJson, factory)",
+        "Bo",
+      ],
+      [
+        "Turn objects back into a table",
+        "custom mapping code",
+        "ROneCOne.DataTableFromObjects(people, _\n    Array(\"CustomerName\", \"Age\", \"City\"))",
+        2,
+      ],
+      [
+        "Reject malformed JSON",
+        "JsonException with position info",
+        "On Error Resume Next\nROneCOne.Json.Deserialize \"{\"\"a\"\":1,}\"\nIf Err.Number = ROneCOne.JsonError Then ...",
+        "trailing comma rejected",
+      ],
+    ],
+  },
 ];
 
 function titleBand(sheet, title, subtitle, endColumn) {
