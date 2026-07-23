@@ -81,11 +81,11 @@ const capabilities = [
       ["Run two calculations", "await Task.WhenAll(forecast, reorder)", "Set results = ROneCOne.Task.WhenAll(forecastTask, reorderTask).Await", "135000 | 152"],
       ["Build the next step", "allWork.ContinueWith(BuildSummary)", "allWork.ContinueWith(buildSummary).Await", "Forecast 135000; reorder point 152"],
       ["Keep workbook work safe", "run on the UI thread", "ROneCOne.Task.Run(countOpenOrders).Await", 3],
-      ["Pause without another Excel", "await Task.Delay(5)", "ignored = ROneCOne.Task.Delay(5&).Await", true],
+      ["Pause without another Excel", "await Task.Delay(5)", "ignored = ROneCOne.Task.Delay(5).Await", true],
       ["Cancel safely", "cancelSource.Cancel()", "source.Cancel: source.Token.IsCancellationRequested", true],
-      ["Show progress", "progress.Report(7)", "ROneCOne.ProgressOf(vbLong, handler).Report 7&", 7],
-      ["Finish from a callback", "source.SetResult(99)", "completion.SetResult 99&: completion.Task.Await", 99],
-      ["Limit waiting time", "await task.WaitAsync(timeout)", "task.WaitAsync(100&).Await", true],
+      ["Show progress", "progress.Report(7)", "ROneCOne.ProgressOf(vbLong, handler).Report 7", 7],
+      ["Finish from a callback", "source.SetResult(99)", "completion.SetResult 99: completion.Task.Await", 99],
+      ["Limit waiting time", "await task.WaitAsync(timeout)", "task.WaitAsync(100).Await", true],
       ["Let Excel breathe", "await Task.Yield()", "ignored = ROneCOne.Task.YieldOnce.Await", true],
     ],
   },
@@ -99,7 +99,7 @@ const capabilities = [
     benchmark: "Build 1,000 typed rows and query them",
     benchmarkResult: "Selected rows",
     examples: [
-      ["Add a validated row", "DataColumn + Rows.Add", "table.Column(\"Id\", vbLong).AutoNumber(100&, 10&).AsPrimaryKey\nSet row = table.Row(\"Ada\", 90&, ROneCOne.DBNull).Add", 100],
+      ["Add a validated row", "DataColumn + Rows.Add", "table.Column(\"Id\", vbLong).AutoNumber(100, 10).AsPrimaryKey\nSet row = table.Row(\"Ada\", 90, ROneCOne.DBNull).Add", 100],
       ["Show the top score", "view.Sort + RowFilter", "DataView(table).WithFilter(...).WithSort(\"Score\", True)", "Grace"],
       ["Connect customers to orders", "parent.GetChildRows(...) ", "parentRow.GetChildRows(\"CustomerOrders\").Count", 1],
       ["Find unsaved changes", "table.GetChanges()", "table.GetChanges.Rows.Count", 1],
@@ -109,6 +109,82 @@ const capabilities = [
       ["Store a blank database value", "DBNull.Value", "ROneCOne.DBNull", true],
       ["See how waiting works", "provider capability inspection", "connection.AsyncMode", "Cooperative"],
       ["Confirm safe single-thread use", "provider capability inspection", "connection.SupportsNativeAsync", false],
+    ],
+  },
+  {
+    key: "http",
+    title: "ROneCOne HTTP",
+    subtitle: "Download web data with awaitable requests that keep Excel responsive",
+    macro: "RunROneCOneHttpDemo",
+    feature: "HTTP + async",
+    output: "ROneCOne_Http_Demo.xlsx",
+    benchmark: "Three downloads: one after another vs overlapped",
+    benchmarkResult: "Sequential seconds",
+    notice:
+      "This demo requests data from https://pokeapi.co over the internet. " +
+      "Only the URLs shown are contacted; the runtime itself transmits nothing.",
+    architecture: [
+      ["Single-file core", "ROneCOne.cls", "One import", "ENFORCED", 1, 0],
+      ["In-process transport", "WinHttp.WinHttpRequest.5.1", "No installs, add-ins, or references", "ENFORCED", 1, 0],
+      ["One VBA thread", "Cooperative Await", "Transfers overlap inside WinHTTP, never in VBA", "ENFORCED", 1, 0],
+      ["Explicit network use", "Only URLs you request", "The runtime never phones home", "ENFORCED", 1, 0],
+      ["Checked failures", "HttpRequestException", "Non-success raises a typed, catchable error", "ENFORCED", 1, 0],
+    ],
+    examples: [
+      [
+        "Download one resource",
+        "var response = await client.GetAsync(url);",
+        "Set response = client.GetAsync(\"pokemon/pikachu\").Await",
+        "200 OK",
+      ],
+      [
+        "Read the body as text",
+        "await client.GetStringAsync(url)",
+        "json = client.GetStringAsync(\"pokemon/ditto\").Await",
+        true,
+      ],
+      [
+        "Check before you trust",
+        "response.EnsureSuccessStatusCode();",
+        "response.EnsureSuccessStatusCode",
+        true,
+      ],
+      [
+        "Read one header",
+        "response.Content.Headers.ContentType",
+        "response.Header(\"Content-Type\")",
+        "application/json; charset=utf-8",
+      ],
+      [
+        "Overlap three downloads",
+        "await Task.WhenAll(first, second, third)",
+        "Set replies = ROneCOne.Task.WhenAll(first, second, third).Await",
+        "bulbasaur, charmander, squirtle ready",
+      ],
+      [
+        "Handle a missing resource",
+        "response.StatusCode == HttpStatusCode.NotFound",
+        "client.GetAsync(\"pokemon/missingno\").Await.StatusCode",
+        404,
+      ],
+      [
+        "Catch a failed download",
+        "try { await client.GetStringAsync(url); }\ncatch (HttpRequestException) { ... }",
+        "On Error Resume Next\ntask.Await\nIf Err.Number = ROneCOne.HttpRequestError Then ...",
+        "skipped a missing resource",
+      ],
+      [
+        "Cancel a request",
+        "cancelSource.Cancel();",
+        "source.Cancel\nSet task = client.GetAsync(\"pokemon/eevee\", source.Token)",
+        true,
+      ],
+      [
+        "Reuse a base address",
+        "client.BaseAddress = new Uri(baseUrl);",
+        "client.BaseAddress = \"https://pokeapi.co/api/v2/\"\nSet berry = client.GetAsync(\"berry/1\").Await",
+        true,
+      ],
     ],
   },
 ];
@@ -210,7 +286,8 @@ async function buildCapability(config) {
   };
   start.getRange("A16:H16").merge();
   start.getRange("A16").values = [[
-    "Your data stays local: no telemetry, network transmission, or runtime VBIDE access.",
+    config.notice ||
+      "Your data stays local: no telemetry, network transmission, or runtime VBIDE access.",
   ]];
   start.getRange("A16:H16").format = {
     fill: "#FFF4E8",
@@ -269,7 +346,7 @@ async function buildCapability(config) {
     "Invariant", "Decision", "Behavior", "Status", "Runtime files", "Dependencies",
   ]];
   tableHeader(architecture.getRange("A5:F5"));
-  architecture.getRange("A6:F10").values = [
+  architecture.getRange("A6:F10").values = config.architecture || [
     ["Single-file core", "ROneCOne.cls", "One import", "ENFORCED", 1, 0],
     ["Checked values", "Runtime signatures", "Reject mistakes before work starts", "ENFORCED", 1, 0],
     ["One process", "Cooperative scheduler", "Never launches another Excel", "ENFORCED", 1, 0],

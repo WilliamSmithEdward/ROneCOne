@@ -549,6 +549,47 @@ class SourceContractTests(unittest.TestCase):
             {"adodb.connection", "adodb.command"},
             {value.lower() for value in created_prog_ids},
         )
+        # The one const-based CreateObject is the in-process WinHTTP client.
+        self.assertIn(
+            'Private Const HTTP_PROG_ID As String = "WinHttp.WinHttpRequest.5.1"',
+            self.source,
+        )
+        const_created = re.findall(
+            r"CreateObject\((\w+)\)", self.source, flags=re.IGNORECASE
+        )
+        self.assertEqual({"HTTP_PROG_ID"}, set(const_created))
+
+    def test_http_client_surface_is_present_and_awaitable(self) -> None:
+        for member in (
+            "Public Function HttpClient()",
+            "Public Function GetAsync(",
+            "Public Function GetStringAsync(",
+            "Public Function GetByteArrayAsync(",
+            "Public Function PostAsync(",
+            "Public Function PutAsync(",
+            "Public Function DeleteAsync(",
+            "Public Function SendAsync(",
+            "Public Function DefaultRequestHeader(",
+            "Public Property Get BaseAddress()",
+            "Public Property Get Timeout()",
+            "Public Property Get StatusCode()",
+            "Public Property Get ReasonPhrase()",
+            "Public Property Get IsSuccessStatusCode()",
+            "Public Function EnsureSuccessStatusCode()",
+            "Public Property Get Content()",
+            "Public Function Header(",
+            "Public Property Get AllHeaders()",
+            "Public Property Get HttpRequestError()",
+        ):
+            self.assertIn(member, self.source)
+        # Requests open asynchronously and complete on the cooperative
+        # scheduler by polling WaitForResponse(0); cancellation aborts the
+        # in-flight transport.
+        self.assertIn("Private Const TASK_HTTP_SEND As Long", self.source)
+        self.assertIn(".WaitForResponse(0)", self.source)
+        self.assertIn("Case TASK_HTTP_SEND", self.source)
+        self.assertIn("InternalHttpAbort", self.source)
+        self.assertIn('"HttpRequestException"', self.source)
 
     def test_delegate_run_is_the_default_member(self) -> None:
         self.assertIn("Public Function Run(ParamArray arguments() As Variant)", self.source)

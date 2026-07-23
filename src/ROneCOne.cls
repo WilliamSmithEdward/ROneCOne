@@ -102,6 +102,8 @@ Private Const ROLE_PROGRESS As Long = 41
 Private Const ROLE_CANCELLATION_REGISTRATION As Long = 42
 Private Const ROLE_DB_NULL As Long = 43
 Private Const ROLE_USING As Long = 44
+Private Const ROLE_HTTP_CLIENT As Long = 45
+Private Const ROLE_HTTP_RESPONSE As Long = 46
 
 Private Const TASK_WORK As Long = 1
 Private Const TASK_COMPLETED As Long = 2
@@ -113,6 +115,7 @@ Private Const TASK_PROMISE As Long = 7
 Private Const TASK_PROVIDER_CALL As Long = 8
 Private Const TASK_YIELD As Long = 9
 Private Const TASK_WAIT_ASYNC As Long = 10
+Private Const TASK_HTTP_SEND As Long = 11
 
 Private Const TASK_STATUS_CREATED As Long = 0
 Private Const TASK_STATUS_RUNNING As Long = 1
@@ -237,6 +240,10 @@ Private Const ERROR_NATIVE_INVOCATION As Long = vbObjectError + 4107
 Private Const ERROR_BYREF_INVOCATION As Long = vbObjectError + 4108
 Private Const ERROR_TIMEOUT As Long = vbObjectError + 4109
 Private Const ERROR_CANCELED As Long = vbObjectError + 4110
+Private Const ERROR_HTTP_REQUEST As Long = vbObjectError + 4111
+
+Private Const HTTP_PROG_ID As String = "WinHttp.WinHttpRequest.5.1"
+Private Const HTTP_DEFAULT_TIMEOUT_MS As Long = 30000
 
 Private mRole As Long
 Private mOperator As Long
@@ -350,6 +357,15 @@ Private mAutoIncrementCurrent As LongLong
 Private mDefaultValue As ROneCOne
 Private mRowState As Long
 Private mProviderObject As Object
+Private mHttpBaseAddress As String
+Private mHttpTimeoutMs As Long
+Private mHttpHeaderNames As Collection
+Private mHttpHeaderValues As Collection
+Private mHttpStatusCode As Long
+Private mHttpReasonPhrase As String
+Private mHttpContent As String
+Private mHttpRawHeaders As String
+Private mHttpBytes As Variant
 Private mConnectionString As String
 Private mCommandText As String
 Private mProviderName As String
@@ -2274,6 +2290,204 @@ Attribute ToTable.VB_Description = "Materializes a DataView as an independent Da
     result.AcceptChanges
     Set ToTable = result
 End Function
+
+Public Function HttpClient() As ROneCOne
+Attribute HttpClient.VB_Description = "Creates an HttpClient for awaitable web requests."
+    Dim client As ROneCOne
+
+    Set client = New ROneCOne
+    client.ConfigureHttpClient
+    Set HttpClient = client
+End Function
+
+Public Property Get BaseAddress() As String
+Attribute BaseAddress.VB_Description = "Gets or sets the base URL for relative requests."
+    RequireHttpClient "BaseAddress"
+    BaseAddress = mHttpBaseAddress
+End Property
+
+Public Property Let BaseAddress(ByVal value As String)
+    RequireHttpClient "BaseAddress"
+    mHttpBaseAddress = value
+End Property
+
+Public Property Get Timeout() As Long
+Attribute Timeout.VB_Description = "Gets or sets the request timeout in milliseconds."
+    RequireHttpClient "Timeout"
+    Timeout = mHttpTimeoutMs
+End Property
+
+Public Property Let Timeout(ByVal value As Long)
+    RequireHttpClient "Timeout"
+    If value <= 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "Timeout", _
+            "The timeout must be a positive number of milliseconds."
+    End If
+    mHttpTimeoutMs = value
+End Property
+
+Public Function DefaultRequestHeader( _
+    ByVal headerName As String, _
+    ByVal headerValue As String _
+) As ROneCOne
+Attribute DefaultRequestHeader.VB_Description = "Adds a header sent with every request."
+    RequireHttpClient "DefaultRequestHeader"
+    If Len(Trim$(headerName)) = 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "DefaultRequestHeader", _
+            "The header name cannot be empty."
+    End If
+    mHttpHeaderNames.Add headerName
+    mHttpHeaderValues.Add headerValue
+    Set DefaultRequestHeader = Me
+End Function
+
+Public Function GetAsync( _
+    ByVal url As String, _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute GetAsync.VB_Description = "Starts a GET request and returns a Task of HttpResponse."
+    RequireHttpClient "GetAsync"
+    Set GetAsync = StartHttpSend("GET", url, Empty, False, _
+        vbNullString, "Response", "GetAsync", cancellationToken)
+End Function
+
+Public Function GetStringAsync( _
+    ByVal url As String, _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute GetStringAsync.VB_Description = "Starts a GET and returns a Task of the body text."
+    RequireHttpClient "GetStringAsync"
+    Set GetStringAsync = StartHttpSend("GET", url, Empty, False, _
+        vbNullString, "String", "GetStringAsync", cancellationToken)
+End Function
+
+Public Function GetByteArrayAsync( _
+    ByVal url As String, _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute GetByteArrayAsync.VB_Description = "Starts a GET and returns a Task of the body bytes."
+    RequireHttpClient "GetByteArrayAsync"
+    Set GetByteArrayAsync = StartHttpSend("GET", url, Empty, False, _
+        vbNullString, "Bytes", "GetByteArrayAsync", cancellationToken)
+End Function
+
+Public Function PostAsync( _
+    ByVal url As String, _
+    ByVal body As String, _
+    Optional ByVal contentType As String = vbNullString, _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute PostAsync.VB_Description = "Starts a POST request and returns a Task of HttpResponse."
+    RequireHttpClient "PostAsync"
+    Set PostAsync = StartHttpSend("POST", url, body, True, _
+        contentType, "Response", "PostAsync", cancellationToken)
+End Function
+
+Public Function PutAsync( _
+    ByVal url As String, _
+    ByVal body As String, _
+    Optional ByVal contentType As String = vbNullString, _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute PutAsync.VB_Description = "Starts a PUT request and returns a Task of HttpResponse."
+    RequireHttpClient "PutAsync"
+    Set PutAsync = StartHttpSend("PUT", url, body, True, _
+        contentType, "Response", "PutAsync", cancellationToken)
+End Function
+
+Public Function DeleteAsync( _
+    ByVal url As String, _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute DeleteAsync.VB_Description = "Starts a DELETE request and returns a Task of HttpResponse."
+    RequireHttpClient "DeleteAsync"
+    Set DeleteAsync = StartHttpSend("DELETE", url, Empty, False, _
+        vbNullString, "Response", "DeleteAsync", cancellationToken)
+End Function
+
+Public Function SendAsync( _
+    ByVal httpMethod As String, _
+    ByVal url As String, _
+    Optional ByVal body As Variant, _
+    Optional ByVal contentType As String = vbNullString, _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute SendAsync.VB_Description = "Starts any HTTP method and returns a Task of HttpResponse."
+    Dim hasBody As Boolean
+    Dim payload As Variant
+
+    RequireHttpClient "SendAsync"
+    If Len(Trim$(httpMethod)) = 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "SendAsync", _
+            "The HTTP method cannot be empty."
+    End If
+    hasBody = Not IsMissing(body)
+    If hasBody Then
+        payload = CStr(body)
+    Else
+        payload = Empty
+    End If
+    Set SendAsync = StartHttpSend(UCase$(httpMethod), url, payload, _
+        hasBody, contentType, "Response", "SendAsync", cancellationToken)
+End Function
+
+Public Property Get StatusCode() As Long
+Attribute StatusCode.VB_Description = "Gets the HTTP response status code."
+    RequireHttpResponse "StatusCode"
+    StatusCode = mHttpStatusCode
+End Property
+
+Public Property Get ReasonPhrase() As String
+Attribute ReasonPhrase.VB_Description = "Gets the HTTP response reason phrase."
+    RequireHttpResponse "ReasonPhrase"
+    ReasonPhrase = mHttpReasonPhrase
+End Property
+
+Public Property Get IsSuccessStatusCode() As Boolean
+Attribute IsSuccessStatusCode.VB_Description = "Reports whether the status is 2xx."
+    RequireHttpResponse "IsSuccessStatusCode"
+    IsSuccessStatusCode = (mHttpStatusCode >= 200 And mHttpStatusCode < 300)
+End Property
+
+Public Function EnsureSuccessStatusCode() As ROneCOne
+Attribute EnsureSuccessStatusCode.VB_Description = "Raises unless the status is 2xx."
+    RequireHttpResponse "EnsureSuccessStatusCode"
+    If Not IsSuccessStatusCode Then
+        Err.Raise ERROR_HTTP_REQUEST, "ROneCOne.HttpRequestException", _
+            HttpStatusFailureMessage(Me)
+    End If
+    Set EnsureSuccessStatusCode = Me
+End Function
+
+Public Property Get Content() As String
+Attribute Content.VB_Description = "Gets the response body as text."
+    RequireHttpResponse "Content"
+    Content = mHttpContent
+End Property
+
+Public Function Header(ByVal headerName As String) As String
+Attribute Header.VB_Description = "Gets one response header value, or an empty string."
+    Dim colonAt As Long
+    Dim line As Variant
+
+    RequireHttpResponse "Header"
+    For Each line In Split(mHttpRawHeaders, vbCrLf)
+        colonAt = InStr(1, CStr(line), ":")
+        If colonAt > 1 Then
+            If StrComp(Trim$(Left$(CStr(line), colonAt - 1)), _
+                Trim$(headerName), vbTextCompare) = 0 Then
+                Header = Trim$(Mid$(CStr(line), colonAt + 1))
+                Exit Function
+            End If
+        End If
+    Next line
+End Function
+
+Public Property Get AllHeaders() As String
+Attribute AllHeaders.VB_Description = "Gets the raw response header block."
+    RequireHttpResponse "AllHeaders"
+    AllHeaders = mHttpRawHeaders
+End Property
 
 Public Function DbConnection( _
     ByVal connectionString As String, _
@@ -6610,6 +6824,11 @@ Attribute TypeMismatchError.VB_Description = "Gets the ROneCOne type-mismatch er
     TypeMismatchError = ERROR_TYPE_MISMATCH
 End Property
 
+Public Property Get HttpRequestError() As Long
+Attribute HttpRequestError.VB_Description = "Gets the ROneCOne HTTP request-failure error number."
+    HttpRequestError = ERROR_HTTP_REQUEST
+End Property
+
 Public Property Get UnboundParameterError() As Long
 Attribute UnboundParameterError.VB_Description = "Gets the unbound-parameter error number."
     UnboundParameterError = ERROR_UNBOUND_PARAMETER
@@ -6628,6 +6847,11 @@ End Property
 Public Property Get ByRefInvocationError() As Long
 Attribute ByRefInvocationError.VB_Description = "Gets the unsupported ByRef boundary error."
     ByRefInvocationError = ERROR_BYREF_INVOCATION
+End Property
+
+Public Property Get InvalidArgumentError() As Long
+Attribute InvalidArgumentError.VB_Description = "Gets the ROneCOne invalid-argument error number."
+    InvalidArgumentError = ERROR_INVALID_ARGUMENT
 End Property
 
 Public Property Get InvalidOperationError() As Long
@@ -7432,6 +7656,76 @@ Friend Sub ConfigureProviderTask( _
     mMethodName = methodName
     Set mTaskChildren = arguments
 End Sub
+
+Friend Sub ConfigureHttpClient()
+    mRole = ROLE_HTTP_CLIENT
+    mHttpTimeoutMs = HTTP_DEFAULT_TIMEOUT_MS
+    Set mHttpHeaderNames = New Collection
+    Set mHttpHeaderValues = New Collection
+End Sub
+
+Friend Sub ConfigureHttpResponse(ByVal request As Object)
+    mRole = ROLE_HTTP_RESPONSE
+    Set mProviderObject = request
+End Sub
+
+Friend Sub ConfigureHttpTask( _
+    ByVal response As ROneCOne, _
+    ByVal resultMode As String, _
+    ByVal cancellationToken As ROneCOne _
+)
+    ConfigureTask TASK_HTTP_SEND, Nothing, cancellationToken
+    Set mSource = response
+    mMethodName = resultMode
+End Sub
+
+Friend Function InternalHttpPoll(ByVal captureBytes As Boolean) As Boolean
+    Dim capturedDescription As String
+    Dim capturedNumber As Long
+    Dim capturedSource As String
+
+    ' The response was already captured, so a completed task can keep asking.
+    If mProviderObject Is Nothing Then
+        InternalHttpPoll = True
+        Exit Function
+    End If
+    ' WaitForResponse(0) is a non-blocking poll: False while the transfer is
+    ' still in flight, True once the response arrived, and a raised error for
+    ' hard failures such as name resolution or connection loss.
+    On Error GoTo PollFailed
+    If Not mProviderObject.WaitForResponse(0) Then Exit Function
+    mHttpStatusCode = CLng(mProviderObject.Status)
+    mHttpReasonPhrase = CStr(mProviderObject.StatusText)
+    mHttpRawHeaders = CStr(mProviderObject.GetAllResponseHeaders)
+    mHttpContent = CStr(mProviderObject.ResponseText)
+    If captureBytes Then mHttpBytes = mProviderObject.ResponseBody
+    Set mProviderObject = Nothing
+    On Error GoTo 0
+    InternalHttpPoll = True
+    Exit Function
+
+PollFailed:
+    capturedNumber = Err.Number
+    capturedSource = Err.Source
+    capturedDescription = Err.Description
+    On Error GoTo 0
+    InternalHttpAbort
+    Err.Raise capturedNumber, "ROneCOne.HttpRequestException", _
+        "The HTTP request failed: " & capturedDescription
+End Function
+
+Friend Sub InternalHttpAbort()
+    If mProviderObject Is Nothing Then Exit Sub
+    On Error Resume Next
+    mProviderObject.Abort
+    On Error GoTo 0
+    Set mProviderObject = Nothing
+End Sub
+
+Friend Property Get InternalHttpBytes() As Variant
+Attribute InternalHttpBytes.VB_MemberFlags = "40"
+    InternalHttpBytes = mHttpBytes
+End Property
 
 Friend Sub ConfigureCompletedTask(ByVal result As ROneCOne)
     mRole = ROLE_TASK
@@ -8719,6 +9013,96 @@ Private Sub RequireDbAdapter( _
             "This operation requires a DbDataAdapter."
     End If
 End Sub
+
+Private Sub RequireHttpClient(ByVal memberName As String)
+    If mRole <> ROLE_HTTP_CLIENT Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires an HttpClient."
+    End If
+End Sub
+
+Private Sub RequireHttpResponse(ByVal memberName As String)
+    If mRole <> ROLE_HTTP_RESPONSE Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires an HttpResponse."
+    End If
+End Sub
+
+Private Function StartHttpSend( _
+    ByVal httpMethod As String, _
+    ByVal url As String, _
+    ByVal body As Variant, _
+    ByVal hasBody As Boolean, _
+    ByVal contentType As String, _
+    ByVal resultMode As String, _
+    ByVal memberName As String, _
+    ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+    Dim index As Long
+    Dim request As Object
+    Dim response As ROneCOne
+    Dim taskValue As ROneCOne
+
+    ValidateCancellationToken cancellationToken, memberName
+    ' The request is opened asynchronously and sent immediately, so the
+    ' transfer proceeds inside WinHTTP while the returned Task is awaited
+    ' cooperatively on Excel's thread.
+    Set request = CreateObject(HTTP_PROG_ID)
+    request.SetTimeouts mHttpTimeoutMs, mHttpTimeoutMs, _
+        mHttpTimeoutMs, mHttpTimeoutMs
+    request.Open httpMethod, ResolveHttpUrl(url, memberName), True
+    For index = 1 To mHttpHeaderNames.Count
+        request.SetRequestHeader CStr(mHttpHeaderNames.Item(index)), _
+            CStr(mHttpHeaderValues.Item(index))
+    Next index
+    If Len(contentType) > 0 Then
+        request.SetRequestHeader "Content-Type", contentType
+    End If
+    If hasBody Then
+        request.Send CStr(body)
+    Else
+        request.Send
+    End If
+    Set response = New ROneCOne
+    response.ConfigureHttpResponse request
+    Set taskValue = New ROneCOne
+    taskValue.ConfigureHttpTask response, resultMode, cancellationToken
+    Set StartHttpSend = taskValue
+End Function
+
+Private Function ResolveHttpUrl( _
+    ByVal url As String, _
+    ByVal memberName As String _
+) As String
+    If InStr(1, url, "://", vbTextCompare) > 0 Then
+        ResolveHttpUrl = url
+    ElseIf Len(mHttpBaseAddress) > 0 Then
+        ResolveHttpUrl = mHttpBaseAddress & url
+    Else
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "A relative URL requires the client's BaseAddress."
+    End If
+End Function
+
+Private Function HttpStatusFailureMessage( _
+    ByVal response As ROneCOne _
+) As String
+    HttpStatusFailureMessage = "The HTTP request failed with status " & _
+        CStr(response.StatusCode) & " (" & response.ReasonPhrase & ")."
+End Function
+
+Private Function CreateHttpStatusException( _
+    ByVal response As ROneCOne _
+) As ROneCOne
+    Dim errorValue As ROneCOne
+
+    Set errorValue = New ROneCOne
+    errorValue.ConfigureError ERROR_HTTP_REQUEST, _
+        "ROneCOne.HttpRequestException", _
+        HttpStatusFailureMessage(response), vbNullString, 0
+    errorValue.ConfigureExceptionType "HttpRequestException"
+    Set CreateHttpStatusException = errorValue
+End Function
 
 Private Function CreateProviderTask( _
     ByVal methodName As String, _
@@ -10017,6 +10401,8 @@ Private Sub AdvanceTaskCore()
     Dim sawCanceled As Boolean
 
     If TaskCancellationRequested Then
+        ' An in-flight web request must release its transport when canceled.
+        If mOperator = TASK_HTTP_SEND Then mSource.InternalHttpAbort
         mTaskStatus = TASK_STATUS_CANCELED
         Exit Sub
     End If
@@ -10029,6 +10415,29 @@ Private Sub AdvanceTaskCore()
         Case TASK_DELAY
             AdvanceDelayTask
             Exit Sub
+        Case TASK_HTTP_SEND
+            If Not mSource.InternalHttpPoll(mMethodName = "Bytes") Then
+                Exit Sub
+            End If
+            If mMethodName = "String" Or mMethodName = "Bytes" Then
+                ' GetStringAsync and GetByteArrayAsync fault on non-success,
+                ' mirroring System.Net.Http; GetAsync hands back the response
+                ' for the caller to inspect.
+                If Not mSource.IsSuccessStatusCode Then
+                    Set mTaskException = CreateHttpStatusException(mSource)
+                    mTaskStatus = TASK_STATUS_FAULTED
+                    Exit Sub
+                End If
+            End If
+            Select Case mMethodName
+                Case "String"
+                    Set mTaskResult = CreateScalarResult(mSource.Content)
+                Case "Bytes"
+                    Set mTaskResult = CreateScalarResult( _
+                        mSource.InternalHttpBytes)
+                Case Else
+                    Set mTaskResult = CreateObjectResult(mSource)
+            End Select
         Case TASK_YIELD
             If mExpressionOption = 0 Then
                 mExpressionOption = 1

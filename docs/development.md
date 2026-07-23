@@ -89,6 +89,10 @@ numeric-widening, indexed-access-scaling, and expression-display contracts; the 
 suite adds the Range bridge contract. Three fresh processes repeat every established gate and all
 444 live assertions. Measurements are recorded in `benchmarks/v1.3.0-baseline.json`.
 
+The HTTP contract in the task and data suite, and the HTTP demo workbook, make live requests to
+https://pokeapi.co, so those runs need internet access; every other gate runs offline. No other
+host is contacted.
+
 pyVBAanalysis 1.2.0 treats a VBA bang identifier such as `!Age` as an ordinary variable token.
 Live bang examples therefore declare the token name in their local scope even though VBA uses it
 as a default-member name, not a variable value. This keeps both the normal and
@@ -139,6 +143,9 @@ powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
 powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
     -InputPath demo\.working\ROneCOne_Exceptions_Demo.xlsx `
     -OutputPath demo\ROneCOne_Exceptions_Demo.xlsm
+powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
+    -InputPath demo\.working\ROneCOne_Http_Demo.xlsx `
+    -OutputPath demo\ROneCOne_Http_Demo.xlsm
 .venv\Scripts\python.exe tools\package_demo_workbook.py
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
@@ -150,6 +157,9 @@ powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Exceptions_Demo.xlsm `
     -MacroName RunROneCOneExceptionsDemo
+powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Http_Demo.xlsm `
+    -MacroName RunROneCOneHttpDemo
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Collections_Demo.xlsm `

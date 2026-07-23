@@ -15,6 +15,7 @@ EVENTS_WORKBOOK = ROOT / "demo" / "ROneCOne_Events_Demo.xlsm"
 EXCEPTIONS_WORKBOOK = ROOT / "demo" / "ROneCOne_Exceptions_Demo.xlsm"
 TASKS_WORKBOOK = ROOT / "demo" / "ROneCOne_Tasks_Demo.xlsm"
 DATA_WORKBOOK = ROOT / "demo" / "ROneCOne_Data_Demo.xlsm"
+HTTP_WORKBOOK = ROOT / "demo" / "ROneCOne_Http_Demo.xlsm"
 
 
 def package_delegates(workbook_path: Path = DELEGATES_WORKBOOK) -> None:
@@ -125,6 +126,7 @@ def parse_args() -> argparse.Namespace:
             "exceptions",
             "tasks",
             "data",
+            "http",
             "all",
         ),
         default="all",
@@ -135,6 +137,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--exceptions-workbook", type=Path, default=EXCEPTIONS_WORKBOOK)
     parser.add_argument("--tasks-workbook", type=Path, default=TASKS_WORKBOOK)
     parser.add_argument("--data-workbook", type=Path, default=DATA_WORKBOOK)
+    parser.add_argument("--http-workbook", type=Path, default=HTTP_WORKBOOK)
     return parser.parse_args()
 
 
@@ -174,3 +177,10 @@ if __name__ == "__main__":
             ROOT / "demo" / "vba" / "DataDemoUsage.bas",
         )
         print(arguments.data_workbook)
+    if arguments.kind in ("http", "all"):
+        package_capability(
+            arguments.http_workbook,
+            "HttpDemoUsage",
+            ROOT / "demo" / "vba" / "HttpDemoUsage.bas",
+        )
+        print(arguments.http_workbook)

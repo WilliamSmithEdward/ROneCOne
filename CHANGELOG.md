@@ -49,6 +49,21 @@ checksums for each version are on the
 
 ### Added
 
+- An awaitable HTTP client shaped like System.Net.Http: `ROneCOne.HttpClient()` with
+  `BaseAddress`, `Timeout`, and `DefaultRequestHeader`; `GetAsync`, `GetStringAsync`,
+  `GetByteArrayAsync`, `PostAsync`, `PutAsync`, `DeleteAsync`, and `SendAsync`, each returning
+  a cooperative Task; and an `HttpResponse` with `StatusCode`, `ReasonPhrase`,
+  `IsSuccessStatusCode`, `EnsureSuccessStatusCode`, `Content`, `Header`, and `AllHeaders`.
+  Requests ride `WinHttp.WinHttpRequest.5.1` in process (no references or installs), overlap
+  in flight under `WhenAll`, honor cancellation tokens by aborting the transport, and fault
+  with a typed `HttpRequestException` (`ROneCOne.HttpRequestError`) on non-success text and
+  byte reads. See
+  [ADR 0011](docs/decisions/0011-awaitable-http-client-over-winhttp.md).
+- A seventh demo workbook, `ROneCOne_Http_Demo.xlsm`, downloading live data from
+  https://pokeapi.co with a sequential-versus-overlapped benchmark, plus an
+  [HTTP user guide](docs/user-guide/http-and-web.md) and an
+  [HTTP reference](docs/http.md) documenting the failure model and the `Application.Run`
+  error boundary.
 - A keyed-mutation scenario in the live benchmark harness with its own release gate, and a live
   consistency contract covering in-place updates, removals, re-adds, enumeration after mutation,
   the concurrent dictionary surface, and hash-set element replacement.

@@ -9,8 +9,8 @@
 
 ROneCOne is a modern programming layer for Excel VBA. Import one class module, `ROneCOne.cls`,
 and ordinary workbook code gains typed collections, LINQ-style queries, await-style tasks,
-typed events, structured error handling, and an in-memory data layer with local database
-access.
+typed events, structured error handling, an in-memory data layer with local database access,
+and an awaitable HTTP client for calling web APIs.
 
 Everything you already built keeps working. There is no installer, no add-in, no external
 reference, and no separate runtime to manage: the entire library is one file that travels inside
@@ -44,6 +44,7 @@ Tasks, typed events, and structured Try, Catch, and Finally flows.
 | Reuse behavior | Delegates and expression-based functions that can be passed, combined, and invoked |
 | Coordinate slow or multi-step work | Await-style Tasks with delays, timeouts, cancellation, progress, and continuations |
 | Model business data | DataTable, DataSet, DataView, relations, change tracking, and providers |
+| Call web APIs | An HttpClient with awaitable verbs, overlapped downloads, and typed failures |
 | Build responsive workbook logic | Typed events with predictable subscription and delivery |
 | Handle failure deliberately | Structured Try, Catch, and Finally flows |
 | Deploy without a platform project | One importable class module with no outside dependency |
@@ -58,8 +59,8 @@ IntelliSense descriptions keep the surface discoverable inside the editor.
 - One imported file: [`src/ROneCOne.cls`](src/ROneCOne.cls)
 
 Everything runs locally inside your one Excel process. ROneCOne requires no installer, no
-external library, no network access, and no runtime VBIDE trust, and it sends no telemetry. It
-never launches a second Excel.
+external library, and no runtime VBIDE trust, and it sends no telemetry. The network is touched
+only by the HTTP client, and only for URLs you request. It never launches a second Excel.
 
 ## Start in three steps
 

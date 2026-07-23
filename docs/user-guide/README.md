@@ -14,6 +14,7 @@ class module, and copy the smallest example that solves your problem.
 | [Events and exceptions](events-and-exceptions.md) | Coordinate changes and failures | 10 minutes |
 | [Tasks and async](tasks-and-async.md) | Coordinate work, cancellation, and progress | 10 minutes |
 | [Data and providers](data-and-providers.md) | Model, query, and load tabular data | 15 minutes |
+| [HTTP and web data](http-and-web.md) | Call web APIs with awaitable requests | 10 minutes |
 | [Practical reference](reference.md) | Find names, defaults, and limits | As needed |
 
 ## Fastest route to the first result
@@ -36,7 +37,8 @@ canonical expansion behind that syntax.
 - A macro-enabled `.xlsm`, `.xlsb`, or `.xlam` file
 - Permission to run VBA in that file
 
-ROneCOne itself does not require an installer, an add-in, an external library, network access, or
-trusted programmatic access to the VBIDE.
+ROneCOne itself does not require an installer, an add-in, an external library, or trusted
+programmatic access to the VBIDE. The network is used only by the HTTP client, and only for the
+URLs you request.
 
 [Back to the project overview](../../README.md) | [Documentation index](../README.md)

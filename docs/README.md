@@ -2,7 +2,8 @@
 
 Everything here describes one product: a single importable class module,
 [`src/ROneCOne.cls`](../src/ROneCOne.cls), that gives Excel VBA generic collections, LINQ,
-delegates, tasks, typed events, structured exceptions, and an in-memory data layer.
+delegates, tasks, typed events, structured exceptions, an in-memory data layer, and an
+awaitable HTTP client.
 
 Choose the path that matches what you are trying to do.
 
@@ -19,6 +20,7 @@ Start here if you write workbook code and want results quickly. The
 | [Events and exceptions](user-guide/events-and-exceptions.md) | Coordinate changes and failures |
 | [Tasks and async](user-guide/tasks-and-async.md) | Coordinate work, cancellation, and progress |
 | [Data and providers](user-guide/data-and-providers.md) | Model, query, and load tabular data |
+| [HTTP and web data](user-guide/http-and-web.md) | Call web APIs with awaitable requests |
 | [Practical reference](user-guide/reference.md) | Find names, defaults, and limits fast |
 
 ## Exact contracts
@@ -34,6 +36,7 @@ syntax. Each technical document links back to its user guide.
 | [Exceptions](exceptions.md) | Catch ordering, rethrow, cleanup precedence, captured metadata |
 | [Tasks](tasks.md) | Execution modes, coordination, cancellation, memory and thread safety |
 | [Data and providers](data.md) | Tables, relations, views, provider capabilities, deterministic cleanup |
+| [HTTP client](http.md) | Transport, verb semantics, failure model, the Application.Run boundary |
 
 ## Understand the design
 

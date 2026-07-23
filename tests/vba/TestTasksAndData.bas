@@ -44,6 +44,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestExistingRelationValidation
     mCurrentTest = "TestProviderSurface"
     TestProviderSurface
+    mCurrentTest = "TestHttpSurface"
+    TestHttpSurface
     mCurrentTest = vbNullString
 
     With ThisWorkbook.Worksheets("Task and Data Results")
@@ -62,6 +64,102 @@ FatalFailure:
         .Range("B5").Value2 = mCurrentTest & " | " & CStr(capturedNumber) & _
             " | " & capturedSource & " | " & capturedDescription
     End With
+End Sub
+
+Private Sub TestHttpSurface()
+    Dim badUrlError As Long
+    Dim bytes As Variant
+    Dim canceledError As Long
+    Dim client As ROneCOne
+    Dim ensureError As Long
+    Dim notFound As ROneCOne
+    Dim response As ROneCOne
+    Dim source As ROneCOne
+    Dim statuses As ROneCOne
+    Dim stringFaultError As Long
+    Dim task As ROneCOne
+
+    ' Live network contract against https://pokeapi.co/ (authorized test
+    ' host). The request bytes move inside WinHTTP while the Task is awaited
+    ' cooperatively on Excel's thread.
+    mCurrentTest = "TestHttpSurface:get"
+    Set client = ROneCOne.HttpClient()
+    client.BaseAddress = "https://pokeapi.co/api/v2/"
+    client.DefaultRequestHeader "Accept", "application/json"
+    AssertEqual "http default timeout", 30000&, client.Timeout
+    client.Timeout = 20000
+    Set response = client.GetAsync("pokemon/pikachu").Await
+    AssertEqual "http get status", 200&, response.StatusCode
+    AssertEqual "http get reason", "OK", response.ReasonPhrase
+    AssertTrue "http get success flag", response.IsSuccessStatusCode
+    AssertTrue "http get body", InStr(1, response.Content, """pikachu""") > 0
+    AssertTrue "http content-type header", InStr(1, _
+        response.Header("Content-Type"), "application/json") > 0
+    AssertTrue "http ensure success returns self", _
+        response.EnsureSuccessStatusCode Is response
+
+    mCurrentTest = "TestHttpSurface:getString"
+    AssertTrue "http get string", InStr(1, _
+        client.GetStringAsync("pokemon/ditto").Await, """ditto""") > 0
+
+    mCurrentTest = "TestHttpSurface:bytes"
+    bytes = client.GetByteArrayAsync("pokemon/meowth").Await
+    AssertTrue "http byte array", UBound(bytes) > 100
+
+    mCurrentTest = "TestHttpSurface:whenAll"
+    Set statuses = ROneCOne.Task.WhenAll( _
+        client.GetAsync("pokemon/bulbasaur"), _
+        client.GetAsync("pokemon/charmander"), _
+        client.GetAsync("pokemon/squirtle")).Await
+    AssertEqual "http whenall count", 3&, statuses.Count
+    AssertEqual "http whenall first", 200&, statuses.Item(0).StatusCode
+    AssertEqual "http whenall last", 200&, statuses.Item(2).StatusCode
+
+    mCurrentTest = "TestHttpSurface:notFound"
+    Set notFound = client.GetAsync( _
+        "pokemon/definitely-not-a-pokemon-9999").Await
+    AssertEqual "http 404 status", 404&, notFound.StatusCode
+    AssertFalse "http 404 success flag", notFound.IsSuccessStatusCode
+    ensureError = 0
+    On Error Resume Next
+    notFound.EnsureSuccessStatusCode
+    ensureError = Err.Number
+    On Error GoTo 0
+    AssertEqual "http ensure success raises", _
+        ROneCOne.HttpRequestError, ensureError
+    stringFaultError = 0
+    On Error Resume Next
+    client.GetStringAsync("pokemon/definitely-not-a-pokemon-9999").Await
+    stringFaultError = Err.Number
+    On Error GoTo 0
+    AssertEqual "http get string faults on 404", _
+        ROneCOne.HttpRequestError, stringFaultError
+
+    mCurrentTest = "TestHttpSurface:sendVerb"
+    Set response = client.SendAsync("POST", "pokemon", _
+        "{""probe"":true}", "application/json").Await
+    AssertTrue "http post reaches server", response.StatusCode >= 400
+
+    mCurrentTest = "TestHttpSurface:cancellation"
+    Set source = ROneCOne.CancellationTokenSource
+    source.Cancel
+    Set task = client.GetAsync("pokemon/eevee", source.Token)
+    canceledError = 0
+    On Error Resume Next
+    task.Await
+    canceledError = Err.Number
+    On Error GoTo 0
+    AssertTrue "http canceled task raises", canceledError <> 0
+    AssertTrue "http canceled task state", task.IsCanceled
+
+    mCurrentTest = "TestHttpSurface:arguments"
+    badUrlError = 0
+    On Error Resume Next
+    ROneCOne.HttpClient().GetAsync "pokemon/pikachu"
+    badUrlError = Err.Number
+    On Error GoTo 0
+    AssertEqual "http relative url needs base", _
+        ROneCOne.InvalidArgumentError, badUrlError
 End Sub
 
 Private Sub TestSnapshotCachingAndViewRefresh()
