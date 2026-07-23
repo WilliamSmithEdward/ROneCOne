@@ -23,7 +23,11 @@ param(
 
     [Parameter(Mandatory = $true)]
     [ValidateRange(0.01, 60)]
-    [double]$MaxHash100KBenchmarkSeconds
+    [double]$MaxHash100KBenchmarkSeconds,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(0.01, 60)]
+    [double]$MaxHashMutationBenchmarkSeconds
 )
 
 $ErrorActionPreference = "Stop"
@@ -253,6 +257,7 @@ public static class ROneCOneExcelProcess
     $orderingSeconds = [double]$collectionBenchmarkSheet.Range("B6").Value2
     $hash10KSeconds = [double]$collectionBenchmarkSheet.Range("B10").Value2
     $hash100KSeconds = [double]$collectionBenchmarkSheet.Range("B12").Value2
+    $hashMutationSeconds = [double]$collectionBenchmarkSheet.Range("B15").Value2
 
     $stage = "validate observed results"
     if ($status -ne "PASS" -or $failed -ne 0) {
@@ -337,8 +342,15 @@ public static class ROneCOneExcelProcess
         $hash100KSeconds -gt $MaxHash100KBenchmarkSeconds) {
         throw "100K hash benchmark missed gate: seconds=$hash100KSeconds maximum=$MaxHash100KBenchmarkSeconds"
     }
+    if ($hashMutationSeconds -le 0 -or `
+        $hashMutationSeconds -gt $MaxHashMutationBenchmarkSeconds) {
+        throw "Mutation benchmark missed gate: seconds=$hashMutationSeconds maximum=$MaxHashMutationBenchmarkSeconds"
+    }
     if ([int]$collectionBenchmarkSheet.Range("B13").Value2 -ne 10000) {
         throw "Hash benchmark produced an invalid lookup result."
+    }
+    if ([int]$collectionBenchmarkSheet.Range("B16").Value2 -ne 8000) {
+        throw "Mutation benchmark produced an invalid final count."
     }
     if ([int]$collectionBenchmarkSheet.Range("B7").Value2 -ne 10000 -or `
         [int]$collectionBenchmarkSheet.Range("B8").Value2 -ne 10000) {
@@ -372,6 +384,9 @@ public static class ROneCOneExcelProcess
         hash_10k_gate_seconds = $MaxHash10KBenchmarkSeconds
         hash_100k_seconds = $hash100KSeconds
         hash_100k_gate_seconds = $MaxHash100KBenchmarkSeconds
+        hash_mutation_operations = [int]$collectionBenchmarkSheet.Range("B14").Value2
+        hash_mutation_seconds = $hashMutationSeconds
+        hash_mutation_gate_seconds = $MaxHashMutationBenchmarkSeconds
     } | ConvertTo-Json -Compress
 }
 catch {

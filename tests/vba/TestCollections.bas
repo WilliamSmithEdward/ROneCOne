@@ -22,6 +22,8 @@ Public Sub RunROneCOneCollectionTests()
     TestNumericWidening
     mCurrentTest = "TestIndexedAccessScales"
     TestIndexedAccessScales
+    mCurrentTest = "TestKeyedMutationConsistency"
+    TestKeyedMutationConsistency
     mCurrentTest = "TestUserClassList"
     TestUserClassList
     mCurrentTest = "TestUserClassLinq"
@@ -474,6 +476,7 @@ Public Sub RunROneCOneCollectionBenchmark()
     Dim hashElapsed10K As Double
     Dim index As Long
     Dim lastValue As Long
+    Dim mutationElapsed As Double
 
     Set x = ROneCOne.Parameter(vbLong)
     started = Timer
@@ -516,6 +519,25 @@ Public Sub RunROneCOneCollectionBenchmark()
     hashElapsed100K = Timer - started
     If hashElapsed100K < 0 Then hashElapsed100K = hashElapsed100K + 86400#
 
+    ' Mutation scenario: 10,000 in-place value updates on existing keys plus
+    ' 2,000 keyed removals from the tail. Removing from the tail keeps the
+    ' array-shift cost near zero, so this isolates the per-operation cost of
+    ' maintaining the hash index during mutation.
+    Set dictionary = ROneCOne.DictionaryOf(vbLong, vbLong)
+    capacity = dictionary.EnsureCapacity(10000&)
+    For index = 1 To 10000
+        dictionary.Add index, index
+    Next index
+    started = Timer
+    For index = 1 To 10000
+        dictionary.Item(index) = dictionary.Item(index) + 1&
+    Next index
+    For index = 10000 To 8001 Step -1
+        dictionary.Remove index
+    Next index
+    mutationElapsed = Timer - started
+    If mutationElapsed < 0 Then mutationElapsed = mutationElapsed + 86400#
+
     With ThisWorkbook.Worksheets("Collection Benchmarks")
         .Range("B2").Value2 = 10000
         .Range("B3").Value2 = elapsed
@@ -529,7 +551,80 @@ Public Sub RunROneCOneCollectionBenchmark()
         .Range("B11").Value2 = 100000
         .Range("B12").Value2 = hashElapsed100K
         .Range("B13").Value2 = lastValue
+        .Range("B14").Value2 = 12000
+        .Range("B15").Value2 = mutationElapsed
+        .Range("B16").Value2 = dictionary.Count
     End With
+End Sub
+
+Private Sub TestKeyedMutationConsistency()
+    Dim dictionary As ROneCOne
+    Dim enumerated As Long
+    Dim index As Long
+    Dim removals As Long
+    Dim removedValue As Long
+    Dim value As Variant
+    Dim valueReference As ROneCOne
+
+    ' In-place updates touch only the changed slot, so every other key must
+    ' read back its original value and the count must not move.
+    Set dictionary = ROneCOne.DictionaryOf(vbLong, vbString)
+    For index = 1 To 100
+        dictionary.Add index, "seed" & CStr(index)
+    Next index
+    For index = 1 To 99 Step 2
+        dictionary.Item(index) = "updated" & CStr(index)
+    Next index
+    AssertEqual "mutation updated value", "updated51", dictionary.Item(51&)
+    AssertEqual "mutation untouched value", "seed52", dictionary.Item(52&)
+    AssertEqual "mutation count after updates", 100&, dictionary.Count
+
+    ' Removals defer the index rebuild; the next read must still resolve
+    ' every survivor and reject every removed key.
+    removals = 0
+    For index = 2 To 100 Step 2
+        If dictionary.Remove(index) Then removals = removals + 1
+    Next index
+    AssertEqual "mutation removal count", 50&, removals
+    AssertEqual "mutation count after removals", 50&, dictionary.Count
+    AssertFalse "mutation removed key absent", dictionary.ContainsKey(2&)
+    AssertTrue "mutation survivor present", dictionary.ContainsKey(3&)
+    AssertEqual "mutation survivor value", "updated3", dictionary.Item(3&)
+
+    ' An add after removals inserts through the refreshed index.
+    dictionary.Add 2&, "readded2"
+    AssertEqual "mutation re-added value", "readded2", dictionary.Item(2&)
+    AssertEqual "mutation count after re-add", 51&, dictionary.Count
+
+    ' Enumeration re-materializes from the live arrays after mutation.
+    enumerated = 0
+    For Each value In dictionary
+        enumerated = enumerated + 1
+    Next value
+    AssertEqual "mutation enumerated count", 51&, enumerated
+
+    ' The concurrent surface reads slot data directly after a probe, so it
+    ' must observe a current index across TryUpdate and TryRemove as well.
+    Set dictionary = ROneCOne.ConcurrentDictionaryOf(vbLong, vbLong)
+    For index = 1 To 50
+        dictionary.Add index, index
+    Next index
+    AssertTrue "mutation TryUpdate", dictionary.TryUpdate(7&, 70&, 7&)
+    AssertEqual "mutation TryUpdate value", 70&, dictionary.Item(7&)
+    Set valueReference = ROneCOne.RefLong(removedValue)
+    AssertTrue "mutation TryRemove", dictionary.TryRemove(8&, valueReference)
+    AssertEqual "mutation TryRemove value", 8&, removedValue
+    AssertFalse "mutation TryRemove key absent", dictionary.ContainsKey(8&)
+    AssertEqual "mutation AddOrUpdate", 700&, dictionary.AddOrUpdate(7&, 1&, 700&)
+
+    ' Replacing a hash set element by index swaps the hash key itself, so
+    ' membership must follow the new element on the very next read.
+    Set dictionary = ROneCOne.HashSetOf(vbLong)
+    dictionary.Add 1&
+    dictionary.Add 2&
+    dictionary.Item(0) = 9&
+    AssertTrue "mutation set replacement present", dictionary.Contains(9&)
+    AssertFalse "mutation set replacement removed", dictionary.Contains(1&)
 End Sub
 
 Private Sub TestCompleteLinqSurface()

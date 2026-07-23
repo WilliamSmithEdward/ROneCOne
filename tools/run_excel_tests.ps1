@@ -11,7 +11,9 @@ param(
     [ValidateRange(0.01, 60)]
     [double]$MaxHash10KBenchmarkSeconds = 1.5,
     [ValidateRange(0.01, 60)]
-    [double]$MaxHash100KBenchmarkSeconds = 2.0
+    [double]$MaxHash100KBenchmarkSeconds = 2.0,
+    [ValidateRange(0.01, 60)]
+    [double]$MaxHashMutationBenchmarkSeconds = 1.5
 )
 
 $ErrorActionPreference = "Stop"
@@ -89,7 +91,8 @@ try {
         "-MaxCollectionBenchmarkSeconds", $MaxCollectionBenchmarkSeconds,
         "-MaxOrderingBenchmarkSeconds", $MaxOrderingBenchmarkSeconds,
         "-MaxHash10KBenchmarkSeconds", $MaxHash10KBenchmarkSeconds,
-        "-MaxHash100KBenchmarkSeconds", $MaxHash100KBenchmarkSeconds
+        "-MaxHash100KBenchmarkSeconds", $MaxHash100KBenchmarkSeconds,
+        "-MaxHashMutationBenchmarkSeconds", $MaxHashMutationBenchmarkSeconds
     )
     $worker = Start-Process `
         -FilePath "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" `

@@ -301,6 +301,7 @@ Private mHashKeys() As ROneCOne
 Private mHashValues() As ROneCOne
 Private mHashCapacity As Long
 Private mHashCount As Long
+Private mHashDirty As Boolean
 Private mKeyType As VbVarType
 Private mKeyObjectType As String
 Private mKeySelector As ROneCOne
@@ -4514,6 +4515,9 @@ Attribute IntersectWith.VB_Description = "Keeps only values found in both sets."
     RequireSetCollection "IntersectWith"
     RequireMutableCollection "IntersectWith"
     Set incoming = BuildIncomingItems(other, "IntersectWith")
+    ' This loop never probes the set between removals, so one deferred
+    ' rebuild beats maintaining the index through every removal.
+    MarkHashIndexDirty
     For index = mItemsCount To 1 Step -1
         If FindWrappedInCollection(incoming, mItems(index), _
             "IntersectWith") < 0 Then RemoveCollectionAt index - 1
@@ -4664,6 +4668,9 @@ Attribute ExceptWith.VB_Description = "Removes every value found in another sequ
     RequireSetCollection "ExceptWith"
     RequireMutableCollection "ExceptWith"
     Set incoming = BuildIncomingItems(other, "ExceptWith")
+    ' This loop never probes the set between removals, so one deferred
+    ' rebuild beats maintaining the index through every removal.
+    MarkHashIndexDirty
     For index = mItemsCount To 1 Step -1
         If FindWrappedInCollection(incoming, mItems(index), _
             "ExceptWith") >= 0 Then RemoveCollectionAt index - 1
@@ -4720,6 +4727,9 @@ Attribute RemoveWhere.VB_Description = "Removes set values matching a predicate.
     RequireSetCollection "RemoveWhere"
     RequireMutableCollection "RemoveWhere"
     Set predicateValue = NormalizeContextUnary(predicate, "RemoveWhere", False)
+    ' The predicate reads the element array, never the hash index, so one
+    ' deferred rebuild beats maintaining the index through every removal.
+    MarkHashIndexDirty
     For index = mItemsCount To 1 Step -1
         If InvokePredicate(predicateValue, mItems(index), "RemoveWhere") Then
             RemoveCollectionAt index - 1
@@ -10861,6 +10871,7 @@ Private Sub ResetHashIndex()
     Erase mHashValues
     mHashCapacity = 0
     mHashCount = 0
+    mHashDirty = False
 End Sub
 
 ' Element and key storage uses doubling dynamic arrays rather than a linked
@@ -10943,6 +10954,7 @@ Friend Sub RebuildHashIndex(ByVal requestedCapacity As Long)
         ResetHashIndex
         Exit Sub
     End If
+    mHashDirty = False
     If requestedCapacity < 8 Then requestedCapacity = 8
     minimum = mItemsCount * 2
     If requestedCapacity < minimum Then requestedCapacity = minimum
@@ -10965,6 +10977,102 @@ Friend Sub RebuildHashIndex(ByVal requestedCapacity As Long)
     End If
 End Sub
 
+' Mutations mark the hash index dirty instead of rebuilding it per operation;
+' the rebuild happens once, at the next probe or insert. Every path that reads
+' or writes a slot must therefore pass through EnsureHashIndexCurrent first.
+
+Private Sub MarkHashIndexDirty()
+    If HashIndexSupported Then mHashDirty = True
+End Sub
+
+Private Sub EnsureHashIndexCurrent()
+    If Not mHashDirty Then Exit Sub
+    mHashDirty = False
+    RebuildHashIndex mHashCapacity
+End Sub
+
+Private Sub RefreshHashSlotValue( _
+    ByVal keyWrapped As ROneCOne, _
+    ByVal valueWrapped As ROneCOne, _
+    ByVal memberName As String _
+)
+    Dim slot As Long
+
+    slot = FindHashSlot(keyWrapped, memberName)
+    If slot < 0 Then
+        MarkHashIndexDirty
+        Exit Sub
+    End If
+    Set mHashValues(slot) = valueWrapped
+End Sub
+
+Private Sub RemoveHashIndexEntry(ByVal index As Long)
+    Dim slot As Long
+    Dim wrapped As ROneCOne
+
+    If Not HashIndexSupported Then Exit Sub
+    If mHashDirty Then Exit Sub
+    If IsDictionaryCollection Or mCollectionKind = COLLECTION_KEYED Or _
+        mCollectionKind = COLLECTION_LOOKUP Then
+        If index + 1 > mKeysCount Then
+            MarkHashIndexDirty
+            Exit Sub
+        End If
+        Set wrapped = mKeys(index + 1)
+    Else
+        Set wrapped = mItems(index + 1)
+    End If
+    slot = FindHashSlot(wrapped, "Remove")
+    If slot < 0 Then
+        MarkHashIndexDirty
+        Exit Sub
+    End If
+    DeleteHashSlot slot
+    If index + 1 < mItemsCount Then ShiftHashIndexesAbove index
+End Sub
+
+Private Sub DeleteHashSlot(ByVal slot As Long)
+    Dim home As Long
+    Dim mask As Long
+    Dim nextSlot As Long
+
+    mask = mHashCapacity - 1
+    mHashSlots(slot) = 0
+    mHashCodes(slot) = 0
+    Set mHashKeys(slot) = Nothing
+    Set mHashValues(slot) = Nothing
+    mHashCount = mHashCount - 1
+    ' Linear probing cannot leave a gap inside a probe cluster. Walk the
+    ' cluster and slide back every entry whose own probe path crosses the
+    ' freed slot, then continue from the slot that entry vacated.
+    nextSlot = (slot + 1) And mask
+    Do While mHashSlots(nextSlot) <> 0
+        home = mHashCodes(nextSlot) And mask
+        If ((nextSlot - home) And mask) >= ((nextSlot - slot) And mask) Then
+            mHashSlots(slot) = mHashSlots(nextSlot)
+            mHashCodes(slot) = mHashCodes(nextSlot)
+            Set mHashKeys(slot) = mHashKeys(nextSlot)
+            Set mHashValues(slot) = mHashValues(nextSlot)
+            mHashSlots(nextSlot) = 0
+            mHashCodes(nextSlot) = 0
+            Set mHashKeys(nextSlot) = Nothing
+            Set mHashValues(nextSlot) = Nothing
+            slot = nextSlot
+        End If
+        nextSlot = (nextSlot + 1) And mask
+    Loop
+End Sub
+
+Private Sub ShiftHashIndexesAbove(ByVal index As Long)
+    Dim slot As Long
+
+    For slot = 0 To mHashCapacity - 1
+        If mHashSlots(slot) > index + 1 Then
+            mHashSlots(slot) = mHashSlots(slot) - 1
+        End If
+    Next slot
+End Sub
+
 Private Sub ResizeHashIndex(ByVal requestedCapacity As Long)
     Dim index As Long
     Dim savedCount As Long
@@ -10974,6 +11082,7 @@ Private Sub ResizeHashIndex(ByVal requestedCapacity As Long)
     Dim slot As Long
 
     If Not HashIndexSupported Then Exit Sub
+    EnsureHashIndexCurrent
     If mHashCount = 0 Then
         RebuildHashIndex requestedCapacity
         Exit Sub
@@ -11002,6 +11111,7 @@ End Sub
 
 Private Sub PrepareHashInsert()
     If Not HashIndexSupported Then Exit Sub
+    EnsureHashIndexCurrent
     If mHashCapacity = 0 Then
         RebuildHashIndex 8
     ElseIf (mHashCount + 1) * 10 >= mHashCapacity * 7 Then
@@ -11047,6 +11157,7 @@ Private Function FindHashSlot( _
     Dim probes As Long
     Dim slot As Long
 
+    EnsureHashIndexCurrent
     FindHashSlot = -1
     If mHashCapacity = 0 Then Exit Function
     hashCode = WrappedHashCode(candidate)
@@ -11096,6 +11207,7 @@ Private Function FindHashSlotByKey( _
     Dim probes As Long
     Dim slot As Long
 
+    EnsureHashIndexCurrent
     FindHashSlotByKey = -1
     If mHashCapacity = 0 Then Exit Function
     hashCode = ValueHashCode(candidate)
@@ -11411,7 +11523,17 @@ Friend Sub ReplaceCollectionItem( _
     ByVal wrapped As ROneCOne _
 )
     ArrReplaceAt mItems, index + 1, wrapped
-    If HashIndexSupported Then RebuildHashIndex mHashCapacity
+    If HashIndexSupported Then
+        If IsDictionaryCollection Or mCollectionKind = COLLECTION_KEYED Or _
+            mCollectionKind = COLLECTION_LOOKUP Then
+            ' The key is unchanged, so only the stored value pointer for its
+            ' slot needs to move; a rebuild would rescan every entry.
+            RefreshHashSlotValue mKeys(index + 1), wrapped, "Item"
+        Else
+            ' The element is its own hash key, so the slot layout changed.
+            MarkHashIndexDirty
+        End If
+    End If
     mVersion = mVersion + 1
     NotifyCollectionChanged "Replace"
 End Sub
@@ -11436,6 +11558,7 @@ Private Function RemoveCollectionValue( _
 End Function
 
 Friend Sub RemoveCollectionAt(ByVal index As Long)
+    RemoveHashIndexEntry index
     ArrRemoveAt mItems, mItemsCount, index + 1
     If IsDictionaryCollection Or mCollectionKind = COLLECTION_KEYED Then
         ArrRemoveAt mKeys, mKeysCount, index + 1
@@ -11443,7 +11566,6 @@ Friend Sub RemoveCollectionAt(ByVal index As Long)
         ArrRemoveAt mPriorities, mPrioritiesCount, index + 1
     End If
     mVersion = mVersion + 1
-    If HashIndexSupported Then RebuildHashIndex mHashCapacity
     NotifyCollectionChanged "Remove"
 End Sub
 

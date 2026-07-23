@@ -573,6 +573,54 @@ class SourceContractTests(unittest.TestCase):
         self.assertNotIn("Private mItems As Collection", self.source)
         self.assertNotIn("Private mKeys As Collection", self.source)
 
+    def test_keyed_mutation_maintains_the_hash_index_in_place(self) -> None:
+        for member in (
+            "Private mHashDirty As Boolean",
+            "Private Sub MarkHashIndexDirty()",
+            "Private Sub EnsureHashIndexCurrent()",
+            "Private Sub RefreshHashSlotValue(",
+            "Private Sub RemoveHashIndexEntry(",
+            "Private Sub DeleteHashSlot(",
+            "Private Sub ShiftHashIndexesAbove(",
+        ):
+            self.assertIn(member, self.source)
+
+        def sub_body(name: str) -> str:
+            match = re.search(
+                rf"^(?:Friend|Private|Public) Sub {name}\(.*?^End Sub",
+                self.source,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+            self.assertIsNotNone(match, name)
+            assert match is not None
+            return match.group(0)
+
+        def function_body(name: str) -> str:
+            match = re.search(
+                rf"^(?:Friend|Private|Public) Function {name}\(.*?^End Function",
+                self.source,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+            self.assertIsNotNone(match, name)
+            assert match is not None
+            return match.group(0)
+
+        # A value replacement refreshes one slot and a removal repairs its
+        # probe cluster in place; neither may rescan the whole index.
+        replace_body = sub_body("ReplaceCollectionItem")
+        self.assertIn("RefreshHashSlotValue", replace_body)
+        self.assertNotIn("RebuildHashIndex", replace_body)
+        remove_body = sub_body("RemoveCollectionAt")
+        self.assertIn("RemoveHashIndexEntry", remove_body)
+        self.assertNotIn("RebuildHashIndex", remove_body)
+        # Every probe or insert flushes a deferred rebuild first, so bulk
+        # removal paths may mark the index dirty exactly once.
+        self.assertIn("EnsureHashIndexCurrent", sub_body("PrepareHashInsert"))
+        self.assertIn("EnsureHashIndexCurrent", function_body("FindHashSlot"))
+        self.assertIn(
+            "EnsureHashIndexCurrent", function_body("FindHashSlotByKey")
+        )
+
     def test_worksheet_range_bridge_is_present(self) -> None:
         for member in (
             "DataTableFromRange",

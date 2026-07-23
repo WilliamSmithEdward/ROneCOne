@@ -6,6 +6,25 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
+## Unreleased
+
+### Fixed
+
+- Keyed mutation no longer rebuilds the whole hash index per operation. Replacing the value of
+  an existing key now updates its single slot, removal deletes the slot in place with a
+  backward-shift cluster repair and slides only the affected canonical indexes (tail removals
+  skip the slide), and bulk removal loops defer one rebuild to the next probe. A live scenario
+  of 10,000 in-place updates plus 2,000 keyed removals on a 10,000-entry dictionary previously
+  exceeded the harness's 30-second deadline; it now completes in 0.6 to 1.3 seconds against a
+  new 1.5-second release gate. The tally pattern `d(k) = d(k) + 1` is O(1) per call. See
+  [ADR 0009](docs/decisions/0009-in-place-hash-index-maintenance.md).
+
+### Added
+
+- A keyed-mutation scenario in the live benchmark harness with its own release gate, and a live
+  consistency contract covering in-place updates, removals, re-adds, enumeration after mutation,
+  the concurrent dictionary surface, and hash-set element replacement.
+
 ## 1.3.0 - 2026-07-20
 
 ### Changed
