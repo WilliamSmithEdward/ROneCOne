@@ -90,8 +90,8 @@ Private Sub WriteDelegateExamples()
     ' amount is at least 100 and below 1000. Nothing runs yet; these are recipes.
     Set applyDiscount = price.Multiply(0.9).AsFunc
     Set orderTotal = amount.Add(shipping).AsFunc
-    Set approvalRule = amount.AtLeast(CLng(100)) _
-        .AndAlso(amount.LessThan(CLng(1000))) _
+    Set approvalRule = amount.AtLeast(100) _
+        .AndAlso(amount.LessThan(1000)) _
         .AsFunc
 
     ' AndAlso is a "short-circuit" and: once the left side is False, the right
@@ -144,17 +144,17 @@ Private Sub WriteDelegateExamples()
     ' saved recipe with 100 as the input. Each line writes one answer to the
     ' Examples sheet so you can see the result next to the rule that produced it.
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
-        .Range("E6").Value2 = applyDiscount(CDbl(100))
-        .Range("E7").Value2 = orderTotal(CLng(100), CLng(5))
-        .Range("E8").Value2 = approvalRule(CLng(250))
+        .Range("E6").Value2 = applyDiscount(100)
+        .Range("E7").Value2 = orderTotal(100, 5)
+        .Range("E8").Value2 = approvalRule(250)
         .Range("E9").Value2 = safeFalse.Run()
-        .Range("E10").Value2 = maximum(CLng(4), CLng(7))
-        .Range("E11").Value2 = calculateTotal(CLng(100), CLng(5))
+        .Range("E10").Value2 = maximum(4, 7)
+        .Range("E11").Value2 = calculateTotal(100, 5)
         .Range("E12").Value2 = calculateTotal.DynamicInvoke( _
-            Array(CLng(100), CLng(5)))
+            Array(100, 5))
         .Range("E13").Value2 = mTrace
         .Range("E14").Value2 = orderNumber
-        .Range("E15").Value2 = pipeline(CDbl(100))
+        .Range("E15").Value2 = pipeline(100)
         .Range("E16").Value2 = calculateTotal.Signature
     End With
 End Sub
@@ -213,7 +213,7 @@ Private Sub RunDelegateBenchmark()
     Set applyDiscount = price.Multiply(0.9).AsFunc
     started = Timer
     For index = 1 To BENCHMARK_ITERATIONS
-        lastResult = applyDiscount(CDbl(index))
+        lastResult = applyDiscount(index)
     Next index
 
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)

@@ -118,19 +118,19 @@ Private Sub WriteTaskExamples()
     Set progress = ROneCOne.ProgressOf( _
         vbLong, ROneCOne.Action( _
             "TasksDemoUsage.RecordProgress").Takes(vbLong))
-    progress.Report 7&
+    progress.Report 7
 
     ' Sometimes the answer arrives from an outside event rather than a running
     ' calculation. A completion source is a task whose result you set by hand
     ' whenever that moment comes; here we simply hand it 99 straight away.
     Set completion = ROneCOne.TaskCompletionSourceOf(vbLong)
-    completion.SetResult 99&
+    completion.SetResult 99
 
     ' Waiting, three ways. Delay pauses briefly while letting Excel stay
     ' responsive. WaitAsync wraps a wait in a time limit so it cannot hang
     ' forever. YieldOnce steps aside for a single beat to let Excel catch up.
-    Set delayed = ROneCOne.Task.Delay(5&)
-    Set bounded = ROneCOne.Task.Delay(5&).WaitAsync(100&)
+    Set delayed = ROneCOne.Task.Delay(5)
+    Set bounded = ROneCOne.Task.Delay(5).WaitAsync(100)
     ignored = delayed.Await
     ignored = bounded.Await
     Set yielded = ROneCOne.Task.YieldOnce
@@ -158,7 +158,7 @@ Public Function CountOpenOrders() As Variant
 
     For Each status In Array( _
         "Open", "Shipped", "Open", "Pending", "Open", "Shipped")
-        If status = "Open" Then CountOpenOrders = CLng(CountOpenOrders) + 1&
+        If status = "Open" Then CountOpenOrders = CLng(CountOpenOrders) + 1
     Next status
 End Function
 
@@ -189,7 +189,7 @@ Private Sub RunTaskBenchmark()
     ' quick enough to use freely, even though tasks take turns on one thread.
     started = Timer
     For index = 1 To BENCHMARK_ITERATIONS
-        Set work = ROneCOne.Value(index).Multiply(2&).AsFunc
+        Set work = ROneCOne.Value(index).Multiply(2).AsFunc
         result = ROneCOne.Task.Run(work).Await
     Next index
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)

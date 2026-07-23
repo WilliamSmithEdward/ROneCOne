@@ -18,12 +18,44 @@ checksums for each version are on the
   exceeded the harness's 30-second deadline; it now completes in 0.6 to 1.3 seconds against a
   new 1.5-second release gate. The tally pattern `d(k) = d(k) + 1` is O(1) per call. See
   [ADR 0009](docs/decisions/0009-in-place-hash-index-maintenance.md).
+- Indexed list writes no longer rebuild the For Each mirror per assignment: lists now share the
+  version-checked lazy enumeration the other collections already used, and every eager mirror
+  write is gone. Ten thousand `list(i) = value` assignments dropped from exceeding the
+  30-second harness deadline to 0.1 seconds. See
+  [ADR 0010](docs/decisions/0010-version-cached-positional-access.md).
+- `Rows`, `Columns`, `Tables`, `Relations`, and `PrimaryKey` cache their snapshot against the
+  owner's structural version instead of rebuilding it on every access, so `For i:
+  table.Rows.Item(i)` is linear. Field edits advance a separate data version, which keeps
+  read-write row loops linear while views still refresh. Repeated access now returns the same
+  snapshot object until the owner structurally changes.
+- Positional reads on materialized generic collections (sets, queues, dictionary entries) index
+  their backing arrays directly instead of materializing per access. Deferred queries and live
+  views intentionally keep per-read materialization: a query always sees the latest data.
+- Re-filtering or re-sorting a DataView that had already been enumerated served stale results,
+  because `WithFilter` and `WithSort` never advanced the view's version. Both now do, and the
+  view's staleness key includes its own version.
+- `AddColumn` on a table that already had rows left every existing row one cell short of the
+  schema, so the next constraint sweep or field access failed with "Subscript out of range".
+  A late column now backfills every existing row with the column's default cell.
+- The keyed update path reuses the probe's found slot instead of probing again, and
+  custom-comparer membership tests scan the element array directly instead of allocating a
+  snapshot Collection per call.
+
+### Changed
+
+- Demo modules and documentation examples drop the `CLng(...)`, `CDbl(...)`, and `&`-suffix
+  ceremony on numeric literals that lossless widening made unnecessary; plain literals now
+  appear at every typed boundary, matching how the library is meant to be used.
 
 ### Added
 
 - A keyed-mutation scenario in the live benchmark harness with its own release gate, and a live
   consistency contract covering in-place updates, removals, re-adds, enumeration after mutation,
   the concurrent dictionary surface, and hash-set element replacement.
+- Live benchmark scenarios with release gates for indexed list writes, positional row loops
+  through `Rows`, and positional set reads, plus consistency contracts for lazy list
+  enumeration, snapshot caching, view refresh after refilter and field edits, and late-column
+  backfill.
 
 ## 1.3.0 - 2026-07-20
 

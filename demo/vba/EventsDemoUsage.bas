@@ -102,7 +102,7 @@ Private Sub RunEventBenchmark()
     mCount = 0
     started = Timer
     For index = 1 To BENCHMARK_ITERATIONS
-        changed.Emit CLng(1)
+        changed.Emit 1
     Next index
 
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)

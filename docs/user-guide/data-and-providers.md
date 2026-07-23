@@ -33,13 +33,13 @@ Dim people As ROneCOne
 Dim row As ROneCOne
 
 Set people = ROneCOne.DataTable("People")
-people.Column("Id", vbLong).AutoNumber(100&, 10&).AsPrimaryKey
+people.Column("Id", vbLong).AutoNumber(100, 10).AsPrimaryKey
 people.Column("Name", vbString).WithDefault "Unknown"
 people.Column "Age", vbLong
 people.Column "Note", vbString
 
-Set row = people.Row("Ada", 47&, ROneCOne.DBNull).Add
-Debug.Print people.Find(100&).Item("Name")
+Set row = people.Row("Ada", 47, ROneCOne.DBNull).Add
+Debug.Print people.Find(100).Item("Name")
 ```
 
 Reading the example:
@@ -59,7 +59,7 @@ Rows track `Detached`, `Added`, `Unchanged`, `Modified`, and `Deleted` states. `
 Dim view As ROneCOne
 
 Set view = ROneCOne.DataView(people) _
-    .WithFilter(people.Rows!Age.AtLeast(40&)) _
+    .WithFilter(people.Rows!Age.AtLeast(40)) _
     .WithSort("Name")
 ```
 
@@ -77,7 +77,7 @@ Dim table As ROneCOne
 
 Set connection = ROneCOne.DbConnection(connectionString)
 connection.Connect
-Set command = ROneCOne.DbCommand(sql, connection).WithTimeout(30&)
+Set command = ROneCOne.DbCommand(sql, connection).WithTimeout(30)
 Set adapter = ROneCOne.DbDataAdapter(command)
 Set table = ROneCOne.DataTable("Results")
 

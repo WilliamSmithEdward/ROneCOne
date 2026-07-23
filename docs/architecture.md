@@ -35,7 +35,7 @@ Dim price As ROneCOne
 Set price = ROneCOne.Var(vbDouble)
 Set applyDiscount = price.Multiply(0.9).AsFunc
 
-Debug.Print applyDiscount(CDbl(100))
+Debug.Print applyDiscount(100)
 ```
 
 This is ordinary compilable VBA. It does not inject source, require VBIDE trust, or ask developers

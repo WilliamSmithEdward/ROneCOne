@@ -39,9 +39,9 @@ Dim scores As ROneCOne
 Dim reserved As Long
 
 Set scores = ROneCOne.DictionaryOf(vbLong, vbLong)
-reserved = scores.EnsureCapacity(10000&)
-scores.Add 1&, 95&
-Debug.Print scores.Item(1&)
+reserved = scores.EnsureCapacity(10000)
+scores.Add 1, 95
+Debug.Print scores.Item(1)
 scores.TrimExcess
 ```
 
@@ -117,12 +117,12 @@ Dim filtered As ROneCOne
 Dim numbers As ROneCOne
 Dim x As ROneCOne
 
-Set numbers = ROneCOne.ListOf(vbLong, CLng(5), CLng(20))
+Set numbers = ROneCOne.ListOf(vbLong, 5, 20)
 
 Set x = numbers.Element
-Set filtered = numbers.Where(x.GreaterThan(CLng(10)))
+Set filtered = numbers.Where(x.GreaterThan(10))
 
-numbers.Add CLng(30)
+numbers.Add 30
 Set filtered = filtered.ToList
 
 Debug.Print filtered.Count   ' 2
@@ -141,11 +141,11 @@ are `Exists`, `AnyItem`, `All`, `None`, `First`,
 `CountBy`, `Aggregate`, `AggregateBy`, `Index`, and `TryGetNonEnumeratedCount`.
 
 ```vba
-Set result = ROneCOne.Range(CLng(1), CLng(6)) _
-    .Where(x.Modulo(CLng(2)).EqualTo(CLng(0))) _
-    .Map(x.Multiply(CLng(10)), vbLong) _
+Set result = ROneCOne.Range(1, 6) _
+    .Where(x.Modulo(2).EqualTo(0)) _
+    .Map(x.Multiply(10), vbLong) _
     .OrderDescending _
-    .Take(CLng(2)) _
+    .Take(2) _
     .ToList
 
 Debug.Print result(0)  ' 60
@@ -219,9 +219,9 @@ directly only when an explicit comparer is supplied.
 there is no adapter class, explicit element variable, lambda wrapper, or predicate string language.
 
 ```vba
-Set adults = customers.Where("Age").AtLeast(CLng(18))
+Set adults = customers.Where("Age").AtLeast(18)
 Set selected = customers _
-    .Where("Age").Between(CLng(18), CLng(65)) _
+    .Where("Age").Between(18, 65) _
     .Where("City").OneOf("London", "Paris")
 Set matching = customers.Where("Name").StartsWith("Gr")
 ```
@@ -238,7 +238,7 @@ logical AND and retain deferred execution.
 Use `Condition` when a predicate combines multiple members:
 
 ```vba
-Set predicate = customers.Condition("Age").AtLeast(CLng(40)) _
+Set predicate = customers.Condition("Age").AtLeast(40) _
     .Both(customers.Condition("City").EqualTo("London"))
 Set selected = customers.Where(predicate)
 ```
@@ -252,7 +252,7 @@ typed parameter and compose as a unary predicate. Dotted paths traverse object-v
 members. The `?.` path operator propagates `Null` when an intermediate object is `Nothing`:
 
 ```vba
-Set selected = customers.Where("Manager?.Age").AtLeast(CLng(40))
+Set selected = customers.Where("Manager?.Age").AtLeast(40)
 ```
 
 Ordinary `.` access still raises `MemberAccessError` on `Nothing`. Null-safe relational and string
@@ -343,7 +343,7 @@ Dim names As ROneCOne
 Dim firstCustomer As DemoCustomer
 Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 
-Set experienced = customers.Where("Age").AtLeast(CLng(40))
+Set experienced = customers.Where("Age").AtLeast(40)
 Set names = experienced _
     .Map("CustomerName", vbString) _
     .Order _
@@ -367,7 +367,7 @@ Dim predicate As ROneCOne
 Set customer = ROneCOne.ParameterLike(ada)
 Set age = customer.Member("Age")
 Set predicate = ROneCOne.Lambda( _
-    age.GreaterThanOrEqual(CLng(40)), customer)
+    age.GreaterThanOrEqual(40), customer)
 Set experienced = customers.Where(predicate)
 ```
 
@@ -376,10 +376,10 @@ use a member name. VBA's existing bang operator provides an optional identifier-
 ROneCOne's default member maps a sequence member to `Condition`:
 
 ```vba
-Set experienced = customers.Where(customers!Age.AtLeast(CLng(40)))
+Set experienced = customers.Where(customers!Age.AtLeast(40))
 
 With customers
-    Set experienced = .Where(!Age.AtLeast(CLng(40)))
+    Set experienced = .Where(!Age.AtLeast(40))
 End With
 ```
 

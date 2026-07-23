@@ -15,7 +15,7 @@ Dim price As ROneCOne
 Set price = ROneCOne.Var(vbDouble)
 Set applyDiscount = price.Multiply(0.9).AsFunc
 
-Debug.Print applyDiscount(CDbl(100))
+Debug.Print applyDiscount(100)
 ```
 
 The result is `90`. `price` is the input placeholder; `AsFunc` turns the expression into reusable
@@ -34,7 +34,7 @@ Set chooseHigherStock = ROneCOne.Func( _
     .Takes(vbLong, vbLong) _
     .Returns(vbDouble)
 
-Debug.Print chooseHigherStock(CLng(40), CLng(75))
+Debug.Print chooseHigherStock(40, 75)
 ```
 
 `Takes` and `Returns` make the expected signature explicit and catch mismatches before the target
@@ -51,7 +51,7 @@ Set calculateTotal = ROneCOne.Func("Orders.CalculateOrderTotal") _
     .Takes(vbLong, vbLong) _
     .Returns(vbLong)
 
-Debug.Print calculateTotal(CLng(100), CLng(5))
+Debug.Print calculateTotal(100, 5)
 ```
 
 Workbook procedures need a qualified name because VBA does not expose a general first-class
@@ -96,7 +96,7 @@ discount and the second adds a handling charge:
 Dim finalPrice As ROneCOne
 
 Set finalPrice = applyDiscount.PipeTo(addHandling)
-Debug.Print finalPrice(CDbl(100))
+Debug.Print finalPrice(100)
 ```
 
 The two delegates must have compatible input and output contracts.

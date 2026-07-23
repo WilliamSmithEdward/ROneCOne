@@ -79,7 +79,7 @@ class DemoContractTests(unittest.TestCase):
         source = COLLECTIONS_DEMO.read_text(encoding="utf-8")
 
         required_syntax = (
-            'customers.Where("Age").AtLeast(CLng(40))',
+            'customers.Where("Age").AtLeast(40)',
             '.Map("CustomerName", vbString)',
             ".Order",
             'customers.Condition("City").EqualTo("London")',
@@ -88,7 +88,7 @@ class DemoContractTests(unittest.TestCase):
             '.Where("CustomerName").StartsWith("G")',
             '.DistinctBy("City")',
             '"CollectionsDemoUsage.IsExperiencedCustomer").ToList',
-            '.Where("Manager?.Age").AtLeast(CLng(40))',
+            '.Where("Manager?.Age").AtLeast(40)',
             '.Where("City").IsIn(',
             "allowedCities.Contains(customers!City)",
             '.ContainsIgnoreCase("THER")',
@@ -135,7 +135,7 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("ROneCOne.Task.WhenAll(forecastTask, reorderTask)", source)
         self.assertIn("ROneCOne.Task.Run(countOpenOrders)", source)
         self.assertIn("Set results = allWork.Await", source)
-        self.assertIn(".WaitAsync(100&)", source)
+        self.assertIn(".WaitAsync(100)", source)
         self.assertIn("ROneCOne.Task.YieldOnce", source)
         self.assertIn("allWork.ContinueWith(buildSummary)", source)
         self.assertIn("ROneCOne.CancellationTokenSource", source)
@@ -167,7 +167,7 @@ class DemoContractTests(unittest.TestCase):
 
         self.assertIn('table.Column("Id", vbLong).AutoNumber', source)
         self.assertIn(".AsPrimaryKey", source)
-        self.assertIn('table.Row("Ada", 90&, ROneCOne.DBNull).Add', source)
+        self.assertIn('table.Row("Ada", 90, ROneCOne.DBNull).Add', source)
         self.assertIn("ROneCOne.DataView(table)", source)
         self.assertIn("ROneCOne.DataRelation", source)
         self.assertIn("ROneCOne.DbDataAdapter(command)", source)

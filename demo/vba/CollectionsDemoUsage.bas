@@ -74,13 +74,13 @@ Private Sub WritePrimitiveCollectionExamples()
     ' Because it is typed, adding the wrong kind of value is refused rather than
     ' silently stored; RaisesExpectedTypeMismatch confirms that guard fires.
     Set numbers = ROneCOne.ListOf( _
-        vbLong, CLng(5), CLng(10), CLng(15))
+        vbLong, 5, 10, 15)
     strictTypeRejected = RaisesExpectedTypeMismatch(numbers)
 
     ' ListFrom builds a list from objects you already have and figures out the
     ' element type from the first one, so this becomes a list of DemoCustomer.
-    Set ada = CreateCustomer("Ada", CLng(36), "London")
-    Set grace = CreateCustomer("Grace", CLng(40), "Arlington")
+    Set ada = CreateCustomer("Ada", 36, "London")
+    Set grace = CreateCustomer("Grace", 40, "Arlington")
     Set customers = ROneCOne.ListFrom(ada, grace)
 
     ' Queries are lazy. "filtered" is defined here as "numbers greater than 10",
@@ -88,36 +88,36 @@ Private Sub WritePrimitiveCollectionExamples()
     ' the last line. By then 30 has been added, so the result includes it. The
     ' query describes what you want; ToList is the moment it runs. Element is a
     ' stand-in for "each number" while the condition is being described.
-    Set numbers = ROneCOne.ListOf(vbLong, CLng(5), CLng(20))
+    Set numbers = ROneCOne.ListOf(vbLong, 5, 20)
     Set x = numbers.Element
-    Set filtered = numbers.Where(x.GreaterThan(CLng(10)))
-    numbers.Add CLng(30)
+    Set filtered = numbers.Where(x.GreaterThan(10))
+    numbers.Add 30
     Set filtered = filtered.ToList
 
     ' Query steps chain left to right, each feeding the next. Read this as: take
     ' the numbers 1 through 6, keep the even ones, multiply each by 10, sort
     ' high to low, and keep the first two. Range(1, 6) means "6 numbers from 1".
-    Set projected = ROneCOne.Range(CLng(1), CLng(6)) _
-        .Where(x.Modulo(CLng(2)).EqualTo(CLng(0))) _
-        .Map(x.Multiply(CLng(10)), vbLong) _
+    Set projected = ROneCOne.Range(1, 6) _
+        .Where(x.Modulo(2).EqualTo(0)) _
+        .Map(x.Multiply(10), vbLong) _
         .OrderDescending _
-        .Take(CLng(2)) _
+        .Take(2) _
         .ToList
 
     ' The same chaining shapes a sequence: remove duplicates, add a value at the
     ' front and the back, reverse the order, then drop the first item.
-    Set sequence = ROneCOne.ListOf(vbLong, CLng(2), CLng(2), CLng(3))
+    Set sequence = ROneCOne.ListOf(vbLong, 2, 2, 3)
     Set sequence = sequence.Distinct _
-        .Prepend(CLng(1)) _
-        .Append(CLng(4)) _
+        .Prepend(1) _
+        .Append(4) _
         .Reverse _
-        .Skip(CLng(1)) _
+        .Skip(1) _
         .ToList
 
     ' ForEach runs one action against every element. Here it adds each number
     ' 1 through 4 into a running total (1 + 2 + 3 + 4 = 10) via a small handler.
-    Set numbers = ROneCOne.Range(CLng(1), CLng(5))
-    Set enumerationValues = ROneCOne.Range(CLng(1), CLng(4))
+    Set numbers = ROneCOne.Range(1, 5)
+    Set enumerationValues = ROneCOne.Range(1, 4)
     mForEachTotal = 0
     enumerationValues.ForEach ROneCOne.Action( _
         "CollectionsDemoUsage.DemoAccumulateLong").Takes(vbLong)
@@ -174,16 +174,16 @@ Private Sub WriteUserClassLinqExamples()
     ' about DemoCustomer knows about ROneCOne; you write a normal class and query
     ' it by property name. Each customer here also has a Manager and, later,
     ' a list of direct Reports, so the demo can show nested queries too.
-    Set ada = CreateCustomer("Ada", CLng(36), "London")
-    Set grace = CreateCustomer("Grace", CLng(40), "Arlington")
+    Set ada = CreateCustomer("Ada", 36, "London")
+    Set grace = CreateCustomer("Grace", 40, "Arlington")
     Set grace.Manager = ada
-    Set katherine = CreateCustomer("Katherine", CLng(49), "Cleveland")
+    Set katherine = CreateCustomer("Katherine", 49, "Cleveland")
     Set katherine.Manager = grace
     Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 
     ' Build the query now; it will include Margaret when results are requested.
-    Set experienced = customers.Where("Age").AtLeast(CLng(40))
-    Set margaret = CreateCustomer("Margaret", CLng(45), "Arlington")
+    Set experienced = customers.Where("Age").AtLeast(40)
+    Set margaret = CreateCustomer("Margaret", 45, "Arlington")
     Set margaret.Manager = grace
     customers.Add margaret
     Set lastCustomer = experienced.Last
@@ -206,7 +206,7 @@ Private Sub WriteUserClassLinqExamples()
     anyLondon = customers.Exists( _
         customers.Condition("City").EqualTo("London"))
     allExperienced = customers.All( _
-        customers.Condition("Age").AtLeast(CLng(40)))
+        customers.Condition("Age").AtLeast(40))
 
     ' An existing VBA function can also act as the yes-or-no rule.
     Set procedureFiltered = customers.WhereMethod( _
@@ -219,7 +219,7 @@ Private Sub WriteUserClassLinqExamples()
 
     ' The "?." in "Manager?.Age" is a safety valve: if a customer has no Manager,
     ' the path stops instead of erroring, and that customer just does not match.
-    Set managed = customers.Where("Manager?.Age").AtLeast(CLng(40)).ToList
+    Set managed = customers.Where("Manager?.Age").AtLeast(40).ToList
 
     ' When the built-in rules are not quite what you need, you can supply your
     ' own. An equality comparer decides when two values count as "the same"; a
@@ -246,7 +246,7 @@ Private Sub WriteUserClassLinqExamples()
     Set grace.Reports = ROneCOne.ListFrom(ada)
     Set katherine.Reports = ROneCOne.ListLike(ada)
     Set margaret.Reports = ROneCOne.ListFrom(grace)
-    Set reportPredicate = ada.Reports.Condition("Age").AtLeast(CLng(40))
+    Set reportPredicate = ada.Reports.Condition("Age").AtLeast(40)
     Set membershipMatches = customers.Where(allowedCities.Contains(customers!City))
 
     With ThisWorkbook.Worksheets(USER_CLASS_SHEET)
@@ -270,7 +270,7 @@ Private Sub WriteUserClassLinqExamples()
             CStr(customers.Where("CustomerName").Contains("ther").Count)
         .Range("E14").Value2 = distinctCities.Count
         With customers
-            Set names = .Where(!Age.AtLeast(CLng(40))) _
+            Set names = .Where(!Age.AtLeast(40)) _
                 .Map("CustomerName", vbString) _
                 .Order _
                 .ToList
@@ -288,21 +288,21 @@ Private Sub WriteUserClassLinqExamples()
             "; name contains: " & CStr(customers.Where("CustomerName") _
                 .ContainsIgnoreCase("THER").Count)
         .Range("E19").Value2 = "Count: " & CStr(customers.Count( _
-            customers.Condition("Age").AtLeast(CLng(40)))) & _
+            customers.Condition("Age").AtLeast(40))) & _
             "; single: " & singleCustomer.CustomerName & _
             "; none age 100: " & _
-            CStr(customers.None(customers.Match("Age", CLng(100))))
+            CStr(customers.None(customers.Match("Age", 100)))
         .Range("E20").Value2 = "Any: " & CStr(customers.WhereAny( _
             "Reports", reportPredicate).Count) & "; all: " & _
             CStr(customers.WhereAll("Reports", ada.Reports.Condition("Age") _
-                .AtLeast(CLng(36))).Count) & "; none: " & _
+                .AtLeast(36)).Count) & "; none: " & _
             CStr(customers.WhereNone("Reports", reportPredicate).Count)
         .Range("E21").Value2 = "Distinct: " & CStr(strings.Distinct( _
             equalityComparer).Count) & "; contains Ada: " & _
             CStr(strings.Contains("ada", equalityComparer)) & _
             "; first: " & CStr(strings.Order(comparer).First)
         .Range("E22").Value2 = "Both: " & CStr(customers.Where( _
-            customers.Condition("Age").AtLeast(CLng(40)).Both( _
+            customers.Condition("Age").AtLeast(40).Both( _
                 customers.Match("City", "Arlington"))).Count) & _
             "; either: " & CStr(customers.Where(customers.Match( _
                 "City", "London").Either(customers.Match( _
@@ -331,10 +331,10 @@ Private Sub RunCollectionBenchmark()
     ' they stay fast enough for everyday workbook use: filter, then (below)
     ' object filter, multi-key sort, and dictionary build plus indexed lookup.
     started = Timer
-    Set numbers = ROneCOne.Range(CLng(1), BENCHMARK_ELEMENT_COUNT)
+    Set numbers = ROneCOne.Range(1, BENCHMARK_ELEMENT_COUNT)
     Set x = numbers.Element
     Set filtered = numbers _
-        .Where(x.Modulo(CLng(2)).EqualTo(CLng(0))) _
+        .Where(x.Modulo(2).EqualTo(0)) _
         .ToList
 
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
@@ -343,10 +343,10 @@ Private Sub RunCollectionBenchmark()
         .Range("D6").Value2 = filtered.Count
     End With
 
-    Set customer = CreateCustomer("Benchmark", CLng(50), "Local")
+    Set customer = CreateCustomer("Benchmark", 50, "Local")
     Set customers = ROneCOne.Repeat(customer, BENCHMARK_ELEMENT_COUNT)
     started = Timer
-    Set filtered = customers.Where("Age").AtLeast(CLng(40)).ToList
+    Set filtered = customers.Where("Age").AtLeast(40).ToList
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
         .Range("B7").Value2 = BENCHMARK_ELEMENT_COUNT
         .Range("C7").Value2 = ElapsedSeconds(started)
@@ -355,7 +355,7 @@ Private Sub RunCollectionBenchmark()
 
     started = Timer
     Set ordered = numbers _
-        .OrderBy(x.Modulo(CLng(100))) _
+        .OrderBy(x.Modulo(100)) _
         .ThenByDescending(x) _
         .ToList
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)

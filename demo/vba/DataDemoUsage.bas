@@ -70,19 +70,19 @@ Private Sub WriteDataExamples( _
     ' The Id column numbers itself (starting at 100, stepping by 10) and is the
     ' primary key that identifies a row; Name fills in "Unknown" when left blank.
     Set table = ROneCOne.DataTable("People")
-    table.Column("Id", vbLong).AutoNumber(100&, 10&).AsPrimaryKey
+    table.Column("Id", vbLong).AutoNumber(100, 10).AsPrimaryKey
     table.Column("Name", vbString).WithDefault "Unknown"
     table.Column "Score", vbLong
     table.Column "Note", vbString
     ' Add two rows. You supply Name, Score, and Note; the Id fills itself in.
     ' ROneCOne.DBNull is the data layer's way of saying "no value here" for Note.
-    Set row = table.Row("Ada", 90&, ROneCOne.DBNull).Add
-    Set row = table.Row("Grace", 95&, "Compiler pioneer").Add
+    Set row = table.Row("Ada", 90, ROneCOne.DBNull).Add
+    Set row = table.Row("Grace", 95, "Compiler pioneer").Add
     ' A view is a live window onto the same rows, filtered and sorted, without
     ' copying anything by hand. This one keeps scores of at least 90 and orders
     ' them high to low, so reading the view back gives the top scorer first.
     Set view = ROneCOne.DataView(table) _
-        .WithFilter(table.Rows!Score.AtLeast(90&)) _
+        .WithFilter(table.Rows!Score.AtLeast(90)) _
         .WithSort("Score", True)
 
     ' Two tables can be linked. Here every order belongs to a customer: the
@@ -90,10 +90,10 @@ Private Sub WriteDataExamples( _
     ' linked you can start at a customer and ask for its orders (done below).
     Set parent = ROneCOne.DataTable("Customers")
     parent.Column("Id", vbLong).AsPrimaryKey
-    Set parentRow = parent.LoadRow(Array(1&))
+    Set parentRow = parent.LoadRow(Array(1))
     Set child = ROneCOne.DataTable("Orders")
     child.Column "CustomerId", vbLong
-    child.LoadRow Array(1&)
+    child.LoadRow Array(1)
     Set data = ROneCOne.DataSet("Sales")
     data.AddTable parent
     data.AddTable child
@@ -104,7 +104,7 @@ Private Sub WriteDataExamples( _
     ' everything as the new saved baseline; the edit right after it is then the
     ' only pending change, which is exactly what GetChanges reports further down.
     table.AcceptChanges
-    table.Rows.Item(0).Item("Score") = 91&
+    table.Rows.Item(0).Item("Score") = 91
 
     ' Now read a different workbook as if it were a database, without adding any
     ' references in the VBA editor. The connection string points at the fixture
@@ -185,7 +185,7 @@ Private Sub RunDataBenchmark()
     For index = 1 To BENCHMARK_ITERATIONS
         table.LoadRow Array(index)
     Next index
-    Set result = table.Rows.Where("Value").AtLeast(500&).ToList
+    Set result = table.Rows.Where("Value").AtLeast(500).ToList
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
         .Range("B6").Value2 = BENCHMARK_ITERATIONS
         .Range("C6").Value2 = ElapsedSeconds(started)

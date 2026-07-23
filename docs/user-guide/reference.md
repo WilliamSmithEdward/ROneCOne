@@ -28,7 +28,7 @@ contracts and edge cases.
 
 ```vba
 Set numbers = ROneCOne.ListOf( _
-    vbLong, CLng(10), CLng(20), CLng(30))
+    vbLong, 10, 20, 30)
 Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 ```
 

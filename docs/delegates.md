@@ -19,7 +19,7 @@ Dim price As ROneCOne
 
 Set price = ROneCOne.Var(vbDouble)
 Set applyDiscount = price.Multiply(0.9).AsFunc
-Debug.Print applyDiscount(CDbl(100))
+Debug.Print applyDiscount(100)
 ```
 
 The canonical expansion is:
@@ -72,9 +72,9 @@ The default member provides the natural C#-like call form. `Run` is the explicit
 `DynamicInvoke` consumes a VBA array, `Collection`, or ROneCOne sequence.
 
 ```vba
-result = transform(CLng(7))
-result = transform.Run(CLng(7))
-result = transform.DynamicInvoke(Array(CLng(7)))
+result = transform(7)
+result = transform.Run(7)
+result = transform.DynamicInvoke(Array(7))
 ```
 
 VBA class modules inherit an `Invoke` dispatch member and reject a public method with that name at

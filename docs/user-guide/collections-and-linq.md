@@ -16,7 +16,7 @@ Dim names As ROneCOne
 Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 
 Set names = customers _
-    .Where("Age").AtLeast(CLng(40)) _
+    .Where("Age").AtLeast(40) _
     .Map("CustomerName", vbString) _
     .Order _
     .ToList
@@ -62,10 +62,10 @@ Dim reserved As Long
 Dim scoresById As ROneCOne
 
 Set scoresById = ROneCOne.DictionaryOf(vbLong, vbLong)
-reserved = scoresById.EnsureCapacity(10000&)
-scoresById.Add 101&, 95&
+reserved = scoresById.EnsureCapacity(10000)
+scoresById.Add 101, 95
 
-Debug.Print scoresById.Item(101&)
+Debug.Print scoresById.Item(101)
 ```
 
 Default-equality dictionaries and hash sets use indexed lookup. `EnsureCapacity` is useful before
@@ -80,7 +80,7 @@ The member name begins a condition, and the comparison completes the query:
 Dim experienced As ROneCOne
 
 Set experienced = customers _
-    .Where("Age").AtLeast(CLng(40)) _
+    .Where("Age").AtLeast(40) _
     .ToList
 ```
 
@@ -88,7 +88,7 @@ Common conditions read the same way:
 
 ```vba
 Set selected = customers _
-    .Where("Age").Between(CLng(18), CLng(65)) _
+    .Where("Age").Between(18, 65) _
     .Where("City").OneOf("London", "Paris") _
     .ToList
 
@@ -131,7 +131,7 @@ Use `?.` when an intermediate object might be `Nothing`:
 Dim managed As ROneCOne
 
 Set managed = customers _
-    .Where("Manager?.Age").AtLeast(CLng(40)) _
+    .Where("Manager?.Age").AtLeast(40) _
     .ToList
 ```
 
@@ -146,7 +146,7 @@ Build named conditions when a rule spans more than one property:
 Dim predicate As ROneCOne
 Dim selected As ROneCOne
 
-Set predicate = customers.Condition("Age").AtLeast(CLng(40)) _
+Set predicate = customers.Condition("Age").AtLeast(40) _
     .Both(customers.Match("City", "London"))
 
 Set selected = customers.Where(predicate).ToList
@@ -164,7 +164,7 @@ Dim experiencedReport As ROneCOne
 Dim managers As ROneCOne
 
 Set experiencedReport = ada.Reports _
-    .Condition("Age").AtLeast(CLng(40))
+    .Condition("Age").AtLeast(40)
 
 Set managers = customers _
     .WhereAny("Reports", experiencedReport) _
@@ -216,9 +216,9 @@ Dim oldest As Customer
 Set oldest = customers.OrderByDescending("Age").First
 
 Debug.Print customers.Count( _
-    customers.Condition("Age").AtLeast(CLng(40)))
+    customers.Condition("Age").AtLeast(40))
 Debug.Print customers.Exists(customers.Match("City", "London"))
-Debug.Print customers.None(customers.Match("Age", CLng(100)))
+Debug.Print customers.None(customers.Match("Age", 100))
 ```
 
 Use `FirstOrDefault`, `LastOrDefault`, or `SingleOrDefault` when no match is a normal outcome.

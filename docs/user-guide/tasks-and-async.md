@@ -84,12 +84,12 @@ workbook code.
 ```vba
 Dim ignored As Variant
 
-ignored = ROneCOne.Task.Delay(250&).Await
-ignored = RefreshDataAsync().WaitAsync(10000&).Await
+ignored = ROneCOne.Task.Delay(250).Await
+ignored = RefreshDataAsync().WaitAsync(10000).Await
 ignored = ROneCOne.Task.YieldOnce.Await
 ```
 
-`Delay` waits without launching another Excel. `WaitAsync(10000&)` gives the refresh ten seconds
+`Delay` waits without launching another Excel. `WaitAsync(10000)` gives the refresh ten seconds
 to finish and raises a clear timeout error if it does not. `YieldOnce` lets Excel process its
 message queue before the workflow continues.
 
@@ -103,7 +103,7 @@ Set cancelSource = ROneCOne.CancellationTokenSource
 Set progress = ROneCOne.ProgressOf( _
     vbLong, ROneCOne.Action("ImportScreen.ShowRowsProcessed").Takes(vbLong))
 
-progress.Report 250&
+progress.Report 250
 cancelSource.Cancel
 ```
 
