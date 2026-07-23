@@ -27,7 +27,19 @@ param(
 
     [Parameter(Mandatory = $true)]
     [ValidateRange(0.01, 60)]
-    [double]$MaxHashMutationBenchmarkSeconds
+    [double]$MaxHashMutationBenchmarkSeconds,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(0.01, 60)]
+    [double]$MaxListWriteBenchmarkSeconds,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(0.01, 60)]
+    [double]$MaxRowsLoopBenchmarkSeconds,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(0.01, 60)]
+    [double]$MaxGenericReadBenchmarkSeconds
 )
 
 $ErrorActionPreference = "Stop"
@@ -202,7 +214,7 @@ public static class ROneCOneExcelProcess
     $taskDataSheet.Range("A3").Value2 = "Failed"
     $taskDataSheet.Range("A4").Value2 = "Status"
     $taskDataSheet.Range("A5").Value2 = "Error"
-    $collectionBenchmarkSheet.Range("A1:B13").ClearContents()
+    $collectionBenchmarkSheet.Range("A1:B25").ClearContents()
     $collectionBenchmarkSheet.Range("A1").Value2 = "ROneCOne collection benchmark"
     $collectionBenchmarkSheet.Range("A2").Value2 = "Source elements"
     $collectionBenchmarkSheet.Range("A3").Value2 = "Seconds"
@@ -258,6 +270,9 @@ public static class ROneCOneExcelProcess
     $hash10KSeconds = [double]$collectionBenchmarkSheet.Range("B10").Value2
     $hash100KSeconds = [double]$collectionBenchmarkSheet.Range("B12").Value2
     $hashMutationSeconds = [double]$collectionBenchmarkSheet.Range("B15").Value2
+    $listWriteSeconds = [double]$collectionBenchmarkSheet.Range("B18").Value2
+    $rowsLoopSeconds = [double]$collectionBenchmarkSheet.Range("B21").Value2
+    $genericReadSeconds = [double]$collectionBenchmarkSheet.Range("B24").Value2
 
     $stage = "validate observed results"
     if ($status -ne "PASS" -or $failed -ne 0) {
@@ -346,11 +361,32 @@ public static class ROneCOneExcelProcess
         $hashMutationSeconds -gt $MaxHashMutationBenchmarkSeconds) {
         throw "Mutation benchmark missed gate: seconds=$hashMutationSeconds maximum=$MaxHashMutationBenchmarkSeconds"
     }
+    if ($listWriteSeconds -le 0 -or `
+        $listWriteSeconds -gt $MaxListWriteBenchmarkSeconds) {
+        throw "List write benchmark missed gate: seconds=$listWriteSeconds maximum=$MaxListWriteBenchmarkSeconds"
+    }
+    if ($rowsLoopSeconds -le 0 -or `
+        $rowsLoopSeconds -gt $MaxRowsLoopBenchmarkSeconds) {
+        throw "Rows loop benchmark missed gate: seconds=$rowsLoopSeconds maximum=$MaxRowsLoopBenchmarkSeconds"
+    }
+    if ($genericReadSeconds -le 0 -or `
+        $genericReadSeconds -gt $MaxGenericReadBenchmarkSeconds) {
+        throw "Generic read benchmark missed gate: seconds=$genericReadSeconds maximum=$MaxGenericReadBenchmarkSeconds"
+    }
     if ([int]$collectionBenchmarkSheet.Range("B13").Value2 -ne 10000) {
         throw "Hash benchmark produced an invalid lookup result."
     }
     if ([int]$collectionBenchmarkSheet.Range("B16").Value2 -ne 8000) {
         throw "Mutation benchmark produced an invalid final count."
+    }
+    if ([int]$collectionBenchmarkSheet.Range("B19").Value2 -ne 19998) {
+        throw "List write benchmark produced an invalid final value."
+    }
+    if ([long]$collectionBenchmarkSheet.Range("B22").Value2 -ne 2001000) {
+        throw "Rows loop benchmark produced an invalid total."
+    }
+    if ([int]$collectionBenchmarkSheet.Range("B25").Value2 -ne 10000) {
+        throw "Generic read benchmark produced an invalid final value."
     }
     if ([int]$collectionBenchmarkSheet.Range("B7").Value2 -ne 10000 -or `
         [int]$collectionBenchmarkSheet.Range("B8").Value2 -ne 10000) {
@@ -387,6 +423,12 @@ public static class ROneCOneExcelProcess
         hash_mutation_operations = [int]$collectionBenchmarkSheet.Range("B14").Value2
         hash_mutation_seconds = $hashMutationSeconds
         hash_mutation_gate_seconds = $MaxHashMutationBenchmarkSeconds
+        list_write_seconds = $listWriteSeconds
+        list_write_gate_seconds = $MaxListWriteBenchmarkSeconds
+        rows_loop_seconds = $rowsLoopSeconds
+        rows_loop_gate_seconds = $MaxRowsLoopBenchmarkSeconds
+        generic_read_seconds = $genericReadSeconds
+        generic_read_gate_seconds = $MaxGenericReadBenchmarkSeconds
     } | ConvertTo-Json -Compress
 }
 catch {

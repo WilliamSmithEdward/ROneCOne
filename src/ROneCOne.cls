@@ -287,7 +287,18 @@ Private mQueryComparer As ROneCOne
 Private mQueryValue As ROneCOne
 Private mQueryCount As Long
 Private mVersion As Long
+Private mDataVersion As Long
 Private mEnumerationVersion As Long
+Private mRowsSnapshot As ROneCOne
+Private mRowsSnapshotVersion As Long
+Private mColumnsSnapshot As ROneCOne
+Private mColumnsSnapshotVersion As Long
+Private mTablesSnapshot As ROneCOne
+Private mTablesSnapshotVersion As Long
+Private mRelationsSnapshot As ROneCOne
+Private mRelationsSnapshotVersion As Long
+Private mPrimaryKeySnapshot As ROneCOne
+Private mPrimaryKeySnapshotVersion As Long
 Private mElementParameter As ROneCOne
 Private mContextMemberPath As String
 Private mCollectionKind As Long
@@ -1556,6 +1567,8 @@ End Property
 
 Public Sub AddColumn(ByVal column As ROneCOne)
 Attribute AddColumn.VB_Description = "Adds a DataColumn to a DataTable schema."
+    Dim index As Long
+
     RequireDataTable Me, "AddColumn"
     RequireDataColumn column, "AddColumn"
     If FindNamedObjectIndex(ArrSnapshot(mKeys, mKeysCount), column.ColumnName) >= 0 Then
@@ -1568,6 +1581,12 @@ Attribute AddColumn.VB_Description = "Adds a DataColumn to a DataTable schema."
     End If
     column.ConfigureReadOnlySource Me
     ArrAppend mKeys, mKeysCount, column
+    ' Rows must stay exactly as wide as the schema, so a column added after
+    ' rows exist backfills every row with the column's default cell.
+    For index = 1 To mItemsCount
+        mItems(index).InternalAppendRowCell DefaultDataColumnValue(column)
+    Next index
+    mVersion = mVersion + 1
 End Sub
 
 Public Function Column( _
@@ -1987,6 +2006,7 @@ Attribute AddTable.VB_Description = "Adds a DataTable to a DataSet."
     End If
     table.ConfigureReadOnlySource Me
     mDataTables.Add table
+    mVersion = mVersion + 1
 End Sub
 
 Public Sub AddRelation(ByVal relation As ROneCOne)
@@ -2003,18 +2023,32 @@ Attribute AddRelation.VB_Description = "Adds a DataRelation to a DataSet."
     ValidateRelationOwnership relation
     relation.ConfigureReadOnlySource Me
     mDataRelations.Add relation
+    mVersion = mVersion + 1
 End Sub
 
 Public Property Get Columns() As ROneCOne
 Attribute Columns.VB_Description = "Gets the named DataColumn collection."
     RequireDataTable Me, "Columns"
-    Set Columns = CreateNamedDataCollection(ArrSnapshot(mKeys, mKeysCount))
+    ' Snapshot properties cache the built list against the structural version
+    ' so a positional loop pays for one build, not one per access. Field-level
+    ' edits advance only the data version and leave these caches valid.
+    If mColumnsSnapshot Is Nothing Or mColumnsSnapshotVersion <> mVersion Then
+        Set mColumnsSnapshot = CreateNamedDataCollection( _
+            ArrSnapshot(mKeys, mKeysCount))
+        mColumnsSnapshotVersion = mVersion
+    End If
+    Set Columns = mColumnsSnapshot
 End Property
 
 Public Property Get Rows() As ROneCOne
 Attribute Rows.VB_Description = "Gets the DataRow collection."
     RequireDataTable Me, "Rows"
-    Set Rows = CreateObjectListSnapshot(ArrSnapshot(mItems, mItemsCount))
+    If mRowsSnapshot Is Nothing Or mRowsSnapshotVersion <> mVersion Then
+        Set mRowsSnapshot = CreateObjectListSnapshot( _
+            ArrSnapshot(mItems, mItemsCount))
+        mRowsSnapshotVersion = mVersion
+    End If
+    Set Rows = mRowsSnapshot
 End Property
 
 Public Property Get Tables() As ROneCOne
@@ -2023,7 +2057,11 @@ Attribute Tables.VB_Description = "Gets the named DataTable collection."
         RaiseContractError ERROR_INVALID_OPERATION, "Tables", _
             "Tables requires a DataSet."
     End If
-    Set Tables = CreateNamedDataCollection(mDataTables)
+    If mTablesSnapshot Is Nothing Or mTablesSnapshotVersion <> mVersion Then
+        Set mTablesSnapshot = CreateNamedDataCollection(mDataTables)
+        mTablesSnapshotVersion = mVersion
+    End If
+    Set Tables = mTablesSnapshot
 End Property
 
 Public Property Get Relations() As ROneCOne
@@ -2032,13 +2070,23 @@ Attribute Relations.VB_Description = "Gets the named DataRelation collection."
         RaiseContractError ERROR_INVALID_OPERATION, "Relations", _
             "Relations requires a DataSet."
     End If
-    Set Relations = CreateNamedDataCollection(mDataRelations)
+    If mRelationsSnapshot Is Nothing Or _
+        mRelationsSnapshotVersion <> mVersion Then
+        Set mRelationsSnapshot = CreateNamedDataCollection(mDataRelations)
+        mRelationsSnapshotVersion = mVersion
+    End If
+    Set Relations = mRelationsSnapshot
 End Property
 
 Public Property Get PrimaryKey() As ROneCOne
 Attribute PrimaryKey.VB_Description = "Gets or sets the DataTable primary-key columns."
     RequireDataTable Me, "PrimaryKey"
-    Set PrimaryKey = CreateObjectListSnapshot(mPrimaryKey)
+    If mPrimaryKeySnapshot Is Nothing Or _
+        mPrimaryKeySnapshotVersion <> mVersion Then
+        Set mPrimaryKeySnapshot = CreateObjectListSnapshot(mPrimaryKey)
+        mPrimaryKeySnapshotVersion = mVersion
+    End If
+    Set PrimaryKey = mPrimaryKeySnapshot
 End Property
 
 Public Property Set PrimaryKey(ByVal columns As ROneCOne)
@@ -2063,6 +2111,7 @@ Public Property Set PrimaryKey(ByVal columns As ROneCOne)
         column.ConfigurePrimaryKeyColumn (mPrimaryKey.Count = 1)
     Next column
     RebuildPrimaryKeyIndex
+    mVersion = mVersion + 1
 End Property
 
 Public Function Find(ParamArray keys() As Variant) As ROneCOne
@@ -2187,6 +2236,7 @@ Attribute WithFilter.VB_Description = "Applies a typed filter to a DataView."
             "WithFilter requires a DataView."
     End If
     Set mQueryDelegate = NormalizeContextUnary(predicate, "WithFilter", False)
+    mVersion = mVersion + 1
     Set WithFilter = Me
 End Function
 
@@ -2201,6 +2251,7 @@ Attribute WithSort.VB_Description = "Applies one typed sort key to a DataView."
     End If
     Set mKeySelector = NormalizeContextUnary(keySelector, "WithSort", False)
     mExpressionOption = Abs(CLng(descending))
+    mVersion = mVersion + 1
     Set WithSort = Me
 End Function
 
@@ -3334,7 +3385,6 @@ Attribute Add.VB_Description = "Adds a list item or creates an addition expressi
         End If
         Set wrapped = WrapElement(operand, "Add")
         ArrAppend mItems, mItemsCount, wrapped
-        AddUnwrappedValue mEnumerationValues, wrapped
         mVersion = mVersion + 1
         Set Add = Me
     ElseIf mRole = ROLE_IMMUTABLE Then
@@ -3787,6 +3837,10 @@ Attribute Count.VB_Description = "Counts every element or only predicate matches
     Dim values As Collection
     Dim wrapped As ROneCOne
 
+    If mRole = ROLE_LIST And IsMissing(predicate) Then
+        Count = mItemsCount
+        Exit Property
+    End If
     If IsGenericCollectionRole(mRole) And IsMissing(predicate) Then
         If mCollectionKind = COLLECTION_READ_ONLY Then
             Count = mSource.Count
@@ -3886,7 +3940,6 @@ Attribute AddRange.VB_Description = "Atomically appends a sequence, array, or Co
     Next wrapped
     For Each wrapped In incoming
         ArrAppend mItems, mItemsCount, wrapped
-        AddUnwrappedValue mEnumerationValues, wrapped
     Next wrapped
     If incoming.Count > 0 Then mVersion = mVersion + 1
 End Sub
@@ -3909,7 +3962,7 @@ Attribute Clear.VB_Description = "Removes every item from this typed list."
     End If
     RequireList Me, "Clear"
     ArrReset mItems, mItemsCount
-    Set mEnumerationValues = New Collection
+    Set mEnumerationValues = Nothing
     mVersion = mVersion + 1
 End Sub
 
@@ -4027,10 +4080,8 @@ Attribute Insert.VB_Description = "Inserts a typed item at a zero-based list ind
     Set wrapped = WrapElement(value, "Insert")
     If index = mItemsCount Then
         ArrAppend mItems, mItemsCount, wrapped
-        AddUnwrappedValue mEnumerationValues, wrapped
     Else
         ArrInsert mItems, mItemsCount, index + 1, wrapped
-        AddUnwrappedValue mEnumerationValues, wrapped, index + 1
     End If
     mVersion = mVersion + 1
 End Sub
@@ -4107,7 +4158,6 @@ Attribute RemoveAt.VB_Description = "Removes the item at a zero-based list index
     RequireList Me, "RemoveAt"
     ValidateIndex index, mItemsCount, "RemoveAt"
     ArrRemoveAt mItems, mItemsCount, index + 1
-    mEnumerationValues.Remove index + 1
     mVersion = mVersion + 1
 End Sub
 
@@ -4633,7 +4683,12 @@ Attribute TryUpdate.VB_Description = "Updates a concurrent value after compariso
     End If
     Set expected = WrapElement(comparisonValue, "TryUpdate")
     If Not ValuesEqual(selected, expected) Then Exit Function
-    ReplaceCollectionItem itemIndex, WrapElement(newValue, "TryUpdate")
+    If HashIndexSupported Then
+        ReplaceKeyedValueAtSlot itemIndex, slot, _
+            WrapElement(newValue, "TryUpdate")
+    Else
+        ReplaceCollectionItem itemIndex, WrapElement(newValue, "TryUpdate")
+    End If
     TryUpdate = True
 End Function
 
@@ -4647,8 +4702,22 @@ Attribute AddOrUpdate.VB_Description = "Adds a concurrent value or replaces the 
     Dim keyWrapped As ROneCOne
     Dim selected As ROneCOne
 
+    Dim slot As Long
+
     RequireConcurrentDictionary "AddOrUpdate"
     Set keyWrapped = WrapKey(key, "AddOrUpdate")
+    If HashIndexSupported Then
+        slot = FindHashSlot(keyWrapped, "AddOrUpdate")
+        If slot < 0 Then
+            Set selected = WrapElement(addValue, "AddOrUpdate")
+            AddDictionaryPair keyWrapped, selected, "AddOrUpdate"
+        Else
+            Set selected = WrapElement(updateValue, "AddOrUpdate")
+            ReplaceKeyedValueAtSlot mHashSlots(slot) - 1, slot, selected
+        End If
+        AssignPublicResult AddOrUpdate, selected
+        Exit Function
+    End If
     itemIndex = FindKeyIndex(keyWrapped, "AddOrUpdate")
     If itemIndex < 0 Then
         Set selected = WrapElement(addValue, "AddOrUpdate")
@@ -6256,8 +6325,8 @@ End Function
 Public Property Get NewEnum() As IUnknown
 Attribute NewEnum.VB_Description = "Gets the VBA For Each enumerator for this sequence."
 Attribute NewEnum.VB_UserMemId = -4
-    If mRole = ROLE_QUERY Or mRole = ROLE_DATA_VIEW Or _
-        IsGenericCollectionRole(mRole) Then
+    If mRole = ROLE_LIST Or mRole = ROLE_QUERY Or _
+        mRole = ROLE_DATA_VIEW Or IsGenericCollectionRole(mRole) Then
         If mEnumerationValues Is Nothing Or _
             mEnumerationVersion <> InternalSequenceVersion Then
             Set mEnumerationValues = MaterializeValues
@@ -7234,7 +7303,7 @@ Friend Sub ConfigureList( _
     mElementType = elementType
     mElementObjectType = elementObjectType
     ArrReset mItems, mItemsCount
-    Set mEnumerationValues = New Collection
+    Set mEnumerationValues = Nothing
     mEnumerationVersion = 0
 End Sub
 
@@ -7281,7 +7350,7 @@ Friend Sub ConfigureGenericCollection( _
     ArrReset mItems, mItemsCount
     ArrReset mKeys, mKeysCount
     ArrReset mPriorities, mPrioritiesCount
-    Set mEnumerationValues = New Collection
+    Set mEnumerationValues = Nothing
     If HashIndexSupported Then RebuildHashIndex 8
 End Sub
 
@@ -7652,8 +7721,18 @@ Friend Sub ConfigureRowState(ByVal rowState As Long)
     mRowState = rowState
 End Sub
 
+Friend Sub InternalAppendRowCell(ByVal wrapped As ROneCOne)
+    ArrAppend mItems, mItemsCount, wrapped
+    If mOriginalItemsCount > 0 Then
+        ArrAppend mOriginalItems, mOriginalItemsCount, wrapped
+    End If
+End Sub
+
 Friend Sub TouchDataVersion()
-    mVersion = mVersion + 1
+    ' Field edits and row-state changes advance the data version only, so
+    ' views and enumerations refresh while structural snapshot caches (whose
+    ' membership did not change) survive. Membership changes advance mVersion.
+    mDataVersion = mDataVersion + 1
 End Sub
 
 Friend Sub ConfigureUniqueColumn()
@@ -7893,7 +7972,6 @@ End Sub
 Friend Sub InternalAddWrapped(ByVal wrapped As ROneCOne)
     ValidateElementWrapped wrapped, "ToList"
     ArrAppend mItems, mItemsCount, wrapped
-    AddUnwrappedValue mEnumerationValues, wrapped
     mVersion = mVersion + 1
 End Sub
 
@@ -7910,9 +7988,11 @@ Attribute InternalSequenceVersion.VB_MemberFlags = "40"
             InternalSequenceVersion = mVersion
         End If
     ElseIf mRole = ROLE_DATA_VIEW Then
-        InternalSequenceVersion = mSource.InternalSequenceVersion
+        ' A view changes when its table changes or when its own filter or
+        ' sort is replaced, so both counters feed the staleness key.
+        InternalSequenceVersion = mSource.InternalSequenceVersion + mVersion
     ElseIf mRole = ROLE_DATA_TABLE Then
-        InternalSequenceVersion = mVersion
+        InternalSequenceVersion = mVersion + mDataVersion
     End If
 End Property
 
@@ -8480,7 +8560,6 @@ Private Function RemoveListItem(ByVal value As Variant) As Boolean
     index = IndexOf(value)
     If index >= 0 Then
         ArrRemoveAt mItems, mItemsCount, index + 1
-        mEnumerationValues.Remove index + 1
         mVersion = mVersion + 1
         RemoveListItem = True
     End If
@@ -11006,6 +11085,19 @@ Private Sub RefreshHashSlotValue( _
     Set mHashValues(slot) = valueWrapped
 End Sub
 
+Private Sub ReplaceKeyedValueAtSlot( _
+    ByVal itemIndex As Long, _
+    ByVal slot As Long, _
+    ByVal wrapped As ROneCOne _
+)
+    ' The caller's probe already located the slot, so a keyed value update is
+    ' one array write and one slot write with no second probe.
+    ArrReplaceAt mItems, itemIndex + 1, wrapped
+    Set mHashValues(slot) = wrapped
+    mVersion = mVersion + 1
+    NotifyCollectionChanged "Replace"
+End Sub
+
 Private Sub RemoveHashIndexEntry(ByVal index As Long)
     Dim slot As Long
     Dim wrapped As ROneCOne
@@ -11396,6 +11488,8 @@ Friend Function FindElementIndex( _
     ByVal candidate As ROneCOne, _
     ByVal memberName As String _
 ) As Long
+    Dim index As Long
+
     If IsSortedSetKind(mCollectionKind) Then
         FindElementIndex = FindSortedValueIndex(mItems, mItemsCount, candidate, memberName)
         Exit Function
@@ -11404,8 +11498,22 @@ Friend Function FindElementIndex( _
         FindElementIndex = FindHashIndex(candidate, memberName)
         Exit Function
     End If
-    FindElementIndex = FindWrappedInCollection( _
-        ArrSnapshot(mItems, mItemsCount), candidate, memberName)
+    ' Custom-comparer collections scan the element array directly instead of
+    ' allocating a snapshot Collection for every membership test.
+    FindElementIndex = -1
+    For index = 1 To mItemsCount
+        If CollectionUsesEquality(mCollectionKind) Then
+            If ValuesEqualWithComparer(mItems(index), candidate, _
+                mQueryComparer, memberName) Then
+                FindElementIndex = index - 1
+                Exit Function
+            End If
+        ElseIf CompareWithComparer(mItems(index), candidate, _
+            mQueryComparer, memberName) = 0 Then
+            FindElementIndex = index - 1
+            Exit Function
+        End If
+    Next index
 End Function
 
 Private Function FindWrappedInCollection( _
@@ -11491,6 +11599,7 @@ Private Sub SetItemValue(ByVal index As Variant, ByVal value As Variant)
     Dim itemIndex As Long
     Dim keyWrapped As ROneCOne
     Dim replacement As ROneCOne
+    Dim slot As Long
 
     If mRole = ROLE_DATA_ROW Then
         SetDataRowItem index, value
@@ -11500,6 +11609,15 @@ Private Sub SetItemValue(ByVal index As Variant, ByVal value As Variant)
         RequireMutableCollection "Item"
         Set keyWrapped = WrapKey(index, "Item")
         Set replacement = WrapElement(value, "Item")
+        If HashIndexSupported Then
+            slot = FindHashSlot(keyWrapped, "Item")
+            If slot < 0 Then
+                AddDictionaryPair keyWrapped, replacement, "Item"
+            Else
+                ReplaceKeyedValueAtSlot mHashSlots(slot) - 1, slot, replacement
+            End If
+            Exit Sub
+        End If
         itemIndex = FindKeyIndex(keyWrapped, "Item")
         If itemIndex < 0 Then
             AddDictionaryPair keyWrapped, replacement, "Item"
@@ -12202,14 +12320,29 @@ Private Sub RaiseIndexError(ByVal memberName As String, ByVal index As Long)
         "Index " & CStr(index) & " is outside the sequence."
 End Sub
 
-Private Function WrappedItem(ByVal index As Long) As ROneCOne
+Friend Function WrappedItem(ByVal index As Long) As ROneCOne
     Dim values As Collection
 
-    ' A materialized list indexes its backing array directly in O(1). Only a
-    ' deferred query has to materialize to resolve a positional element.
+    ' Materialized stores index their backing arrays directly in O(1). Only a
+    ' deferred query or live view materializes per read, which is the price
+    ' of always reflecting the latest data.
     If mRole = ROLE_LIST Then
         ValidateIndex index, mItemsCount, "Item"
         Set WrappedItem = mItems(index + 1)
+        Exit Function
+    End If
+    If IsGenericCollectionRole(mRole) Then
+        If mCollectionKind = COLLECTION_READ_ONLY Then
+            Set WrappedItem = mSource.WrappedItem(index)
+            Exit Function
+        End If
+        ValidateIndex index, mItemsCount, "Item"
+        If IsDictionaryCollection Then
+            Set WrappedItem = CreateDictionaryEntry( _
+                mKeys(index + 1), mItems(index + 1))
+        Else
+            Set WrappedItem = mItems(index + 1)
+        End If
         Exit Function
     End If
     Set values = MaterializeWrapped
@@ -12221,7 +12354,6 @@ Private Sub ReplaceItem(ByVal index As Long, ByVal wrapped As ROneCOne)
     RequireList Me, "Item"
     ValidateIndex index, mItemsCount, "Item"
     ArrReplaceAt mItems, index + 1, wrapped
-    Set mEnumerationValues = MaterializeValues
     mVersion = mVersion + 1
 End Sub
 
@@ -12641,8 +12773,7 @@ End Function
 
 Private Sub AddUnwrappedValue( _
     ByVal values As Collection, _
-    ByVal wrapped As ROneCOne, _
-    Optional ByVal beforePosition As Long = 0 _
+    ByVal wrapped As ROneCOne _
 )
     Dim actualObject As Object
     Dim actualValue As Variant
@@ -12653,11 +12784,7 @@ Private Sub AddUnwrappedValue( _
     Else
         actualValue = wrapped.InternalScalarValue
     End If
-    If beforePosition > 0 Then
-        values.Add actualValue, Before:=beforePosition
-    Else
-        values.Add actualValue
-    End If
+    values.Add actualValue
 End Sub
 
 Private Function ApplyWhere( _

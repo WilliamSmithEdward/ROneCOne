@@ -24,6 +24,8 @@ Public Sub RunROneCOneCollectionTests()
     TestIndexedAccessScales
     mCurrentTest = "TestKeyedMutationConsistency"
     TestKeyedMutationConsistency
+    mCurrentTest = "TestListMirrorConsistency"
+    TestListMirrorConsistency
     mCurrentTest = "TestUserClassList"
     TestUserClassList
     mCurrentTest = "TestUserClassLinq"
@@ -472,11 +474,19 @@ Public Sub RunROneCOneCollectionBenchmark()
     Dim started As Double
     Dim values As ROneCOne
     Dim x As ROneCOne
+    Dim genericReadCheck As Long
+    Dim genericReadElapsed As Double
     Dim hashElapsed100K As Double
     Dim hashElapsed10K As Double
+    Dim hashSet As ROneCOne
     Dim index As Long
     Dim lastValue As Long
+    Dim listWriteCheck As Long
+    Dim listWriteElapsed As Double
     Dim mutationElapsed As Double
+    Dim rowsLoopElapsed As Double
+    Dim rowsTotal As Long
+    Dim table As ROneCOne
 
     Set x = ROneCOne.Parameter(vbLong)
     started = Timer
@@ -538,6 +548,49 @@ Public Sub RunROneCOneCollectionBenchmark()
     mutationElapsed = Timer - started
     If mutationElapsed < 0 Then mutationElapsed = mutationElapsed + 86400#
 
+    ' List write scenario: 10,000 indexed assignments over a 10,000-element
+    ' list. Each write must touch only its array slot, never rebuild the
+    ' For Each mirror.
+    Set values = ROneCOne.ListOf(vbLong)
+    For index = 1 To 10000
+        values.Add index
+    Next index
+    started = Timer
+    For index = 0 To 9999
+        values.Item(index) = index * 2&
+    Next index
+    listWriteElapsed = Timer - started
+    If listWriteElapsed < 0 Then listWriteElapsed = listWriteElapsed + 86400#
+    listWriteCheck = values.Item(9999)
+
+    ' Rows loop scenario: 2,000 positional row reads through table.Rows. The
+    ' snapshot list must be version-cached, not rebuilt on every access.
+    Set table = ROneCOne.DataTable("BenchmarkRows")
+    table.Column "Id", vbLong
+    For index = 1 To 2000
+        table.LoadRow Array(index)
+    Next index
+    started = Timer
+    rowsTotal = 0
+    For index = 0 To 1999
+        rowsTotal = rowsTotal + CLng(table.Rows.Item(index).Item("Id"))
+    Next index
+    rowsLoopElapsed = Timer - started
+    If rowsLoopElapsed < 0 Then rowsLoopElapsed = rowsLoopElapsed + 86400#
+
+    ' Generic positional-read scenario: 10,000 indexed reads over a hash set.
+    ' A materialized collection must index its own array directly.
+    Set hashSet = ROneCOne.HashSetOf(vbLong)
+    For index = 1 To 10000
+        hashSet.Add index
+    Next index
+    started = Timer
+    For index = 0 To 9999
+        genericReadCheck = hashSet.Item(index)
+    Next index
+    genericReadElapsed = Timer - started
+    If genericReadElapsed < 0 Then genericReadElapsed = genericReadElapsed + 86400#
+
     With ThisWorkbook.Worksheets("Collection Benchmarks")
         .Range("B2").Value2 = 10000
         .Range("B3").Value2 = elapsed
@@ -554,6 +607,15 @@ Public Sub RunROneCOneCollectionBenchmark()
         .Range("B14").Value2 = 12000
         .Range("B15").Value2 = mutationElapsed
         .Range("B16").Value2 = dictionary.Count
+        .Range("B17").Value2 = 10000
+        .Range("B18").Value2 = listWriteElapsed
+        .Range("B19").Value2 = listWriteCheck
+        .Range("B20").Value2 = 2000
+        .Range("B21").Value2 = rowsLoopElapsed
+        .Range("B22").Value2 = rowsTotal
+        .Range("B23").Value2 = 10000
+        .Range("B24").Value2 = genericReadElapsed
+        .Range("B25").Value2 = genericReadCheck
     End With
 End Sub
 
@@ -625,6 +687,66 @@ Private Sub TestKeyedMutationConsistency()
     dictionary.Item(0) = 9&
     AssertTrue "mutation set replacement present", dictionary.Contains(9&)
     AssertFalse "mutation set replacement removed", dictionary.Contains(1&)
+End Sub
+
+Private Sub TestListMirrorConsistency()
+    Dim joined As String
+    Dim total As Long
+    Dim value As Variant
+    Dim values As ROneCOne
+
+    ' The For Each mirror is rebuilt lazily from the element array, so every
+    ' structural mutation must be visible to the next enumeration.
+    Set values = ROneCOne.ListOf(vbLong, CLng(1), CLng(2), CLng(3))
+    total = 0
+    For Each value In values
+        total = total + CLng(value)
+    Next value
+    AssertEqual "mirror initial enumeration", 6&, total
+
+    ' An indexed write must show its new value on the next For Each.
+    values.Item(1) = 20&
+    joined = vbNullString
+    For Each value In values
+        joined = joined & CStr(value) & ";"
+    Next value
+    AssertEqual "mirror after indexed write", "1;20;3;", joined
+
+    ' Insert, RemoveAt, and Remove keep enumeration order and membership.
+    values.Insert 0, 9&
+    joined = vbNullString
+    For Each value In values
+        joined = joined & CStr(value) & ";"
+    Next value
+    AssertEqual "mirror after insert", "9;1;20;3;", joined
+    values.RemoveAt 0
+    values.Remove 20&
+    joined = vbNullString
+    For Each value In values
+        joined = joined & CStr(value) & ";"
+    Next value
+    AssertEqual "mirror after removals", "1;3;", joined
+
+    ' AddRange appends atomically; Clear empties the next enumeration.
+    values.AddRange Array(CLng(7), CLng(8))
+    total = 0
+    For Each value In values
+        total = total + CLng(value)
+    Next value
+    AssertEqual "mirror after AddRange", 19&, total
+    values.Clear
+    total = 0
+    For Each value In values
+        total = total + 1
+    Next value
+    AssertEqual "mirror after Clear", 0&, total
+    values.Add 5&
+    total = 0
+    For Each value In values
+        total = total + CLng(value)
+    Next value
+    AssertEqual "mirror after re-add", 5&, total
+    AssertEqual "list count fast path", 1&, values.Count
 End Sub
 
 Private Sub TestCompleteLinqSurface()

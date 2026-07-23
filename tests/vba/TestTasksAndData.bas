@@ -34,6 +34,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestAdvancedDataTable
     mCurrentTest = "TestDataViewAndMerge"
     TestDataViewAndMerge
+    mCurrentTest = "TestSnapshotCachingAndViewRefresh"
+    TestSnapshotCachingAndViewRefresh
     mCurrentTest = "TestRangeBridge"
     TestRangeBridge
     mCurrentTest = "TestRelationConstraints"
@@ -60,6 +62,68 @@ FatalFailure:
         .Range("B5").Value2 = mCurrentTest & " | " & CStr(capturedNumber) & _
             " | " & capturedSource & " | " & capturedDescription
     End With
+End Sub
+
+Private Sub TestSnapshotCachingAndViewRefresh()
+    Dim enumerated As Long
+    Dim row As Variant
+    Dim Score As Variant
+    Dim table As ROneCOne
+    Dim view As ROneCOne
+
+    ' Structural snapshot caching: repeated Rows access serves the cached
+    ' snapshot, a row add refreshes it, and a field edit stays visible through
+    ' the shared row references without invalidating the snapshot.
+    mCurrentTest = "TestSnapshotCachingAndViewRefresh:rows"
+    Set table = ROneCOne.DataTable("SnapshotCache")
+    table.Column "Score", vbLong
+    table.LoadRow Array(60&)
+    table.LoadRow Array(80&)
+    AssertEqual "rows snapshot count", 2&, table.Rows.Count
+    table.LoadRow Array(95&)
+    AssertEqual "rows snapshot refresh on add", 3&, table.Rows.Count
+    table.Rows.Item(0).Item("Score") = 65&
+    AssertEqual "field edit via cached snapshot", 65&, _
+        CLng(table.Rows.Item(0).Item("Score"))
+
+    ' Schema snapshot caching follows column adds.
+    mCurrentTest = "TestSnapshotCachingAndViewRefresh:columns"
+    AssertEqual "columns snapshot count", 1&, table.Columns.Count
+    table.Column "Note", vbString
+    AssertEqual "columns snapshot refresh", 2&, table.Columns.Count
+    AssertTrue "late column backfilled", _
+        IsNull(table.Rows.Item(0).Item("Note"))
+
+    ' Re-filtering an already-read view must refresh its enumeration and
+    ' count; this pinned a live staleness bug in WithFilter and WithSort.
+    mCurrentTest = "TestSnapshotCachingAndViewRefresh:viewBuild"
+    Set view = ROneCOne.DataView(table) _
+        .WithFilter(table.Rows!Score.AtLeast(60&)) _
+        .WithSort("Score", True)
+    AssertEqual "view count before refilter", 3&, view.Count
+    mCurrentTest = "TestSnapshotCachingAndViewRefresh:viewEnum"
+    enumerated = 0
+    For Each row In view
+        enumerated = enumerated + 1
+    Next row
+    AssertEqual "view enumeration before refilter", 3&, enumerated
+    mCurrentTest = "TestSnapshotCachingAndViewRefresh:refilter"
+    view.WithFilter table.Rows!Score.AtLeast(80&)
+    AssertEqual "view count after refilter", 2&, view.Count
+    mCurrentTest = "TestSnapshotCachingAndViewRefresh:refilterEnum"
+    enumerated = 0
+    For Each row In view
+        enumerated = enumerated + 1
+    Next row
+    AssertEqual "view enumeration after refilter", 2&, enumerated
+    AssertEqual "view top row after refilter", 95&, _
+        CLng(view.Item(0).Item("Score"))
+
+    ' A row edit that changes filter membership reaches the view through the
+    ' data version even though the row set did not change structurally.
+    mCurrentTest = "TestSnapshotCachingAndViewRefresh:fieldEdit"
+    table.Rows.Item(0).Item("Score") = 99&
+    AssertEqual "view count after field edit", 3&, view.Count
 End Sub
 
 Private Sub TestExistingRelationValidation()

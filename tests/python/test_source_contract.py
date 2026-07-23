@@ -621,6 +621,63 @@ class SourceContractTests(unittest.TestCase):
             "EnsureHashIndexCurrent", function_body("FindHashSlotByKey")
         )
 
+    def test_positional_access_and_snapshots_are_version_cached(self) -> None:
+        def sub_body(name: str) -> str:
+            match = re.search(
+                rf"^(?:Friend|Private|Public) Sub {name}\(.*?^End Sub",
+                self.source,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+            self.assertIsNotNone(match, name)
+            assert match is not None
+            return match.group(0)
+
+        def function_body(name: str) -> str:
+            match = re.search(
+                rf"^(?:Friend|Private|Public) Function {name}\(.*?^End Function",
+                self.source,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+            self.assertIsNotNone(match, name)
+            assert match is not None
+            return match.group(0)
+
+        # Lists enumerate through the lazy version-checked mirror; no eager
+        # mirror maintenance remains anywhere in the runtime.
+        self.assertNotIn("AddUnwrappedValue mEnumerationValues", self.source)
+        self.assertNotIn("mEnumerationValues.Remove", self.source)
+        self.assertIn(
+            "If mRole = ROLE_LIST Or mRole = ROLE_QUERY Or _", self.source
+        )
+
+        # Data snapshot properties cache against the structural version, and
+        # field edits advance only the data version so those caches survive.
+        for member in (
+            "Private mDataVersion As Long",
+            "Private mRowsSnapshot As ROneCOne",
+            "Private mColumnsSnapshot As ROneCOne",
+            "Private mTablesSnapshot As ROneCOne",
+            "Private mRelationsSnapshot As ROneCOne",
+            "Private mPrimaryKeySnapshot As ROneCOne",
+        ):
+            self.assertIn(member, self.source)
+        self.assertIn("mRowsSnapshotVersion <> mVersion", self.source)
+        touch_body = sub_body("TouchDataVersion")
+        self.assertIn("mDataVersion = mDataVersion + 1", touch_body)
+        self.assertNotIn("mVersion = mVersion + 1", touch_body)
+
+        # Materialized generic collections index their arrays directly;
+        # only deferred queries and live views materialize per read.
+        wrapped_body = function_body("WrappedItem")
+        self.assertIn("IsGenericCollectionRole(mRole)", wrapped_body)
+        self.assertIn("CreateDictionaryEntry", wrapped_body)
+
+        # Replacing a view's filter or sort advances the view version, and a
+        # late column backfills every existing row with its default cell.
+        self.assertIn("mVersion = mVersion + 1", function_body("WithFilter"))
+        self.assertIn("mVersion = mVersion + 1", function_body("WithSort"))
+        self.assertIn("InternalAppendRowCell", sub_body("AddColumn"))
+
     def test_worksheet_range_bridge_is_present(self) -> None:
         for member in (
             "DataTableFromRange",
