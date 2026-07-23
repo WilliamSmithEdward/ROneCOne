@@ -85,9 +85,10 @@ Set task = client.GetAsync("pokemon/eevee", source.Token)
 source.Cancel          ' aborts the transfer; the task reports IsCanceled
 ```
 
-`PostAsync`, `PutAsync`, `DeleteAsync`, and `SendAsync` cover the other verbs, and every verb
-accepts the same cancellation tokens as the rest of the task surface. `GetByteArrayAsync`
-downloads binary content.
+`PostAsync`, `PutAsync`, `PatchAsync`, and `DeleteAsync` cover the named verbs;
+`SendAsync("REPORT", url)` sends any method a server understands, standard or custom. Every
+verb accepts the same cancellation tokens as the rest of the task surface, and
+`GetByteArrayAsync` downloads binary content.
 
 The client only ever contacts URLs you pass it. The runtime itself never transmits anything.
 

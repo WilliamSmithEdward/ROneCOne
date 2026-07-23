@@ -139,6 +139,12 @@ Private Sub TestHttpSurface()
     Set response = client.SendAsync("POST", "pokemon", _
         "{""probe"":true}", "application/json").Await
     AssertTrue "http post reaches server", response.StatusCode >= 400
+    Set response = client.PatchAsync("pokemon/pikachu", _
+        "{""probe"":true}", "application/json").Await
+    AssertTrue "http patch reaches server", response.StatusCode >= 400
+    ' A verb WinHTTP has no name for still transmits; the server answers it.
+    Set response = client.SendAsync("FROBNICATE", "pokemon/pikachu").Await
+    AssertEqual "http custom verb reaches server", 405&, response.StatusCode
 
     mCurrentTest = "TestHttpSurface:cancellation"
     Set source = ROneCOne.CancellationTokenSource

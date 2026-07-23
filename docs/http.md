@@ -29,8 +29,9 @@ error number `ROneCOne.HttpRequestError` and source `ROneCOne.HttpRequestExcepti
 | `GetByteArrayAsync(url, [token])` | Task of a byte array; faults on non-2xx like `GetStringAsync` |
 | `PostAsync(url, body, [contentType], [token])` | Task of `HttpResponse`; sets `Content-Type` only when given |
 | `PutAsync(url, body, [contentType], [token])` | Task of `HttpResponse` |
+| `PatchAsync(url, body, [contentType], [token])` | Task of `HttpResponse` |
 | `DeleteAsync(url, [token])` | Task of `HttpResponse` |
-| `SendAsync(method, url, [body], [contentType], [token])` | Any HTTP method, uppercased; body sent only when supplied |
+| `SendAsync(method, url, [body], [contentType], [token])` | Any method, standard or custom, uppercased; body sent only when supplied. WinHTTP imposes no verb blocklist, so OPTIONS, HEAD, and site-specific verbs all transmit |
 
 ## Response surface
 

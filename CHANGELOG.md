@@ -51,8 +51,9 @@ checksums for each version are on the
 
 - An awaitable HTTP client shaped like System.Net.Http: `ROneCOne.HttpClient()` with
   `BaseAddress`, `Timeout`, and `DefaultRequestHeader`; `GetAsync`, `GetStringAsync`,
-  `GetByteArrayAsync`, `PostAsync`, `PutAsync`, `DeleteAsync`, and `SendAsync`, each returning
-  a cooperative Task; and an `HttpResponse` with `StatusCode`, `ReasonPhrase`,
+  `GetByteArrayAsync`, `PostAsync`, `PutAsync`, `PatchAsync`, `DeleteAsync`, and `SendAsync`
+  (which transmits any method, standard or custom), each returning a cooperative Task; and an
+  `HttpResponse` with `StatusCode`, `ReasonPhrase`,
   `IsSuccessStatusCode`, `EnsureSuccessStatusCode`, `Content`, `Header`, and `AllHeaders`.
   Requests ride `WinHttp.WinHttpRequest.5.1` in process (no references or installs), overlap
   in flight under `WhenAll`, honor cancellation tokens by aborting the transport, and fault

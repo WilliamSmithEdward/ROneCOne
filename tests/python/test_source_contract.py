@@ -567,6 +567,7 @@ class SourceContractTests(unittest.TestCase):
             "Public Function GetByteArrayAsync(",
             "Public Function PostAsync(",
             "Public Function PutAsync(",
+            "Public Function PatchAsync(",
             "Public Function DeleteAsync(",
             "Public Function SendAsync(",
             "Public Function DefaultRequestHeader(",

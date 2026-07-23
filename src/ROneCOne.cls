@@ -2395,6 +2395,18 @@ Attribute PutAsync.VB_Description = "Starts a PUT request and returns a Task of 
         contentType, "Response", "PutAsync", cancellationToken)
 End Function
 
+Public Function PatchAsync( _
+    ByVal url As String, _
+    ByVal body As String, _
+    Optional ByVal contentType As String = vbNullString, _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute PatchAsync.VB_Description = "Starts a PATCH request and returns a Task of HttpResponse."
+    RequireHttpClient "PatchAsync"
+    Set PatchAsync = StartHttpSend("PATCH", url, body, True, _
+        contentType, "Response", "PatchAsync", cancellationToken)
+End Function
+
 Public Function DeleteAsync( _
     ByVal url As String, _
     Optional ByVal cancellationToken As ROneCOne _
