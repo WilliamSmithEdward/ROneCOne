@@ -178,6 +178,8 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("ROneCOne.Task.WhenAll(", source)
         self.assertIn("ROneCOne.HttpRequestError", source)
         self.assertIn("source.Token", source)
+        self.assertIn("ROneCOne.Json.Deserialize(pikachuJson)", source)
+        self.assertIn("ROneCOne.Json.DeserializeTable(", source)
         # The failure example catches at the await site, mirroring C#'s
         # try / await / catch; a named-procedure raise cannot cross the
         # Application.Run boundary.

@@ -185,6 +185,18 @@ const capabilities = [
         "client.BaseAddress = \"https://pokeapi.co/api/v2/\"\nSet berry = client.GetAsync(\"berry/1\").Await",
         true,
       ],
+      [
+        "Read one JSON field",
+        "JsonNode.Parse(json)[\"name\"]",
+        "Set tree = ROneCOne.Json.Deserialize(pikachuJson)\ntree.Item(\"name\")",
+        "pikachu",
+      ],
+      [
+        "Turn a response into a table",
+        "JsonSerializer.Deserialize<List<Ability>>(json)",
+        "Set abilities = ROneCOne.Json.DeserializeTable( _\n    pikachuJson, \"Abilities\", \"$.abilities\")",
+        true,
+      ],
     ],
   },
 ];

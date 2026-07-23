@@ -18,7 +18,9 @@ Option Explicit
 '
 ' The demo talks to https://pokeapi.co, a free public API about Pokemon.
 ' Nothing else is contacted, and the runtime itself never transmits anything.
-' Running it needs an internet connection.
+' Running it needs an internet connection. The last two examples hand the
+' downloaded JSON to ROneCOne.Json, turning it into a navigable tree and a
+' typed DataTable without any extra library.
 '
 ' To run it: press Alt+F8, choose RunROneCOneHttpDemo, and click Run.
 ' ============================================================================
@@ -48,15 +50,18 @@ DemoFailure:
 End Sub
 
 Private Sub WriteHttpExamples()
+    Dim abilities As ROneCOne
     Dim berry As ROneCOne
     Dim canceledError As Long
     Dim client As ROneCOne
     Dim json As String
     Dim missError As Long
+    Dim pikachuJson As String
     Dim replies As ROneCOne
     Dim response As ROneCOne
     Dim source As ROneCOne
     Dim task As ROneCOne
+    Dim tree As ROneCOne
 
     ' Step 1: create the client once and give it a base address, exactly like
     ' HttpClient in C#. Every request below can then use a short relative URL.
@@ -116,6 +121,15 @@ Private Sub WriteHttpExamples()
     ' test and production servers is one assignment, not a find-and-replace.
     Set berry = client.GetAsync("berry/1").Await
 
+    ' Downloaded JSON becomes usable data in two calls. Deserialize turns the
+    ' text into a navigable tree you can read by name, and DeserializeTable
+    ' lands an array of objects straight in a typed DataTable; from there,
+    ' ToRange could put the whole thing on a worksheet.
+    pikachuJson = client.GetStringAsync("pokemon/pikachu").Await
+    Set tree = ROneCOne.Json.Deserialize(pikachuJson)
+    Set abilities = ROneCOne.Json.DeserializeTable( _
+        pikachuJson, "Abilities", "$.abilities")
+
     ' Every example writes its answer next to what the sheet expects.
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
         .Range("E6").Value2 = CStr(response.StatusCode) & " " & _
@@ -130,6 +144,8 @@ Private Sub WriteHttpExamples()
         .Range("E12").Value2 = mTrace
         .Range("E13").Value2 = (task.IsCanceled And canceledError <> 0)
         .Range("E14").Value2 = (berry.StatusCode = 200)
+        .Range("E15").Value2 = CStr(tree.Item("name"))
+        .Range("E16").Value2 = (abilities.Rows.Count > 0)
     End With
 End Sub
 
