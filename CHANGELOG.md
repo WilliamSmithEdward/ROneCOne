@@ -10,6 +10,14 @@ checksums for each version are on the
 
 ### Added
 
+- Awaitable shell commands: `ROneCOne.Process.RunAsync(command, [workingDirectory],
+  [cancellationToken])` starts the command immediately through the Windows Script Host and
+  returns a Task whose result carries `ExitCode`, `StandardOutput`, and `StandardError`.
+  Output streams redirect to scratch files that the runtime reads and deletes, so no output
+  volume can deadlock Excel; several commands overlap under `WhenAll`; cancellation
+  terminates the process. A command that fails reports through its exit code like
+  System.Diagnostics.Process; only a start failure raises the typed `ROneCOne.ProcessError`.
+  See [ADR 0017](docs/decisions/0017-awaitable-processes-over-wscript-exec.md).
 - CSV exchange over the data layer: `table.ToCsv` and `ROneCOne.Csv.Serialize` write a
   DataTable or DataView to RFC 4180 text with minimal quoting, invariant numbers, ISO 8601
   dates, and a round-trippable distinction between database nulls (empty field) and empty

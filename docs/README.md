@@ -23,6 +23,7 @@ Start here if you write workbook code and want results quickly. The
 | [HTTP and web data](user-guide/http-and-web.md) | Call web APIs with awaitable requests |
 | [JSON and typed objects](user-guide/json-and-objects.md) | Parse, serialize, and bind JSON |
 | [Files and folders](user-guide/files-and-folders.md) | Read and write files with real encodings |
+| [Processes and commands](user-guide/processes-and-commands.md) | Await command lines with captured output |
 | [Practical reference](user-guide/reference.md) | Find names, defaults, and limits fast |
 
 ## Exact contracts
@@ -42,6 +43,7 @@ syntax. Each technical document links back to its user guide.
 | [JSON](json.md) | Model, strictness, serialization rules, table and object binding |
 | [Files](files.md) | Encodings, byte-order marks, failure contract, enumeration order |
 | [CSV](csv.md) | RFC 4180 writing and parsing, type inference, null and quoting rules |
+| [Processes](process.md) | Transport, output decoding, exit-code and failure contract |
 
 ## Understand the design
 

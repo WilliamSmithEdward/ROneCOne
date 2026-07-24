@@ -111,6 +111,7 @@ Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 | Binary files and management | `ReadAllBytes`, `WriteAllBytes`, `Exists`, `Copy`, `Move`, `Delete` |
 | Folders | `Directory.CreateDirectory`, `Exists`, `Delete`, `GetFiles`, `GetDirectories` |
 | Path text | `Path.Combine`, `GetFileName`, `GetDirectoryName`, `GetExtension`, `ChangeExtension`, `GetFullPath`, `GetTempPath` |
+| Shell commands | `Process.RunAsync`, `ExitCode`, `StandardOutput`, `StandardError` |
 
 ## Type tokens
 

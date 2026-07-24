@@ -562,10 +562,17 @@ class SourceContractTests(unittest.TestCase):
             'Private Const STREAM_PROG_ID As String = "ADODB.Stream"',
             self.source,
         )
+        self.assertIn(
+            'Private Const WSHELL_PROG_ID As String = "WScript.Shell"',
+            self.source,
+        )
         const_created = re.findall(
             r"CreateObject\((\w+)\)", self.source, flags=re.IGNORECASE
         )
-        self.assertEqual({"HTTP_PROG_ID", "STREAM_PROG_ID"}, set(const_created))
+        self.assertEqual(
+            {"HTTP_PROG_ID", "STREAM_PROG_ID", "WSHELL_PROG_ID"},
+            set(const_created),
+        )
 
     def test_file_system_surface_is_present(self) -> None:
         for member in (
@@ -600,6 +607,17 @@ class SourceContractTests(unittest.TestCase):
             "Public Function ToCsv(",
             "Public Property Get CsvError()",
             'Err.Raise ERROR_CSV_PARSE, "ROneCOne.CsvException"',
+        ):
+            self.assertIn(member, self.source)
+
+    def test_process_surface_is_present(self) -> None:
+        for member in (
+            "Public Property Get Process()",
+            "Public Function RunAsync(",
+            "Public Property Get ExitCode()",
+            "Public Property Get StandardOutput()",
+            "Public Property Get StandardError()",
+            "Public Property Get ProcessError()",
         ):
             self.assertIn(member, self.source)
 

@@ -60,6 +60,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestFileSystemSurface
     mCurrentTest = "TestCsvSurface"
     TestCsvSurface
+    mCurrentTest = "TestProcessSurface"
+    TestProcessSurface
     mCurrentTest = "TestHttpSurface"
     TestHttpSurface
     mCurrentTest = vbNullString
@@ -1465,6 +1467,87 @@ Private Sub TestCsvSurface()
     On Error GoTo 0
     AssertEqual "csv scalar serialize rejected", _
         ROneCOne.CsvError, csvErrorNumber
+End Sub
+
+Private Sub TestProcessSurface()
+    Dim capturedError As Long
+    Dim result As ROneCOne
+    Dim results As ROneCOne
+    Dim source As ROneCOne
+    Dim task As ROneCOne
+
+    ' Awaitable shell commands: the process runs outside Excel while the
+    ' Task polls its status; both output streams come back captured from
+    ' scratch redirect files that the runtime deletes afterward.
+    mCurrentTest = "TestProcessSurface.Echo"
+    Set result = ROneCOne.Process.RunAsync("echo hello").Await
+    AssertEqual "process echo exit code", 0&, result.ExitCode
+    AssertTrue "process echo output", _
+        InStr(1, result.StandardOutput, "hello") > 0
+    AssertEqual "process echo stderr empty", vbNullString, _
+        Trim$(result.StandardError)
+
+    mCurrentTest = "TestProcessSurface.ExitCode"
+    AssertEqual "process exit code passthrough", 7&, _
+        ROneCOne.Process.RunAsync("exit 7").Await.ExitCode
+
+    mCurrentTest = "TestProcessSurface.StandardError"
+    Set result = ROneCOne.Process.RunAsync("echo oops 1>&2").Await
+    AssertTrue "process stderr captured", _
+        InStr(1, result.StandardError, "oops") > 0
+    AssertEqual "process stdout empty", vbNullString, _
+        Trim$(result.StandardOutput)
+
+    mCurrentTest = "TestProcessSurface.MissingCommand"
+    Set result = ROneCOne.Process.RunAsync( _
+        "definitely_not_a_command_xyz").Await
+    AssertTrue "process missing command fails", result.ExitCode <> 0
+    AssertTrue "process missing command explains", _
+        InStr(1, result.StandardError, "not recognized") > 0
+
+    mCurrentTest = "TestProcessSurface.WorkingDirectory"
+    Set result = ROneCOne.Process.RunAsync("cd", ThisWorkbook.Path).Await
+    AssertTrue "process working directory", InStr(1, _
+        result.StandardOutput, ThisWorkbook.Path, vbTextCompare) > 0
+
+    mCurrentTest = "TestProcessSurface.WhenAll"
+    Set results = ROneCOne.Task.WhenAll( _
+        ROneCOne.Process.RunAsync("echo first"), _
+        ROneCOne.Process.RunAsync("echo second")).Await
+    AssertEqual "process whenall count", 2&, results.Count
+    AssertTrue "process whenall first", _
+        InStr(1, results.Item(0).StandardOutput, "first") > 0
+    AssertTrue "process whenall second", _
+        InStr(1, results.Item(1).StandardOutput, "second") > 0
+
+    mCurrentTest = "TestProcessSurface.Cancellation"
+    Set source = ROneCOne.CancellationTokenSource
+    Set task = ROneCOne.Process.RunAsync( _
+        "ping -n 6 127.0.0.1", , source.Token)
+    source.Cancel
+    capturedError = 0
+    On Error Resume Next
+    task.Await
+    capturedError = Err.Number
+    On Error GoTo 0
+    AssertTrue "process canceled await raises", capturedError <> 0
+    AssertTrue "process canceled task state", task.IsCanceled
+
+    mCurrentTest = "TestProcessSurface.Arguments"
+    capturedError = 0
+    On Error Resume Next
+    ROneCOne.Process.RunAsync "   "
+    capturedError = Err.Number
+    On Error GoTo 0
+    AssertEqual "process empty command rejected", _
+        ROneCOne.InvalidArgumentError, capturedError
+    capturedError = 0
+    On Error Resume Next
+    Debug.Print ROneCOne.StandardOutput
+    capturedError = Err.Number
+    On Error GoTo 0
+    AssertEqual "process result role guarded", _
+        ROneCOne.InvalidOperationError, capturedError
 End Sub
 
 Private Function ElapsedSecondsSince(ByVal started As Double) As Double

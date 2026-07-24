@@ -109,6 +109,8 @@ Private Const ROLE_FILE_FACTORY As Long = 48
 Private Const ROLE_DIRECTORY_FACTORY As Long = 49
 Private Const ROLE_PATH_FACTORY As Long = 50
 Private Const ROLE_CSV_FACTORY As Long = 51
+Private Const ROLE_PROCESS_FACTORY As Long = 52
+Private Const ROLE_PROCESS_RESULT As Long = 53
 
 Private Const TASK_WORK As Long = 1
 Private Const TASK_COMPLETED As Long = 2
@@ -122,6 +124,7 @@ Private Const TASK_YIELD As Long = 9
 Private Const TASK_WAIT_ASYNC As Long = 10
 Private Const TASK_HTTP_SEND As Long = 11
 Private Const TASK_DB_ASYNC As Long = 12
+Private Const TASK_PROCESS_RUN As Long = 13
 
 Private Const TASK_STATUS_CREATED As Long = 0
 Private Const TASK_STATUS_RUNNING As Long = 1
@@ -250,6 +253,7 @@ Private Const ERROR_HTTP_REQUEST As Long = vbObjectError + 4111
 Private Const ERROR_JSON_PARSE As Long = vbObjectError + 4112
 Private Const ERROR_IO As Long = vbObjectError + 4113
 Private Const ERROR_CSV_PARSE As Long = vbObjectError + 4114
+Private Const ERROR_PROCESS As Long = vbObjectError + 4115
 
 Private Const HTTP_PROG_ID As String = "WinHttp.WinHttpRequest.5.1"
 Private Const HTTP_DEFAULT_TIMEOUT_MS As Long = 30000
@@ -269,6 +273,10 @@ Private Const STREAM_PROG_ID As String = "ADODB.Stream"
 Private Const STREAM_TYPE_BINARY As Long = 1
 Private Const STREAM_TYPE_TEXT As Long = 2
 Private Const STREAM_SAVE_OVERWRITE As Long = 2
+
+' The Windows Script Host shell launches processes for the Process surface;
+' Exec exposes a pollable Status so the Task scheduler never blocks on it.
+Private Const WSHELL_PROG_ID As String = "WScript.Shell"
 
 ' Reader state for the JSON parser: a 1-based cursor over the input plus a
 ' byte snapshot of the same text as UTF-16 code units, so scanning loops read
@@ -405,6 +413,11 @@ Private mDefaultValue As ROneCOne
 Private mRowState As Long
 Private mProviderObject As Object
 Private mProviderCommand As Object
+Private mProcessExitCode As Long
+Private mProcessOutput As String
+Private mProcessError As String
+Private mProcessOutputPath As String
+Private mProcessErrorPath As String
 Private mHttpBaseAddress As String
 Private mHttpTimeoutMs As Long
 Private mHttpHeaderNames As Collection
@@ -2808,6 +2821,80 @@ Attribute GetTempPath.VB_Description = "Gets the temporary folder path with a tr
     RequirePathFactory "GetTempPath"
     GetTempPath = CreateFileSystemObject().GetSpecialFolder(2).Path & "\"
 End Function
+
+Public Property Get Process() As ROneCOne
+Attribute Process.VB_Description = "Gets the awaitable process execution surface."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigureProcessFactory
+    Set Process = factory
+End Property
+
+Public Function RunAsync( _
+    ByVal command As String, _
+    Optional ByVal workingDirectory As String = vbNullString, _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute RunAsync.VB_Description = "Starts a shell command; the Task result carries its output."
+    Dim errorPath As String
+    Dim execObject As Object
+    Dim fso As Object
+    Dim inner As String
+    Dim outputPath As String
+    Dim pending As ROneCOne
+    Dim taskValue As ROneCOne
+
+    RequireProcessFactory "RunAsync"
+    ValidateCancellationToken cancellationToken, "RunAsync"
+    If Len(Trim$(command)) = 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "RunAsync", _
+            "The command cannot be empty."
+    End If
+    ' The command runs through cmd.exe with both streams redirected to
+    ' scratch files, so polling never touches the blocking pipe readers;
+    ' the process starts now and the Task polls Status cooperatively.
+    Set fso = CreateFileSystemObject()
+    outputPath = fso.GetSpecialFolder(2).Path & "\" & fso.GetTempName
+    errorPath = fso.GetSpecialFolder(2).Path & "\" & fso.GetTempName
+    inner = "(" & command & ")"
+    If Len(workingDirectory) > 0 Then
+        inner = "cd /d """ & workingDirectory & """ && " & inner
+    End If
+    On Error GoTo StartFailed
+    Set execObject = CreateObject(WSHELL_PROG_ID).Exec( _
+        "cmd.exe /d /s /c """ & inner & " 1>""" & outputPath & _
+        """ 2>""" & errorPath & """""")
+    On Error GoTo 0
+    Set pending = New ROneCOne
+    pending.ConfigureProcessResult execObject, outputPath, errorPath
+    Set taskValue = New ROneCOne
+    taskValue.ConfigureProcessTask pending, cancellationToken
+    Set RunAsync = taskValue
+    Exit Function
+
+StartFailed:
+    Err.Raise ERROR_PROCESS, "ROneCOne.ProcessException", _
+        "The process could not start: " & Err.Description
+End Function
+
+Public Property Get ExitCode() As Long
+Attribute ExitCode.VB_Description = "Gets a completed process's exit code."
+    RequireProcessResult "ExitCode"
+    ExitCode = mProcessExitCode
+End Property
+
+Public Property Get StandardOutput() As String
+Attribute StandardOutput.VB_Description = "Gets a completed process's captured standard output."
+    RequireProcessResult "StandardOutput"
+    StandardOutput = mProcessOutput
+End Property
+
+Public Property Get StandardError() As String
+Attribute StandardError.VB_Description = "Gets a completed process's captured standard error."
+    RequireProcessResult "StandardError"
+    StandardError = mProcessError
+End Property
 
 Public Function HttpClient() As ROneCOne
 Attribute HttpClient.VB_Description = "Creates an HttpClient for awaitable web requests."
@@ -7585,6 +7672,11 @@ Attribute CsvError.VB_Description = "Gets the ROneCOne CSV parse and write error
     CsvError = ERROR_CSV_PARSE
 End Property
 
+Public Property Get ProcessError() As Long
+Attribute ProcessError.VB_Description = "Gets the ROneCOne process start error number."
+    ProcessError = ERROR_PROCESS
+End Property
+
 Public Property Get UnboundParameterError() As Long
 Attribute UnboundParameterError.VB_Description = "Gets the unbound-parameter error number."
     UnboundParameterError = ERROR_UNBOUND_PARAMETER
@@ -8453,6 +8545,29 @@ Friend Sub ConfigureCsvFactory()
     mRole = ROLE_CSV_FACTORY
 End Sub
 
+Friend Sub ConfigureProcessFactory()
+    mRole = ROLE_PROCESS_FACTORY
+End Sub
+
+Friend Sub ConfigureProcessResult( _
+    ByVal execObject As Object, _
+    ByVal outputPath As String, _
+    ByVal errorPath As String _
+)
+    mRole = ROLE_PROCESS_RESULT
+    Set mProviderObject = execObject
+    mProcessOutputPath = outputPath
+    mProcessErrorPath = errorPath
+End Sub
+
+Friend Sub ConfigureProcessTask( _
+    ByVal pendingResult As ROneCOne, _
+    ByVal cancellationToken As ROneCOne _
+)
+    ConfigureTask TASK_PROCESS_RUN, Nothing, cancellationToken
+    Set mSource = pendingResult
+End Sub
+
 Friend Sub ConfigureHttpResponse(ByVal request As Object)
     mRole = ROLE_HTTP_RESPONSE
     Set mProviderObject = request
@@ -8501,6 +8616,79 @@ PollFailed:
     InternalHttpAbort
     Err.Raise capturedNumber, "ROneCOne.HttpRequestException", _
         "The HTTP request failed: " & capturedDescription
+End Function
+
+Friend Function InternalProcessPoll() As Boolean
+    Dim errorText As String
+    Dim outputText As String
+
+    ' A completed result keeps answering True so a finished task can keep
+    ' asking. While the process runs, Status stays 0; after it exits, the
+    ' redirect files can stay locked for a beat, so a failed read simply
+    ' polls again instead of blocking or faulting.
+    If mProviderObject Is Nothing Then
+        InternalProcessPoll = True
+        Exit Function
+    End If
+    If CLng(mProviderObject.Status) = 0 Then Exit Function
+    If Not TryReadProcessFile(mProcessOutputPath, outputText) Then
+        Exit Function
+    End If
+    If Not TryReadProcessFile(mProcessErrorPath, errorText) Then
+        Exit Function
+    End If
+    mProcessExitCode = CLng(mProviderObject.ExitCode)
+    mProcessOutput = outputText
+    mProcessError = errorText
+    Set mProviderObject = Nothing
+    DeleteProcessScratchFiles
+    InternalProcessPoll = True
+End Function
+
+Friend Sub InternalProcessAbort()
+    If mProviderObject Is Nothing Then Exit Sub
+    On Error Resume Next
+    mProviderObject.Terminate
+    On Error GoTo 0
+    Set mProviderObject = Nothing
+    DeleteProcessScratchFiles
+End Sub
+
+Private Sub DeleteProcessScratchFiles()
+    On Error Resume Next
+    If Len(mProcessOutputPath) > 0 Then Kill mProcessOutputPath
+    If Len(mProcessErrorPath) > 0 Then Kill mProcessErrorPath
+    On Error GoTo 0
+    mProcessOutputPath = vbNullString
+    mProcessErrorPath = vbNullString
+End Sub
+
+Private Function TryReadProcessFile( _
+    ByVal filePath As String, _
+    ByRef content As String _
+) As Boolean
+    Dim stream As Object
+    Dim streamText As Variant
+
+    ' Console redirection writes in the OEM/ANSI code page, so the capture
+    ' decodes as windows-1252; ASCII output is always exact.
+    On Error GoTo NotReadable
+    Set stream = CreateStreamObject(STREAM_TYPE_TEXT)
+    stream.Charset = "windows-1252"
+    stream.LoadFromFile filePath
+    streamText = stream.ReadText(-1)
+    stream.Close
+    On Error GoTo 0
+    If IsNull(streamText) Then
+        content = vbNullString
+    Else
+        content = CStr(streamText)
+    End If
+    TryReadProcessFile = True
+    Exit Function
+
+NotReadable:
+    TryReadProcessFile = False
 End Function
 
 Friend Sub InternalHttpAbort()
@@ -11621,6 +11809,20 @@ Private Sub RaiseCsvError(ByVal message As String)
     Err.Raise ERROR_CSV_PARSE, "ROneCOne.CsvException", message
 End Sub
 
+Private Sub RequireProcessFactory(ByVal memberName As String)
+    If mRole <> ROLE_PROCESS_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires the Process surface."
+    End If
+End Sub
+
+Private Sub RequireProcessResult(ByVal memberName As String)
+    If mRole <> ROLE_PROCESS_RESULT Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires a process result."
+    End If
+End Sub
+
 Private Function CsvSerializeValue(ByVal value As Variant) As String
     Dim builder As JsonTextBuilder
     Dim runtimeValue As ROneCOne
@@ -13641,6 +13843,7 @@ Private Sub AdvanceTaskCore()
         ' and an in-flight provider operation must cancel inside ADO.
         If mOperator = TASK_HTTP_SEND Then mSource.InternalHttpAbort
         If mOperator = TASK_DB_ASYNC Then mSource.InternalDbAsyncAbort
+        If mOperator = TASK_PROCESS_RUN Then mSource.InternalProcessAbort
         mTaskStatus = TASK_STATUS_CANCELED
         Exit Sub
     End If
@@ -13781,6 +13984,9 @@ Private Sub AdvanceTaskCore()
                     RaiseContractError ERROR_INVALID_OPERATION, "DbAsyncTask", _
                         "Unknown provider async operation."
             End Select
+        Case TASK_PROCESS_RUN
+            If Not mSource.InternalProcessPoll Then Exit Sub
+            Set mTaskResult = CreateObjectResult(mSource)
     End Select
     mTaskStatus = TASK_STATUS_COMPLETED
 End Sub
