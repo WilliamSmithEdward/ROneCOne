@@ -108,6 +108,7 @@ Private Const ROLE_JSON_FACTORY As Long = 47
 Private Const ROLE_FILE_FACTORY As Long = 48
 Private Const ROLE_DIRECTORY_FACTORY As Long = 49
 Private Const ROLE_PATH_FACTORY As Long = 50
+Private Const ROLE_CSV_FACTORY As Long = 51
 
 Private Const TASK_WORK As Long = 1
 Private Const TASK_COMPLETED As Long = 2
@@ -248,6 +249,7 @@ Private Const ERROR_CANCELED As Long = vbObjectError + 4110
 Private Const ERROR_HTTP_REQUEST As Long = vbObjectError + 4111
 Private Const ERROR_JSON_PARSE As Long = vbObjectError + 4112
 Private Const ERROR_IO As Long = vbObjectError + 4113
+Private Const ERROR_CSV_PARSE As Long = vbObjectError + 4114
 
 Private Const HTTP_PROG_ID As String = "WinHttp.WinHttpRequest.5.1"
 Private Const HTTP_DEFAULT_TIMEOUT_MS As Long = 30000
@@ -2387,9 +2389,17 @@ Public Function Serialize( _
     ByVal value As Variant, _
     Optional ByVal writeIndented As Boolean = False _
 ) As String
-Attribute Serialize.VB_Description = "Serializes a value, collection, or table to JSON text."
+Attribute Serialize.VB_Description = "Serializes a value to JSON text, or a table to CSV text."
     Dim builder As JsonTextBuilder
 
+    If mRole = ROLE_CSV_FACTORY Then
+        If writeIndented Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "Serialize", _
+                "CSV has no indented form."
+        End If
+        Serialize = CsvSerializeValue(value)
+        Exit Function
+    End If
     RequireJsonFactory "Serialize"
     JsonBuilderInit builder, 512
     If writeIndented Then
@@ -2415,14 +2425,24 @@ Attribute Deserialize.VB_Description = "Parses JSON text into dictionaries, list
 End Function
 
 Public Function DeserializeTable( _
-    ByVal jsonText As String, _
-    Optional ByVal tableName As String = "Json", _
+    ByVal text As String, _
+    Optional ByVal tableName As String = vbNullString, _
     Optional ByVal arrayPath As String = "$" _
 ) As ROneCOne
-Attribute DeserializeTable.VB_Description = "Parses a JSON array of objects into a typed DataTable."
+Attribute DeserializeTable.VB_Description = "Parses JSON or CSV text into a typed DataTable."
+    If mRole = ROLE_CSV_FACTORY Then
+        If arrayPath <> "$" Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "DeserializeTable", _
+                "CSV has no array path."
+        End If
+        If Len(tableName) = 0 Then tableName = "Csv"
+        Set DeserializeTable = CsvParseTable(text, tableName)
+        Exit Function
+    End If
     RequireJsonFactory "DeserializeTable"
+    If Len(tableName) = 0 Then tableName = "Json"
     Set DeserializeTable = BuildTableFromJsonArray( _
-        ResolveJsonArray(Deserialize(jsonText), arrayPath), tableName)
+        ResolveJsonArray(Deserialize(text), arrayPath), tableName)
 End Function
 
 Public Function DeserializeInto( _
@@ -2523,6 +2543,11 @@ Attribute ToJson.VB_Description = "Serializes this collection, table, or row to 
     ToJson = ROneCOne.Json.Serialize(Me, writeIndented)
 End Function
 
+Public Function ToCsv() As String
+Attribute ToCsv.VB_Description = "Serializes this DataTable or DataView to CSV text."
+    ToCsv = ROneCOne.Csv.Serialize(Me)
+End Function
+
 Public Property Get File() As ROneCOne
 Attribute File.VB_Description = "Gets the System.IO.File-style file surface."
     Dim factory As ROneCOne
@@ -2548,6 +2573,15 @@ Attribute Path.VB_Description = "Gets the System.IO.Path-style path helper surfa
     Set factory = New ROneCOne
     factory.ConfigurePathFactory
     Set Path = factory
+End Property
+
+Public Property Get Csv() As ROneCOne
+Attribute Csv.VB_Description = "Gets the CSV serializer surface for DataTables and views."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigureCsvFactory
+    Set Csv = factory
 End Property
 
 Public Function ReadAllText( _
@@ -7546,6 +7580,11 @@ Attribute IOError.VB_Description = "Gets the ROneCOne file system error number."
     IOError = ERROR_IO
 End Property
 
+Public Property Get CsvError() As Long
+Attribute CsvError.VB_Description = "Gets the ROneCOne CSV parse and write error number."
+    CsvError = ERROR_CSV_PARSE
+End Property
+
 Public Property Get UnboundParameterError() As Long
 Attribute UnboundParameterError.VB_Description = "Gets the unbound-parameter error number."
     UnboundParameterError = ERROR_UNBOUND_PARAMETER
@@ -8408,6 +8447,10 @@ End Sub
 
 Friend Sub ConfigurePathFactory()
     mRole = ROLE_PATH_FACTORY
+End Sub
+
+Friend Sub ConfigureCsvFactory()
+    mRole = ROLE_CSV_FACTORY
 End Sub
 
 Friend Sub ConfigureHttpResponse(ByVal request As Object)
@@ -10045,7 +10088,9 @@ Private Function JsonReadNumber(ByRef reader As JsonReader) As Variant
         Err.Clear
         On Error GoTo 0
     End If
-    JsonReadNumber = CDbl(numberText)
+    ' Val always parses a dot decimal separator, so a comma-decimal locale
+    ' cannot misread the already-validated invariant number text.
+    JsonReadNumber = Val(numberText)
 End Function
 
 Private Function JsonReadString(ByRef reader As JsonReader) As String
@@ -11570,6 +11615,564 @@ Private Function TrimTrailingSeparators(ByVal pathText As String) As String
             Exit Do
         End If
     Loop
+End Function
+
+Private Sub RaiseCsvError(ByVal message As String)
+    Err.Raise ERROR_CSV_PARSE, "ROneCOne.CsvException", message
+End Sub
+
+Private Function CsvSerializeValue(ByVal value As Variant) As String
+    Dim builder As JsonTextBuilder
+    Dim runtimeValue As ROneCOne
+
+    If IsObject(value) Then
+        If Not value Is Nothing Then
+            If TypeOf value Is ROneCOne Then Set runtimeValue = value
+        End If
+    End If
+    If runtimeValue Is Nothing Then
+        RaiseCsvError "CSV serializes a DataTable or DataView."
+    End If
+    JsonBuilderInit builder, 512
+    Select Case runtimeValue.InternalRole
+        Case ROLE_DATA_TABLE
+            CsvWriteHeader builder, runtimeValue
+            CsvWriteTableRows builder, runtimeValue
+        Case ROLE_DATA_VIEW
+            CsvWriteHeader builder, runtimeValue.InternalSource
+            CsvWriteViewRows builder, runtimeValue
+        Case Else
+            RaiseCsvError "CSV serializes a DataTable or DataView."
+    End Select
+    CsvSerializeValue = JsonBuilderText(builder)
+End Function
+
+Private Sub CsvWriteHeader( _
+    ByRef builder As JsonTextBuilder, _
+    ByVal table As ROneCOne _
+)
+    Dim columnIndex As Long
+    Dim columns As Collection
+
+    Set columns = table.InternalDataColumns
+    If columns.Count = 0 Then
+        RaiseCsvError "CSV requires at least one column."
+    End If
+    For columnIndex = 1 To columns.Count
+        If columnIndex > 1 Then JsonBuilderAppend builder, ","
+        JsonBuilderAppend builder, _
+            CsvEscapedField(columns.Item(columnIndex).ColumnName)
+    Next columnIndex
+    JsonBuilderAppend builder, vbCrLf
+End Sub
+
+Private Sub CsvWriteTableRows( _
+    ByRef builder As JsonTextBuilder, _
+    ByVal table As ROneCOne _
+)
+    Dim row As ROneCOne
+
+    For Each row In table.InternalDataRows
+        If row.RowState <> "Deleted" Then CsvWriteDataRow builder, row
+    Next row
+End Sub
+
+Private Sub CsvWriteViewRows( _
+    ByRef builder As JsonTextBuilder, _
+    ByVal view As ROneCOne _
+)
+    Dim wrapped As ROneCOne
+
+    For Each wrapped In view.MaterializeWrapped
+        CsvWriteDataRow builder, JsonUnwrapObject(wrapped)
+    Next wrapped
+End Sub
+
+Private Sub CsvWriteDataRow( _
+    ByRef builder As JsonTextBuilder, _
+    ByVal row As ROneCOne _
+)
+    Dim cells As Collection
+    Dim columnIndex As Long
+    Dim wrapped As ROneCOne
+
+    Set cells = row.InternalDataRows
+    For columnIndex = 1 To cells.Count
+        If columnIndex > 1 Then JsonBuilderAppend builder, ","
+        Set wrapped = cells.Item(columnIndex)
+        ' A database null writes an empty unquoted field; an empty string
+        ' writes a quoted pair, so the two survive a round trip distinctly.
+        If Not IsNullDataValue(wrapped) Then
+            CsvWriteCell builder, JsonUnwrapValue(wrapped)
+        End If
+    Next columnIndex
+    JsonBuilderAppend builder, vbCrLf
+End Sub
+
+Private Sub CsvWriteCell( _
+    ByRef builder As JsonTextBuilder, _
+    ByVal value As Variant _
+)
+    Select Case VarType(value)
+        Case vbString
+            JsonBuilderAppend builder, CsvEscapedField(CStr(value))
+        Case vbBoolean
+            If value Then
+                JsonBuilderAppend builder, "true"
+            Else
+                JsonBuilderAppend builder, "false"
+            End If
+        Case vbByte, vbInteger, vbLong, vbLongLong
+            JsonBuilderAppend builder, CStr(value)
+        Case vbSingle, vbDouble, vbCurrency, vbDecimal
+            JsonBuilderAppend builder, JsonNumberText(CDbl(value))
+        Case vbDate
+            JsonBuilderAppend builder, Format$(value, "yyyy-mm-dd\Thh:nn:ss")
+        Case vbNull, vbEmpty
+            ' An absent value writes an empty unquoted field.
+        Case Else
+            RaiseCsvError "CSV cells must be scalar values; '" & _
+                TypeName(value) & "' is not writable."
+    End Select
+End Sub
+
+Private Function CsvEscapedField(ByVal fieldText As String) As String
+    Dim needsQuotes As Boolean
+
+    If Len(fieldText) = 0 Then
+        needsQuotes = True
+    ElseIf InStr(1, fieldText, """", vbBinaryCompare) > 0 Then
+        needsQuotes = True
+    ElseIf InStr(1, fieldText, ",", vbBinaryCompare) > 0 Then
+        needsQuotes = True
+    ElseIf InStr(1, fieldText, vbCr, vbBinaryCompare) > 0 Then
+        needsQuotes = True
+    ElseIf InStr(1, fieldText, vbLf, vbBinaryCompare) > 0 Then
+        needsQuotes = True
+    ElseIf Left$(fieldText, 1) = " " Or Right$(fieldText, 1) = " " Then
+        needsQuotes = True
+    End If
+    If needsQuotes Then
+        CsvEscapedField = """" & _
+            Replace$(fieldText, """", """""") & """"
+    Else
+        CsvEscapedField = fieldText
+    End If
+End Function
+
+Private Function CsvParseTable( _
+    ByVal text As String, _
+    ByVal tableName As String _
+) As ROneCOne
+    Dim columnCount As Long
+    Dim columnIndex As Long
+    Dim columnTypes() As Long
+    Dim dateValue As Date
+    Dim fieldsValue As Variant
+    Dim headerFields As Variant
+    Dim nameKeys As Collection
+    Dim quotedRecords As Collection
+    Dim quotedValue As Variant
+    Dim records As Collection
+    Dim recordIndex As Long
+    Dim rowValues() As Variant
+    Dim table As ROneCOne
+
+    Set records = New Collection
+    Set quotedRecords = New Collection
+    CsvSplitRecords text, records, quotedRecords
+    If records.Count = 0 Then RaiseCsvError "CSV text is empty."
+    headerFields = records.Item(1)
+    columnCount = UBound(headerFields) + 1
+    Set nameKeys = New Collection
+    For columnIndex = 0 To columnCount - 1
+        If Len(Trim$(CStr(headerFields(columnIndex)))) = 0 Then
+            RaiseCsvError "Column " & CStr(columnIndex + 1) & _
+                " has an empty name."
+        End If
+        On Error Resume Next
+        nameKeys.Add columnIndex, "k" & UCase$(CStr(headerFields(columnIndex)))
+        If Err.Number <> 0 Then
+            On Error GoTo 0
+            RaiseCsvError "Duplicate column name '" & _
+                CStr(headerFields(columnIndex)) & "'."
+        End If
+        On Error GoTo 0
+    Next columnIndex
+
+    ' Pass one classifies every non-null cell and unifies each column to one
+    ' deterministic type; a column that mixes shapes falls back to text with
+    ' its original characters. Pass two loads typed rows.
+    ReDim columnTypes(0 To columnCount - 1)
+    For recordIndex = 2 To records.Count
+        fieldsValue = records.Item(recordIndex)
+        If UBound(fieldsValue) + 1 <> columnCount Then
+            RaiseCsvError "Row " & CStr(recordIndex - 1) & " has " & _
+                CStr(UBound(fieldsValue) + 1) & " fields; the header has " & _
+                CStr(columnCount) & "."
+        End If
+        quotedValue = quotedRecords.Item(recordIndex)
+        For columnIndex = 0 To columnCount - 1
+            If quotedValue(columnIndex) Or _
+                Len(fieldsValue(columnIndex)) > 0 Then
+                MergeCsvColumnType columnTypes(columnIndex), _
+                    CsvClassifyCell(CStr(fieldsValue(columnIndex)), _
+                        CBool(quotedValue(columnIndex)))
+            End If
+        Next columnIndex
+    Next recordIndex
+
+    Set table = ROneCOne.DataTable(tableName)
+    For columnIndex = 0 To columnCount - 1
+        If columnTypes(columnIndex) = 0 Then
+            columnTypes(columnIndex) = vbString
+        End If
+        table.Column CStr(headerFields(columnIndex)), _
+            columnTypes(columnIndex)
+    Next columnIndex
+    For recordIndex = 2 To records.Count
+        fieldsValue = records.Item(recordIndex)
+        quotedValue = quotedRecords.Item(recordIndex)
+        ReDim rowValues(0 To columnCount - 1)
+        For columnIndex = 0 To columnCount - 1
+            If Not quotedValue(columnIndex) And _
+                Len(fieldsValue(columnIndex)) = 0 Then
+                rowValues(columnIndex) = Null
+            ElseIf columnTypes(columnIndex) = vbString Then
+                rowValues(columnIndex) = CStr(fieldsValue(columnIndex))
+            ElseIf columnTypes(columnIndex) = vbDate Then
+                If CsvTryIsoDate(CStr(fieldsValue(columnIndex)), _
+                    dateValue) Then
+                    rowValues(columnIndex) = dateValue
+                End If
+            Else
+                rowValues(columnIndex) = CsvConvertCell( _
+                    CStr(fieldsValue(columnIndex)), columnTypes(columnIndex))
+            End If
+        Next columnIndex
+        table.LoadRow rowValues
+    Next recordIndex
+    Set CsvParseTable = table
+End Function
+
+Private Sub CsvSplitRecords( _
+    ByVal text As String, _
+    ByVal records As Collection, _
+    ByVal quotedRecords As Collection _
+)
+    Dim fieldCount As Long
+    Dim fields() As String
+    Dim position As Long
+    Dim quoted() As Boolean
+    Dim textLength As Long
+
+    textLength = Len(text)
+    position = 1
+    Do While position <= textLength
+        fieldCount = 0
+        ReDim fields(0 To 7)
+        ReDim quoted(0 To 7)
+        Do
+            If fieldCount > UBound(fields) Then
+                ReDim Preserve fields(0 To UBound(fields) * 2 + 1)
+                ReDim Preserve quoted(0 To UBound(quoted) * 2 + 1)
+            End If
+            If position <= textLength Then
+                If Mid$(text, position, 1) = """" Then
+                    fields(fieldCount) = CsvReadQuotedField(text, position)
+                    quoted(fieldCount) = True
+                Else
+                    fields(fieldCount) = CsvReadPlainField(text, position)
+                End If
+            End If
+            fieldCount = fieldCount + 1
+            If position > textLength Then Exit Do
+            Select Case Mid$(text, position, 1)
+                Case ","
+                    position = position + 1
+                Case vbCr
+                    position = position + 1
+                    If position <= textLength Then
+                        If Mid$(text, position, 1) = vbLf Then
+                            position = position + 1
+                        End If
+                    End If
+                    Exit Do
+                Case vbLf
+                    position = position + 1
+                    Exit Do
+            End Select
+        Loop
+        ReDim Preserve fields(0 To fieldCount - 1)
+        ReDim Preserve quoted(0 To fieldCount - 1)
+        records.Add fields
+        quotedRecords.Add quoted
+    Loop
+End Sub
+
+Private Function CsvReadQuotedField( _
+    ByVal text As String, _
+    ByRef position As Long _
+) As String
+    Dim closeAt As Long
+    Dim contentStart As Long
+    Dim nextChar As String
+    Dim textLength As Long
+
+    textLength = Len(text)
+    contentStart = position + 1
+    closeAt = contentStart
+    Do
+        closeAt = InStr(closeAt, text, """", vbBinaryCompare)
+        If closeAt = 0 Then
+            RaiseCsvError "Unterminated quoted field starting at position " & _
+                CStr(position) & "."
+        End If
+        If closeAt < textLength Then
+            If Mid$(text, closeAt + 1, 1) = """" Then
+                closeAt = closeAt + 2
+            Else
+                Exit Do
+            End If
+        Else
+            Exit Do
+        End If
+    Loop
+    CsvReadQuotedField = Replace$( _
+        Mid$(text, contentStart, closeAt - contentStart), """""", """")
+    position = closeAt + 1
+    If position <= textLength Then
+        nextChar = Mid$(text, position, 1)
+        If nextChar <> "," And nextChar <> vbCr And nextChar <> vbLf Then
+            RaiseCsvError "Unexpected character after a closing quote " & _
+                "at position " & CStr(position) & "."
+        End If
+    End If
+End Function
+
+Private Function CsvReadPlainField( _
+    ByVal text As String, _
+    ByRef position As Long _
+) As String
+    Dim delimiterAt As Long
+    Dim endAt As Long
+    Dim textLength As Long
+
+    textLength = Len(text)
+    endAt = textLength + 1
+    delimiterAt = InStr(position, text, ",", vbBinaryCompare)
+    If delimiterAt > 0 And delimiterAt < endAt Then endAt = delimiterAt
+    delimiterAt = InStr(position, text, vbCr, vbBinaryCompare)
+    If delimiterAt > 0 And delimiterAt < endAt Then endAt = delimiterAt
+    delimiterAt = InStr(position, text, vbLf, vbBinaryCompare)
+    If delimiterAt > 0 And delimiterAt < endAt Then endAt = delimiterAt
+    CsvReadPlainField = Mid$(text, position, endAt - position)
+    If InStr(1, CsvReadPlainField, """", vbBinaryCompare) > 0 Then
+        RaiseCsvError "A quote is not allowed inside an unquoted field " & _
+            "at position " & CStr(position) & "."
+    End If
+    position = endAt
+End Function
+
+Private Sub MergeCsvColumnType( _
+    ByRef current As Long, _
+    ByVal candidate As Long _
+)
+    If current = 0 Then
+        current = candidate
+    ElseIf current = candidate Or current = vbString Then
+        ' Settled already.
+    ElseIf JsonIsNumericType(current) And JsonIsNumericType(candidate) Then
+        current = JsonWiderNumericType(current, candidate)
+    Else
+        current = vbString
+    End If
+End Sub
+
+Private Function CsvClassifyCell( _
+    ByVal fieldText As String, _
+    ByVal quoted As Boolean _
+) As Long
+    Dim dateValue As Date
+
+    ' A quoted cell is always text, which keeps deliberately quoted values
+    ' such as "00042" or "true" intact through a round trip.
+    If quoted Then
+        CsvClassifyCell = vbString
+        Exit Function
+    End If
+    Select Case LCase$(fieldText)
+        Case "true", "false"
+            CsvClassifyCell = vbBoolean
+            Exit Function
+    End Select
+    CsvClassifyCell = CsvClassifyNumber(fieldText)
+    If CsvClassifyCell <> 0 Then Exit Function
+    If CsvTryIsoDate(fieldText, dateValue) Then
+        CsvClassifyCell = vbDate
+    Else
+        CsvClassifyCell = vbString
+    End If
+End Function
+
+Private Function CsvClassifyNumber(ByVal fieldText As String) As Long
+    Dim code As Long
+    Dim digitCount As Long
+    Dim integral As Boolean
+    Dim overflowProbe As Variant
+    Dim partDigits As Long
+    Dim position As Long
+    Dim textLength As Long
+
+    ' The grammar is JSON's: optional minus, no leading zeros, optional
+    ' fraction and exponent, nothing trailing. Returns 0 for non-numbers.
+    textLength = Len(fieldText)
+    position = 1
+    integral = True
+    If textLength = 0 Then Exit Function
+    If Mid$(fieldText, 1, 1) = "-" Then position = 2
+    If position > textLength Then Exit Function
+    code = AscW(Mid$(fieldText, position, 1))
+    If code = 48 Then
+        digitCount = 1
+        position = position + 1
+        If position <= textLength Then
+            code = AscW(Mid$(fieldText, position, 1))
+            If code >= 48 And code <= 57 Then Exit Function
+        End If
+    ElseIf code >= 49 And code <= 57 Then
+        Do While position <= textLength
+            code = AscW(Mid$(fieldText, position, 1))
+            If code < 48 Or code > 57 Then Exit Do
+            digitCount = digitCount + 1
+            position = position + 1
+        Loop
+    Else
+        Exit Function
+    End If
+    If position <= textLength Then
+        If Mid$(fieldText, position, 1) = "." Then
+            integral = False
+            position = position + 1
+            partDigits = 0
+            Do While position <= textLength
+                code = AscW(Mid$(fieldText, position, 1))
+                If code < 48 Or code > 57 Then Exit Do
+                partDigits = partDigits + 1
+                position = position + 1
+            Loop
+            If partDigits = 0 Then Exit Function
+        End If
+    End If
+    If position <= textLength Then
+        code = AscW(Mid$(fieldText, position, 1))
+        If code = 101 Or code = 69 Then
+            integral = False
+            position = position + 1
+            If position <= textLength Then
+                code = AscW(Mid$(fieldText, position, 1))
+                If code = 43 Or code = 45 Then position = position + 1
+            End If
+            partDigits = 0
+            Do While position <= textLength
+                code = AscW(Mid$(fieldText, position, 1))
+                If code < 48 Or code > 57 Then Exit Do
+                partDigits = partDigits + 1
+                position = position + 1
+            Loop
+            If partDigits = 0 Then Exit Function
+        End If
+    End If
+    If position <= textLength Then Exit Function
+    If Not integral Then
+        CsvClassifyNumber = vbDouble
+        Exit Function
+    End If
+    If digitCount <= 9 Then
+        CsvClassifyNumber = vbLong
+        Exit Function
+    End If
+    On Error Resume Next
+    Err.Clear
+    overflowProbe = CLng(fieldText)
+    If Err.Number = 0 Then
+        CsvClassifyNumber = vbLong
+    Else
+        Err.Clear
+        overflowProbe = CLngLng(fieldText)
+        If Err.Number = 0 Then
+            CsvClassifyNumber = vbLongLong
+        Else
+            CsvClassifyNumber = vbDouble
+        End If
+    End If
+    On Error GoTo 0
+End Function
+
+Private Function CsvTryIsoDate( _
+    ByVal fieldText As String, _
+    ByRef result As Date _
+) As Boolean
+    Dim dayPart As Long
+    Dim hourPart As Long
+    Dim index As Long
+    Dim minutePart As Long
+    Dim monthPart As Long
+    Dim probe As String
+    Dim secondPart As Long
+    Dim textLength As Long
+    Dim yearPart As Long
+
+    textLength = Len(fieldText)
+    If textLength <> 10 And textLength <> 19 Then Exit Function
+    For index = 1 To textLength
+        probe = Mid$(fieldText, index, 1)
+        Select Case index
+            Case 5, 8
+                If probe <> "-" Then Exit Function
+            Case 11
+                If probe <> "T" Then Exit Function
+            Case 14, 17
+                If probe <> ":" Then Exit Function
+            Case Else
+                If probe < "0" Or probe > "9" Then Exit Function
+        End Select
+    Next index
+    yearPart = CLng(Mid$(fieldText, 1, 4))
+    monthPart = CLng(Mid$(fieldText, 6, 2))
+    dayPart = CLng(Mid$(fieldText, 9, 2))
+    If monthPart < 1 Or monthPart > 12 Then Exit Function
+    If dayPart < 1 Or dayPart > 31 Then Exit Function
+    result = DateSerial(yearPart, monthPart, dayPart)
+    If Year(result) <> yearPart Or Month(result) <> monthPart Or _
+        Day(result) <> dayPart Then Exit Function
+    If textLength = 19 Then
+        hourPart = CLng(Mid$(fieldText, 12, 2))
+        minutePart = CLng(Mid$(fieldText, 15, 2))
+        secondPart = CLng(Mid$(fieldText, 18, 2))
+        If hourPart > 23 Or minutePart > 59 Or secondPart > 59 Then
+            Exit Function
+        End If
+        result = result + TimeSerial(hourPart, minutePart, secondPart)
+    End If
+    CsvTryIsoDate = True
+End Function
+
+Private Function CsvConvertCell( _
+    ByVal fieldText As String, _
+    ByVal columnType As Long _
+) As Variant
+    Select Case columnType
+        Case vbLong
+            CsvConvertCell = CLng(fieldText)
+        Case vbLongLong
+            CsvConvertCell = CLngLng(fieldText)
+        Case vbDouble
+            ' Val always parses the invariant dot separator.
+            CsvConvertCell = Val(fieldText)
+        Case vbBoolean
+            CsvConvertCell = (LCase$(fieldText) = "true")
+    End Select
 End Function
 
 Private Sub RequireHttpClient(ByVal memberName As String)

@@ -48,6 +48,7 @@ Tasks, typed events, and structured Try, Catch, and Finally flows.
 | Call web APIs | An HttpClient with awaitable verbs, overlapped downloads, and typed failures |
 | Exchange JSON | Serialize and deserialize trees, tables, and your own classes, System.Text.Json style |
 | Read and write files | File, Directory, and Path surfaces with real UTF-8, System.IO style |
+| Exchange CSV | RFC 4180 round trips between DataTables and CSV text with typed columns |
 | Build responsive workbook logic | Typed events with predictable subscription and delivery |
 | Handle failure deliberately | Structured Try, Catch, and Finally flows |
 | Deploy without a platform project | One importable class module with no outside dependency |

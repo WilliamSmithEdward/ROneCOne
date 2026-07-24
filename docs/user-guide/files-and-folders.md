@@ -72,5 +72,6 @@ input never produces `C:\data\\file` or silently escapes a folder.
 
 - [Files technical reference](../files.md) defines encodings, failure semantics, and
   enumeration order exactly.
-- [Data and providers](data-and-providers.md) shows the tables your files often feed.
+- [Data and providers](data-and-providers.md) shows the tables your files often feed,
+  including one-call CSV exchange with `table.ToCsv` and `Csv.DeserializeTable`.
 - [Guide index](README.md) returns to the full learning path.

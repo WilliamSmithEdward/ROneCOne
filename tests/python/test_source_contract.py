@@ -594,6 +594,15 @@ class SourceContractTests(unittest.TestCase):
         ):
             self.assertIn(member, self.source)
 
+    def test_csv_surface_is_present(self) -> None:
+        for member in (
+            "Public Property Get Csv()",
+            "Public Function ToCsv(",
+            "Public Property Get CsvError()",
+            'Err.Raise ERROR_CSV_PARSE, "ROneCOne.CsvException"',
+        ):
+            self.assertIn(member, self.source)
+
     def test_json_surface_is_present_and_runtime_native(self) -> None:
         for member in (
             "Public Property Get Json()",

@@ -41,6 +41,7 @@ syntax. Each technical document links back to its user guide.
 | [HTTP client](http.md) | Transport, verb semantics, failure model, the Application.Run boundary |
 | [JSON](json.md) | Model, strictness, serialization rules, table and object binding |
 | [Files](files.md) | Encodings, byte-order marks, failure contract, enumeration order |
+| [CSV](csv.md) | RFC 4180 writing and parsing, type inference, null and quoting rules |
 
 ## Understand the design
 

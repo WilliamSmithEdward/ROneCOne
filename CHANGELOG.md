@@ -10,6 +10,16 @@ checksums for each version are on the
 
 ### Added
 
+- CSV exchange over the data layer: `table.ToCsv` and `ROneCOne.Csv.Serialize` write a
+  DataTable or DataView to RFC 4180 text with minimal quoting, invariant numbers, ISO 8601
+  dates, and a round-trippable distinction between database nulls (empty field) and empty
+  strings (quoted pair); `ROneCOne.Csv.DeserializeTable` parses CSV into a typed DataTable
+  with strict quote discipline, tolerant line endings, and deterministic column inference
+  (integers widening to `LongLong` and `Double`, booleans, validated ISO dates; quoted cells
+  and mixed columns stay text with their original characters). Failures raise the typed
+  `ROneCOne.CsvError`. The number reader behind JSON and CSV now converts fraction and
+  exponent text with the locale-independent `Val` instead of `CDbl`. See
+  [ADR 0016](docs/decisions/0016-csv-exchange-over-the-data-layer.md).
 - A file system layer in the spirit of System.IO: `ROneCOne.File` reads and writes text
   (UTF-8 by default with no byte-order mark, byte-order marks honored on read, `utf-16` and
   `windows-1252` on request), lines, and bytes, and copies, moves, and deletes with

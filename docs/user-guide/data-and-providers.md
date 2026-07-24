@@ -110,6 +110,24 @@ ADO exposes no reliable async completion for affected-row counts or row-by-row u
 Provider capabilities still depend on the selected driver. For example, the Excel ISAM supports
 worksheet reads, updates, and inserts but rejects row deletion.
 
+### Exchange CSV
+
+A table becomes RFC 4180 text in one call, and CSV text becomes a typed table in one more:
+
+```vba
+Dim orders As ROneCOne
+
+ROneCOne.File.WriteAllText "C:\data\orders.csv", table.ToCsv
+Set orders = ROneCOne.Csv.DeserializeTable( _
+    ROneCOne.File.ReadAllText("C:\data\orders.csv"))
+```
+
+Quoting, embedded commas and newlines, and doubled quotes follow RFC 4180 exactly. On the way
+in, each column infers one deterministic type (integer, double, boolean, ISO date) or stays
+text with its original characters; quoted cells always stay text, so `"00042"` keeps its
+zeros. Failures raise the typed `ROneCOne.CsvError`. The
+[CSV technical reference](../csv.md) defines every rule.
+
 ### Pick a provider
 
 Connection strings choose the driver. The two the test suite exercises:

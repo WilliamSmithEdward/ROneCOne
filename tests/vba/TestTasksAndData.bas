@@ -58,6 +58,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestSqlServerProvider
     mCurrentTest = "TestFileSystemSurface"
     TestFileSystemSurface
+    mCurrentTest = "TestCsvSurface"
+    TestCsvSurface
     mCurrentTest = "TestHttpSurface"
     TestHttpSurface
     mCurrentTest = vbNullString
@@ -1312,6 +1314,157 @@ Private Sub TestFileSystemSurface()
         ROneCOne.IOError, capturedError
     ROneCOne.Directory.Delete testRoot, True
     AssertFalse "fs root removed", ROneCOne.Directory.Exists(testRoot)
+End Sub
+
+Private Sub TestCsvSurface()
+    Dim csvErrorNumber As Long
+    Dim document As String
+    Dim filePath As String
+    Dim roundTripped As ROneCOne
+    Dim Score As Variant
+    Dim table As ROneCOne
+    Dim view As ROneCOne
+
+    ' The writer quotes only where RFC 4180 demands it, keeps numbers and
+    ' dates locale-safe, and distinguishes a database null (empty field)
+    ' from an empty string (quoted pair).
+    mCurrentTest = "TestCsvSurface.Serialize"
+    Set table = ROneCOne.DataTable("Orders")
+    table.Column "Id", vbLong
+    table.Column "Customer", vbString
+    table.Column "Total", vbDouble
+    table.Column "Active", vbBoolean
+    table.Column "Placed", vbDate
+    table.Column "Note", vbString
+    table.LoadRow Array(1, "Ada, Ltd", 12.5, True, _
+        DateSerial(2026, 7, 23) + TimeSerial(10, 30, 0), ROneCOne.DBNull)
+    table.LoadRow Array(2, "Grace ""G""", 20#, False, _
+        DateSerial(2026, 1, 2), vbNullString)
+    document = table.ToCsv
+    AssertEqual "csv document", _
+        "Id,Customer,Total,Active,Placed,Note" & vbCrLf & _
+        "1,""Ada, Ltd"",12.5,true,2026-07-23T10:30:00," & vbCrLf & _
+        "2,""Grace """"G"""""",20,false,2026-01-02T00:00:00,""""" & vbCrLf, _
+        document
+
+    mCurrentTest = "TestCsvSurface.RoundTrip"
+    Set roundTripped = ROneCOne.Csv.DeserializeTable(document, "Orders")
+    AssertEqual "csv round trip rows", 2&, roundTripped.Rows.Count
+    AssertEqual "csv long cell", 1&, roundTripped.Rows.Item(0).Item("Id")
+    AssertEqual "csv comma text", "Ada, Ltd", _
+        CStr(roundTripped.Rows.Item(0).Item("Customer"))
+    AssertEqual "csv double cell", 12.5, _
+        roundTripped.Rows.Item(0).Item("Total")
+    AssertEqual "csv boolean cell", True, _
+        roundTripped.Rows.Item(0).Item("Active")
+    AssertEqual "csv date cell", _
+        DateSerial(2026, 7, 23) + TimeSerial(10, 30, 0), _
+        roundTripped.Rows.Item(0).Item("Placed")
+    AssertTrue "csv null survives", _
+        IsNull(roundTripped.Rows.Item(0).Item("Note"))
+    AssertEqual "csv empty string survives", vbNullString, _
+        CStr(roundTripped.Rows.Item(1).Item("Note"))
+    AssertEqual "csv quote escape", "Grace ""G""", _
+        CStr(roundTripped.Rows.Item(1).Item("Customer"))
+
+    mCurrentTest = "TestCsvSurface.Inference"
+    Set table = ROneCOne.Csv.DeserializeTable( _
+        "A,B,C,D" & vbLf & _
+        "001,5,true,2026-02-31" & vbLf & _
+        "abc,9999999999,false,note")
+    AssertEqual "csv leading zero stays text", "001", _
+        CStr(table.Rows.Item(0).Item("A"))
+    AssertEqual "csv widened integer", "9999999999", _
+        CStr(table.Rows.Item(1).Item("B"))
+    AssertEqual "csv boolean column", False, table.Rows.Item(1).Item("C")
+    AssertEqual "csv rolled date stays text", "2026-02-31", _
+        CStr(table.Rows.Item(0).Item("D"))
+    Set table = ROneCOne.Csv.DeserializeTable( _
+        "V" & vbCrLf & """42""" & vbCrLf)
+    AssertEqual "csv quoted number stays text", "42", _
+        CStr(table.Rows.Item(0).Item("V"))
+
+    mCurrentTest = "TestCsvSurface.Escapes"
+    Set table = ROneCOne.DataTable("Notes")
+    table.Column "Text", vbString
+    table.LoadRow Array("line1" & vbCrLf & "line2")
+    Set roundTripped = ROneCOne.Csv.DeserializeTable(table.ToCsv)
+    AssertEqual "csv embedded newline", "line1" & vbCrLf & "line2", _
+        CStr(roundTripped.Rows.Item(0).Item("Text"))
+
+    mCurrentTest = "TestCsvSurface.Views"
+    Set table = ROneCOne.DataTable("Scores")
+    table.Column "Name", vbString
+    table.Column "Score", vbLong
+    table.LoadRow Array("Ada", 90)
+    table.LoadRow Array("Grace", 95)
+    Set view = ROneCOne.DataView(table) _
+        .WithFilter(table.Rows!Score.AtLeast(95&))
+    AssertEqual "csv view serializes filtered", _
+        "Name,Score" & vbCrLf & "Grace,95" & vbCrLf, view.ToCsv
+
+    mCurrentTest = "TestCsvSurface.FileComposition"
+    filePath = ThisWorkbook.Path & "\ROneCOne_CsvTest.csv"
+    ROneCOne.File.WriteAllText filePath, table.ToCsv
+    Set roundTripped = ROneCOne.Csv.DeserializeTable( _
+        ROneCOne.File.ReadAllText(filePath))
+    AssertEqual "csv file composition", 2&, roundTripped.Rows.Count
+    ROneCOne.File.Delete filePath
+
+    mCurrentTest = "TestCsvSurface.Errors"
+    csvErrorNumber = 0
+    On Error Resume Next
+    ROneCOne.Csv.DeserializeTable "A,B" & vbLf & "1"
+    csvErrorNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "csv ragged row rejected", ROneCOne.CsvError, csvErrorNumber
+    csvErrorNumber = 0
+    On Error Resume Next
+    ROneCOne.Csv.DeserializeTable vbNullString
+    csvErrorNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "csv empty text rejected", ROneCOne.CsvError, csvErrorNumber
+    csvErrorNumber = 0
+    On Error Resume Next
+    ROneCOne.Csv.DeserializeTable "A,a" & vbLf & "1,2"
+    csvErrorNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "csv duplicate header rejected", _
+        ROneCOne.CsvError, csvErrorNumber
+    csvErrorNumber = 0
+    On Error Resume Next
+    ROneCOne.Csv.DeserializeTable "A" & vbLf & "x""y"
+    csvErrorNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "csv stray quote rejected", ROneCOne.CsvError, csvErrorNumber
+    csvErrorNumber = 0
+    On Error Resume Next
+    ROneCOne.Csv.DeserializeTable "A" & vbLf & """x""y"
+    csvErrorNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "csv text after closing quote rejected", _
+        ROneCOne.CsvError, csvErrorNumber
+    csvErrorNumber = 0
+    On Error Resume Next
+    ROneCOne.Csv.DeserializeTable "A" & vbLf & "1", "T", "$.x"
+    csvErrorNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "csv array path rejected", _
+        ROneCOne.InvalidArgumentError, csvErrorNumber
+    csvErrorNumber = 0
+    On Error Resume Next
+    ROneCOne.Csv.Serialize table, True
+    csvErrorNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "csv indented form rejected", _
+        ROneCOne.InvalidArgumentError, csvErrorNumber
+    csvErrorNumber = 0
+    On Error Resume Next
+    ROneCOne.Csv.Serialize 42
+    csvErrorNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "csv scalar serialize rejected", _
+        ROneCOne.CsvError, csvErrorNumber
 End Sub
 
 Private Function ElapsedSecondsSince(ByVal started As Double) As Double
