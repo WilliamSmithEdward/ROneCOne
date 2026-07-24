@@ -203,6 +203,12 @@ const capabilities = [
         "client.DownloadFileAsync(\"pokemon/pikachu\", downloadPath).Await\nROneCOne.File.Exists(downloadPath)",
         true,
       ],
+      [
+        "Escape a value for a query string",
+        "Uri.EscapeDataString(value)",
+        "ROneCOne.Uri.EscapeDataString(\"name=Ada & Bo\")",
+        "name%3DAda%20%26%20Bo",
+      ],
     ],
   },
   {
@@ -373,6 +379,18 @@ const capabilities = [
         "IsNull(roundTripped.Rows.Item(0).Item(\"Note\"))",
         true,
       ],
+      [
+        "Log level-coded lines to a file",
+        "ILogger.LogInformation / LogWarning",
+        "logger.LogInformation \"...\": logger.LogDebug \"...\"\nlogLines.Count",
+        2,
+      ],
+      [
+        "Await the next folder change",
+        "FileSystemWatcher.Changed",
+        "Set watchTask = watcher.WaitForChangeAsync\nchange.ChangeType & \" \" & change.Name",
+        "Created signal.dat",
+      ],
     ],
   },
   {
@@ -439,6 +457,12 @@ const capabilities = [
         "ArgumentException",
         "On Error Resume Next\nROneCOne.Process.RunAsync \"   \"\nIf Err.Number = ROneCOne.InvalidArgumentError Then ...",
         "empty command rejected",
+      ],
+      [
+        "Feed a command standard input",
+        "process.StandardInput.Write(...)",
+        "ROneCOne.Process.RunAsync(\"sort\", , , \"banana\" & vbCrLf & _\n    \"apple\" & vbCrLf).Await.StandardOutput has apple before banana",
+        true,
       ],
     ],
   },

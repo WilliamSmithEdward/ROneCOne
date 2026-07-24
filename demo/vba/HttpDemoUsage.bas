@@ -158,6 +158,11 @@ Private Sub WriteHttpExamples()
         .Range("E15").Value2 = CStr(tree.Item("name"))
         .Range("E16").Value2 = (abilities.Rows.Count > 0)
         .Range("E17").Value2 = downloadWorked
+        ' Build a query value safely: EscapeDataString percent-encodes the
+        ' spaces and ampersands that would otherwise break the URL. This is
+        ' pure local text work, no request involved.
+        .Range("E18").Value2 = _
+            ROneCOne.Uri.EscapeDataString("name=Ada & Bo")
     End With
 End Sub
 

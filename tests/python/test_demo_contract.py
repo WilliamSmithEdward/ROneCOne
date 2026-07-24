@@ -188,6 +188,7 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("ROneCOne.Json.Deserialize(pikachuJson)", source)
         self.assertIn("ROneCOne.Json.DeserializeTable(", source)
         self.assertIn("client.DownloadFileAsync(", source)
+        self.assertIn("ROneCOne.Uri.EscapeDataString(", source)
         # The failure example catches at the await site, mirroring C#'s
         # try / await / catch; a named-procedure raise cannot cross the
         # Application.Run boundary.
@@ -239,6 +240,9 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn('ROneCOne.Path.Combine("C:\\data", "in", "file.txt")', source)
         self.assertIn("orders.ToCsv", source)
         self.assertIn("ROneCOne.Csv.DeserializeTable(", source)
+        self.assertIn("ROneCOne.Logger(", source)
+        self.assertIn("ROneCOne.FileWatcher(", source)
+        self.assertIn("WaitForChangeAsync", source)
         self.assertIn("ROneCOne.Directory.Delete demoRoot, True", source)
         # The demo is self-contained and cleans up after itself.
         self.assertNotIn("ROneCOne.HttpClient()", source)
@@ -260,6 +264,7 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn('ROneCOne.Process.RunAsync("cd", ThisWorkbook.Path)', source)
         self.assertIn("ROneCOne.Task.WhenAll(", source)
         self.assertIn("ROneCOne.InvalidArgumentError", source)
+        self.assertIn('ROneCOne.Process.RunAsync("sort"', source)
         # Only cmd.exe built-ins run; nothing is downloaded or installed.
         self.assertNotIn("ROneCOne.HttpClient()", source)
         self.assertNotIn("GetAsync", source)

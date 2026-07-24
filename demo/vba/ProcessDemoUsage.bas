@@ -94,6 +94,13 @@ Private Sub WriteProcessExamples()
         .Range("E12").Value2 = (ROneCOne.Process.RunAsync( _
             "definitely_not_a_command_xyz").Await.ExitCode <> 0)
         .Range("E13").Value2 = mTrace
+        ' Step 6: feed a command standard input. The lines go in unsorted
+        ' and sort hands them back alphabetized, apple before banana.
+        .Range("E14").Value2 = (InStr(1, ROneCOne.Process.RunAsync("sort", _
+            , , "banana" & vbCrLf & "apple" & vbCrLf).Await.StandardOutput, _
+            "apple") < InStr(1, ROneCOne.Process.RunAsync("sort", , , _
+            "banana" & vbCrLf & "apple" & vbCrLf).Await.StandardOutput, _
+            "banana"))
     End With
 End Sub
 

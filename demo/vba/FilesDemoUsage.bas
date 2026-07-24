@@ -97,6 +97,26 @@ Private Sub WriteFileExamples(ByVal demoRoot As String)
     ' find beyond the top level.
     ROneCOne.File.WriteAllText demoRoot & "\inner\note.txt", "inner note"
 
+    ' Step 6: a logger writes level-coded, timestamped lines. The Debug line
+    ' is below the default Information level, so only two lines land.
+    Dim logLines As ROneCOne
+    Dim logger As ROneCOne
+    Set logger = ROneCOne.Logger(demoRoot & "\run.log")
+    logger.LogInformation "processed {0} rows", 3
+    logger.LogDebug "this line is filtered out"
+    logger.LogWarning "keep an eye on row {0}", 2
+    Set logLines = ROneCOne.File.ReadAllLines(demoRoot & "\run.log")
+
+    ' Step 7: a watcher awaits the next change under a folder. The baseline
+    ' is taken now, so the file dropped just below is seen as Created.
+    Dim change As ROneCOne
+    Dim watchTask As ROneCOne
+    Dim watcher As ROneCOne
+    Set watcher = ROneCOne.FileWatcher(demoRoot, "*.dat")
+    Set watchTask = watcher.WaitForChangeAsync
+    ROneCOne.File.WriteAllText demoRoot & "\signal.dat", "ready"
+    Set change = watchTask.Await
+
     ' Each line reads one result and writes it to the Examples sheet, so
     ' every feature above shows its answer next to what the sheet expects.
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
@@ -113,6 +133,8 @@ Private Sub WriteFileExamples(ByVal demoRoot As String)
         .Range("E13").Value2 = roundTripped.Rows.Count
         .Range("E14").Value2 = roundTripped.Rows.Item(0).Item("Total")
         .Range("E15").Value2 = IsNull(roundTripped.Rows.Item(0).Item("Note"))
+        .Range("E16").Value2 = logLines.Count
+        .Range("E17").Value2 = change.ChangeType & " " & change.Name
     End With
 End Sub
 
