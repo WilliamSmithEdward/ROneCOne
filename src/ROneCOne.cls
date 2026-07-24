@@ -61,6 +61,29 @@ Private Declare PtrSafe Sub Sleep Lib "kernel32" ( _
     ByVal milliseconds As Long _
 )
 
+' Windows owns the time zone database, so the DateTime surface delegates all
+' local and universal conversions to kernel32. A null zone pointer selects the
+' machine's current zone with daylight saving rules applied per instant.
+Private Type SYSTEMTIME
+    wYear As Integer
+    wMonth As Integer
+    wDayOfWeek As Integer
+    wDay As Integer
+    wHour As Integer
+    wMinute As Integer
+    wSecond As Integer
+    wMilliseconds As Integer
+End Type
+
+Private Declare PtrSafe Sub GetSystemTime Lib "kernel32" ( _
+    ByRef systemTime As SYSTEMTIME)
+Private Declare PtrSafe Function SystemTimeToTzSpecificLocalTime Lib "kernel32" ( _
+    ByVal timeZonePointer As LongPtr, ByRef universalTime As SYSTEMTIME, _
+    ByRef localTime As SYSTEMTIME) As Long
+Private Declare PtrSafe Function TzSpecificLocalTimeToSystemTime Lib "kernel32" ( _
+    ByVal timeZonePointer As LongPtr, ByRef localTime As SYSTEMTIME, _
+    ByRef universalTime As SYSTEMTIME) As Long
+
 ' MIT License
 '
 ' Copyright (c) 2026 William Smith
@@ -141,6 +164,10 @@ Private Const ROLE_REGEX As Long = 54
 Private Const ROLE_REGEX_MATCH As Long = 55
 Private Const ROLE_HASH_FACTORY As Long = 56
 Private Const ROLE_CONVERT_FACTORY As Long = 57
+Private Const ROLE_DATETIME_FACTORY As Long = 58
+Private Const ROLE_DATETIME As Long = 59
+Private Const ROLE_TIMESPAN_FACTORY As Long = 60
+Private Const ROLE_TIMESPAN As Long = 61
 
 Private Const TASK_WORK As Long = 1
 Private Const TASK_COMPLETED As Long = 2
@@ -285,6 +312,7 @@ Private Const ERROR_IO As Long = vbObjectError + 4113
 Private Const ERROR_CSV_PARSE As Long = vbObjectError + 4114
 Private Const ERROR_PROCESS As Long = vbObjectError + 4115
 Private Const ERROR_REGEX As Long = vbObjectError + 4116
+Private Const ERROR_FORMAT As Long = vbObjectError + 4117
 
 Private Const HTTP_PROG_ID As String = "WinHttp.WinHttpRequest.5.1"
 Private Const HTTP_DEFAULT_TIMEOUT_MS As Long = 30000
@@ -314,6 +342,15 @@ Private Const REGEX_PROG_ID As String = "VBScript.RegExp"
 
 ' Windows CNG option flag: the algorithm provider operates in HMAC mode.
 Private Const BCRYPT_HMAC_FLAG As Long = 8
+
+' The DateTime surface stores instants as milliseconds since the Unix epoch
+' 1970-01-01T00:00:00Z; the bounds pin the supported clock years 0100-9999.
+Private Const MS_PER_DAY As Double = 86400000#
+Private Const MS_PER_HOUR As Double = 3600000#
+Private Const MS_PER_MINUTE As Double = 60000#
+Private Const MS_PER_SECOND As Double = 1000#
+Private Const MIN_DATETIME_MS As Double = -59011459200000#
+Private Const MAX_DATETIME_MS As Double = 253402300799999#
 
 ' Reader state for the JSON parser: a 1-based cursor over the input plus a
 ' byte snapshot of the same text as UTF-16 code units, so scanning loops read
@@ -458,6 +495,9 @@ Private mProcessErrorPath As String
 Private mRegexSuccess As Boolean
 Private mRegexIndex As Long
 Private mRegexLength As Long
+Private mDateTimeMs As Double
+Private mDateTimeOffsetMinutes As Long
+Private mTimeSpanMs As Double
 Private mHttpBaseAddress As String
 Private mHttpTimeoutMs As Long
 Private mHttpHeaderNames As Collection
@@ -3157,6 +3197,462 @@ Attribute FromHexString.VB_Description = "Decodes hexadecimal text into a Byte a
     FromHexString = bytes
 End Function
 
+Public Property Get DateTime() As ROneCOne
+Attribute DateTime.VB_Description = "Gets the DateTimeOffset-style date and time surface."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigureDateTimeFactory
+    Set DateTime = factory
+End Property
+
+Public Property Get TimeSpan() As ROneCOne
+Attribute TimeSpan.VB_Description = "Gets the TimeSpan duration surface."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigureTimeSpanFactory
+    Set TimeSpan = factory
+End Property
+
+Public Function Parse(ByVal text As String) As ROneCOne
+Attribute Parse.VB_Description = "Parses ISO 8601 text or a d.hh:mm:ss duration by surface."
+    Select Case mRole
+        Case ROLE_DATETIME_FACTORY
+            Set Parse = ParseDateTimeText(text, "Parse")
+        Case ROLE_TIMESPAN_FACTORY
+            Set Parse = ParseTimeSpanText(text)
+        Case Else
+            RaiseContractError ERROR_INVALID_OPERATION, "Parse", _
+                "Parse requires the DateTime or TimeSpan surface."
+    End Select
+End Function
+
+Public Function TryParse( _
+    ByVal text As String, _
+    ByRef result As ROneCOne _
+) As Boolean
+Attribute TryParse.VB_Description = "Parses like Parse but reports failure instead of raising."
+    If mRole <> ROLE_DATETIME_FACTORY And mRole <> ROLE_TIMESPAN_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, "TryParse", _
+            "TryParse requires the DateTime or TimeSpan surface."
+    End If
+    Set result = Nothing
+    On Error GoTo Failed
+    If mRole = ROLE_DATETIME_FACTORY Then
+        Set result = ParseDateTimeText(text, "TryParse")
+    Else
+        Set result = ParseTimeSpanText(text)
+    End If
+    TryParse = True
+    Exit Function
+Failed:
+    Set result = Nothing
+End Function
+
+Public Property Get UtcNow() As ROneCOne
+Attribute UtcNow.VB_Description = "Gets the current instant with a zero offset."
+    Dim systemNow As SYSTEMTIME
+
+    RequireDateTimeFactory "UtcNow"
+    GetSystemTime systemNow
+    Set UtcNow = BuildDateTime(SystemTimeToMs(systemNow), 0)
+End Property
+
+Public Property Get Now() As ROneCOne
+Attribute Now.VB_Description = "Gets the current instant at the machine's local offset."
+    Dim systemNow As SYSTEMTIME
+    Dim utcMs As Double
+
+    RequireDateTimeFactory "Now"
+    GetSystemTime systemNow
+    utcMs = SystemTimeToMs(systemNow)
+    Set Now = BuildDateTime(utcMs, LocalOffsetMinutesForUtc(utcMs, "Now"))
+End Property
+
+Public Property Get Today() As ROneCOne
+Attribute Today.VB_Description = "Gets the local calendar date at midnight."
+    Dim clockDate As Date
+    Dim msOfDay As Long
+    Dim systemNow As SYSTEMTIME
+
+    RequireDateTimeFactory "Today"
+    GetSystemTime systemNow
+    MsToClockParts UtcMsToLocalMs(SystemTimeToMs(systemNow), "Today"), _
+        clockDate, msOfDay
+    Set Today = FromLocal(clockDate)
+End Property
+
+Public Function FromUnixTimeSeconds(ByVal value As Variant) As ROneCOne
+Attribute FromUnixTimeSeconds.VB_Description = "Creates an instant from Unix epoch seconds."
+    RequireDateTimeFactory "FromUnixTimeSeconds"
+    Set FromUnixTimeSeconds = BuildDateTime( _
+        RequireIntegralNumber(value, "FromUnixTimeSeconds") * MS_PER_SECOND, 0)
+End Function
+
+Public Function FromUnixTimeMilliseconds(ByVal value As Variant) As ROneCOne
+Attribute FromUnixTimeMilliseconds.VB_Description = "Creates an instant from epoch milliseconds."
+    RequireDateTimeFactory "FromUnixTimeMilliseconds"
+    Set FromUnixTimeMilliseconds = BuildDateTime( _
+        RequireIntegralNumber(value, "FromUnixTimeMilliseconds"), 0)
+End Function
+
+Public Function FromLocal(ByVal value As Date) As ROneCOne
+Attribute FromLocal.VB_Description = "Wraps a local VBA Date with the machine's clock offset."
+    Dim clockMs As Double
+    Dim utcMs As Double
+
+    RequireDateTimeFactory "FromLocal"
+    clockMs = DateToMs(value)
+    utcMs = LocalClockMsToUtcMs(clockMs, "FromLocal")
+    Set FromLocal = BuildDateTime(utcMs, CLng((clockMs - utcMs) / MS_PER_MINUTE))
+End Function
+
+Public Function FromUtc(ByVal value As Date) As ROneCOne
+Attribute FromUtc.VB_Description = "Wraps a universal VBA Date with a zero offset."
+    RequireDateTimeFactory "FromUtc"
+    Set FromUtc = BuildDateTime(DateToMs(value), 0)
+End Function
+
+Public Property Get Year() As Long
+Attribute Year.VB_Description = "Gets the calendar year of the clock time."
+    Dim clockDate As Date
+    Dim msOfDay As Long
+
+    RequireDateTime "Year"
+    MsToClockParts DateTimeClockMs(), clockDate, msOfDay
+    Year = VBA.Year(clockDate)
+End Property
+
+Public Property Get Month() As Long
+Attribute Month.VB_Description = "Gets the calendar month of the clock time."
+    Dim clockDate As Date
+    Dim msOfDay As Long
+
+    RequireDateTime "Month"
+    MsToClockParts DateTimeClockMs(), clockDate, msOfDay
+    Month = VBA.Month(clockDate)
+End Property
+
+Public Property Get Day() As Long
+Attribute Day.VB_Description = "Gets the calendar day of the clock time."
+    Dim clockDate As Date
+    Dim msOfDay As Long
+
+    RequireDateTime "Day"
+    MsToClockParts DateTimeClockMs(), clockDate, msOfDay
+    Day = VBA.Day(clockDate)
+End Property
+
+Public Property Get Hour() As Long
+Attribute Hour.VB_Description = "Gets the clock hour from 0 through 23."
+    Dim clockDate As Date
+    Dim msOfDay As Long
+
+    RequireDateTime "Hour"
+    MsToClockParts DateTimeClockMs(), clockDate, msOfDay
+    Hour = msOfDay \ 3600000
+End Property
+
+Public Property Get Minute() As Long
+Attribute Minute.VB_Description = "Gets the clock minute from 0 through 59."
+    Dim clockDate As Date
+    Dim msOfDay As Long
+
+    RequireDateTime "Minute"
+    MsToClockParts DateTimeClockMs(), clockDate, msOfDay
+    Minute = (msOfDay \ 60000) Mod 60
+End Property
+
+Public Property Get Second() As Long
+Attribute Second.VB_Description = "Gets the clock second from 0 through 59."
+    Dim clockDate As Date
+    Dim msOfDay As Long
+
+    RequireDateTime "Second"
+    MsToClockParts DateTimeClockMs(), clockDate, msOfDay
+    Second = (msOfDay \ 1000) Mod 60
+End Property
+
+Public Property Get Millisecond() As Long
+Attribute Millisecond.VB_Description = "Gets the clock millisecond from 0 through 999."
+    Dim clockDate As Date
+    Dim msOfDay As Long
+
+    RequireDateTime "Millisecond"
+    MsToClockParts DateTimeClockMs(), clockDate, msOfDay
+    Millisecond = msOfDay Mod 1000
+End Property
+
+Public Property Get DayOfWeek() As Long
+Attribute DayOfWeek.VB_Description = "Gets the week day with Sunday as zero, like System.DayOfWeek."
+    Dim clockDate As Date
+    Dim msOfDay As Long
+
+    RequireDateTime "DayOfWeek"
+    MsToClockParts DateTimeClockMs(), clockDate, msOfDay
+    DayOfWeek = VBA.Weekday(clockDate, vbSunday) - 1
+End Property
+
+Public Property Get DayOfYear() As Long
+Attribute DayOfYear.VB_Description = "Gets the one-based day number within the clock year."
+    Dim clockDate As Date
+    Dim msOfDay As Long
+
+    RequireDateTime "DayOfYear"
+    MsToClockParts DateTimeClockMs(), clockDate, msOfDay
+    DayOfYear = DateDiff("d", DateSerial(VBA.Year(clockDate), 1, 1), clockDate) + 1
+End Property
+
+Public Property Get UtcDateTime() As Date
+Attribute UtcDateTime.VB_Description = "Gets the instant as a VBA Date in universal time."
+    RequireDateTime "UtcDateTime"
+    UtcDateTime = MsToDate(mDateTimeMs)
+End Property
+
+Public Property Get LocalDateTime() As Date
+Attribute LocalDateTime.VB_Description = "Gets the instant as a VBA Date in machine local time."
+    RequireDateTime "LocalDateTime"
+    LocalDateTime = MsToDate(UtcMsToLocalMs(mDateTimeMs, "LocalDateTime"))
+End Property
+
+Public Property Get Offset() As ROneCOne
+Attribute Offset.VB_Description = "Gets the clock offset from universal time as a TimeSpan."
+    RequireDateTime "Offset"
+    Set Offset = BuildTimeSpan(CDbl(mDateTimeOffsetMinutes) * MS_PER_MINUTE)
+End Property
+
+Public Function ToUniversalTime() As ROneCOne
+Attribute ToUniversalTime.VB_Description = "Returns the same instant with a zero offset."
+    RequireDateTime "ToUniversalTime"
+    Set ToUniversalTime = BuildDateTime(mDateTimeMs, 0)
+End Function
+
+Public Function ToLocalTime() As ROneCOne
+Attribute ToLocalTime.VB_Description = "Returns the same instant at the machine's local offset."
+    RequireDateTime "ToLocalTime"
+    Set ToLocalTime = BuildDateTime(mDateTimeMs, _
+        LocalOffsetMinutesForUtc(mDateTimeMs, "ToLocalTime"))
+End Function
+
+Public Function ToOffset(ByVal offsetValue As Variant) As ROneCOne
+Attribute ToOffset.VB_Description = "Returns the same instant viewed at another clock offset."
+    RequireDateTime "ToOffset"
+    Set ToOffset = BuildDateTime(mDateTimeMs, _
+        CoerceOffsetMinutes(offsetValue, "ToOffset"))
+End Function
+
+Public Function AddYears(ByVal value As Long) As ROneCOne
+Attribute AddYears.VB_Description = "Adds calendar years to the clock time, keeping the offset."
+    RequireDateTime "AddYears"
+    Set AddYears = AddClockInterval("yyyy", value, "AddYears")
+End Function
+
+Public Function AddMonths(ByVal value As Long) As ROneCOne
+Attribute AddMonths.VB_Description = "Adds calendar months, clamping to the target month's end."
+    RequireDateTime "AddMonths"
+    Set AddMonths = AddClockInterval("m", value, "AddMonths")
+End Function
+
+Public Function AddDays(ByVal value As Double) As ROneCOne
+Attribute AddDays.VB_Description = "Adds days, including fractions, to the instant."
+    RequireDateTime "AddDays"
+    Set AddDays = BuildDateTime(mDateTimeMs + RoundToMs(value * MS_PER_DAY), _
+        mDateTimeOffsetMinutes)
+End Function
+
+Public Function AddHours(ByVal value As Double) As ROneCOne
+Attribute AddHours.VB_Description = "Adds hours, including fractions, to the instant."
+    RequireDateTime "AddHours"
+    Set AddHours = BuildDateTime(mDateTimeMs + RoundToMs(value * MS_PER_HOUR), _
+        mDateTimeOffsetMinutes)
+End Function
+
+Public Function AddMinutes(ByVal value As Double) As ROneCOne
+Attribute AddMinutes.VB_Description = "Adds minutes, including fractions, to the instant."
+    RequireDateTime "AddMinutes"
+    Set AddMinutes = BuildDateTime(mDateTimeMs + RoundToMs(value * MS_PER_MINUTE), _
+        mDateTimeOffsetMinutes)
+End Function
+
+Public Function AddSeconds(ByVal value As Double) As ROneCOne
+Attribute AddSeconds.VB_Description = "Adds seconds, including fractions, to the instant."
+    RequireDateTime "AddSeconds"
+    Set AddSeconds = BuildDateTime(mDateTimeMs + RoundToMs(value * MS_PER_SECOND), _
+        mDateTimeOffsetMinutes)
+End Function
+
+Public Function AddMilliseconds(ByVal value As Double) As ROneCOne
+Attribute AddMilliseconds.VB_Description = "Adds whole milliseconds to the instant."
+    RequireDateTime "AddMilliseconds"
+    Set AddMilliseconds = BuildDateTime(mDateTimeMs + RoundToMs(value), _
+        mDateTimeOffsetMinutes)
+End Function
+
+Public Function ToUnixTimeSeconds() As LongLong
+Attribute ToUnixTimeSeconds.VB_Description = "Gets whole seconds since the Unix epoch."
+    RequireDateTime "ToUnixTimeSeconds"
+    ToUnixTimeSeconds = CLngLng(FloorDivDouble(mDateTimeMs, MS_PER_SECOND))
+End Function
+
+Public Function ToUnixTimeMilliseconds() As LongLong
+Attribute ToUnixTimeMilliseconds.VB_Description = "Gets milliseconds since the Unix epoch."
+    RequireDateTime "ToUnixTimeMilliseconds"
+    ToUnixTimeMilliseconds = CLngLng(mDateTimeMs)
+End Function
+
+Public Function ToIsoString() As String
+Attribute ToIsoString.VB_Description = "Formats the instant as round-trip ISO 8601 text."
+    RequireDateTime "ToIsoString"
+    ToIsoString = DateTimeIsoText()
+End Function
+
+Public Function ToString(Optional ByVal pattern As String = vbNullString) As String
+Attribute ToString.VB_Description = "Formats a DateTime with a token pattern, or a TimeSpan."
+    Select Case mRole
+        Case ROLE_DATETIME
+            If Len(pattern) = 0 Then
+                ToString = DateTimeIsoText()
+            Else
+                ToString = FormatDateTimeTokens(pattern)
+            End If
+        Case ROLE_TIMESPAN
+            If Len(pattern) > 0 Then
+                RaiseContractError ERROR_INVALID_ARGUMENT, "ToString", _
+                    "TimeSpan.ToString accepts no format pattern."
+            End If
+            ToString = TimeSpanText()
+        Case Else
+            RaiseContractError ERROR_INVALID_OPERATION, "ToString", _
+                "ToString requires a DateTime or TimeSpan value."
+    End Select
+End Function
+
+Public Function CompareTo(ByVal other As Variant) As Long
+Attribute CompareTo.VB_Description = "Orders two DateTime instants or two TimeSpan durations."
+    Dim difference As Double
+
+    Select Case mRole
+        Case ROLE_DATETIME
+            difference = mDateTimeMs - RequireDateTimeOperand(other, "CompareTo")
+        Case ROLE_TIMESPAN
+            difference = mTimeSpanMs - RequireTimeSpanOperandMs(other, "CompareTo")
+        Case Else
+            RaiseContractError ERROR_INVALID_OPERATION, "CompareTo", _
+                "CompareTo requires a DateTime or TimeSpan value."
+    End Select
+    If difference < 0 Then
+        CompareTo = -1
+    ElseIf difference > 0 Then
+        CompareTo = 1
+    End If
+End Function
+
+Public Function FromDays(ByVal value As Double) As ROneCOne
+Attribute FromDays.VB_Description = "Creates a duration from a day count."
+    RequireTimeSpanFactory "FromDays"
+    Set FromDays = BuildTimeSpan(RoundToMs(value * MS_PER_DAY))
+End Function
+
+Public Function FromHours(ByVal value As Double) As ROneCOne
+Attribute FromHours.VB_Description = "Creates a duration from an hour count."
+    RequireTimeSpanFactory "FromHours"
+    Set FromHours = BuildTimeSpan(RoundToMs(value * MS_PER_HOUR))
+End Function
+
+Public Function FromMinutes(ByVal value As Double) As ROneCOne
+Attribute FromMinutes.VB_Description = "Creates a duration from a minute count."
+    RequireTimeSpanFactory "FromMinutes"
+    Set FromMinutes = BuildTimeSpan(RoundToMs(value * MS_PER_MINUTE))
+End Function
+
+Public Function FromSeconds(ByVal value As Double) As ROneCOne
+Attribute FromSeconds.VB_Description = "Creates a duration from a second count."
+    RequireTimeSpanFactory "FromSeconds"
+    Set FromSeconds = BuildTimeSpan(RoundToMs(value * MS_PER_SECOND))
+End Function
+
+Public Function FromMilliseconds(ByVal value As Double) As ROneCOne
+Attribute FromMilliseconds.VB_Description = "Creates a duration from a millisecond count."
+    RequireTimeSpanFactory "FromMilliseconds"
+    Set FromMilliseconds = BuildTimeSpan(RoundToMs(value))
+End Function
+
+Public Property Get Zero() As ROneCOne
+Attribute Zero.VB_Description = "Gets an empty duration."
+    RequireTimeSpanFactory "Zero"
+    Set Zero = BuildTimeSpan(0)
+End Property
+
+Public Property Get TotalDays() As Double
+Attribute TotalDays.VB_Description = "Gets the duration expressed in fractional days."
+    RequireTimeSpan "TotalDays"
+    TotalDays = mTimeSpanMs / MS_PER_DAY
+End Property
+
+Public Property Get TotalHours() As Double
+Attribute TotalHours.VB_Description = "Gets the duration expressed in fractional hours."
+    RequireTimeSpan "TotalHours"
+    TotalHours = mTimeSpanMs / MS_PER_HOUR
+End Property
+
+Public Property Get TotalMinutes() As Double
+Attribute TotalMinutes.VB_Description = "Gets the duration expressed in fractional minutes."
+    RequireTimeSpan "TotalMinutes"
+    TotalMinutes = mTimeSpanMs / MS_PER_MINUTE
+End Property
+
+Public Property Get TotalSeconds() As Double
+Attribute TotalSeconds.VB_Description = "Gets the duration expressed in fractional seconds."
+    RequireTimeSpan "TotalSeconds"
+    TotalSeconds = mTimeSpanMs / MS_PER_SECOND
+End Property
+
+Public Property Get TotalMilliseconds() As Double
+Attribute TotalMilliseconds.VB_Description = "Gets the duration expressed in milliseconds."
+    RequireTimeSpan "TotalMilliseconds"
+    TotalMilliseconds = mTimeSpanMs
+End Property
+
+Public Property Get Days() As Long
+Attribute Days.VB_Description = "Gets the whole-day component, signed like the duration."
+    RequireTimeSpan "Days"
+    Days = CLng(Fix(mTimeSpanMs / MS_PER_DAY))
+End Property
+
+Public Property Get Hours() As Long
+Attribute Hours.VB_Description = "Gets the hour component, signed like the duration."
+    RequireTimeSpan "Hours"
+    Hours = CLng(Fix(mTimeSpanMs / MS_PER_HOUR) - _
+        Fix(mTimeSpanMs / MS_PER_DAY) * 24#)
+End Property
+
+Public Property Get Minutes() As Long
+Attribute Minutes.VB_Description = "Gets the minute component, signed like the duration."
+    RequireTimeSpan "Minutes"
+    Minutes = CLng(Fix(mTimeSpanMs / MS_PER_MINUTE) - _
+        Fix(mTimeSpanMs / MS_PER_HOUR) * 60#)
+End Property
+
+Public Property Get Seconds() As Long
+Attribute Seconds.VB_Description = "Gets the second component, signed like the duration."
+    RequireTimeSpan "Seconds"
+    Seconds = CLng(Fix(mTimeSpanMs / MS_PER_SECOND) - _
+        Fix(mTimeSpanMs / MS_PER_MINUTE) * 60#)
+End Property
+
+Public Property Get Milliseconds() As Long
+Attribute Milliseconds.VB_Description = "Gets the millisecond component, signed like the duration."
+    RequireTimeSpan "Milliseconds"
+    Milliseconds = CLng(mTimeSpanMs - Fix(mTimeSpanMs / MS_PER_SECOND) * 1000#)
+End Property
+
+Public Function Duration() As ROneCOne
+Attribute Duration.VB_Description = "Returns the absolute value of the duration."
+    RequireTimeSpan "Duration"
+    Set Duration = BuildTimeSpan(Abs(mTimeSpanMs))
+End Function
+
 Public Function HttpClient() As ROneCOne
 Attribute HttpClient.VB_Description = "Creates an HttpClient for awaitable web requests."
     Dim client As ROneCOne
@@ -4690,6 +5186,26 @@ Attribute Add.VB_Description = "Adds a list item or creates an addition expressi
         Exit Function
     End If
 
+    If mRole = ROLE_DATETIME Then
+        If Not IsMissing(value) Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "Add", _
+                "DateTime.Add accepts one TimeSpan."
+        End If
+        Set Add = BuildDateTime(mDateTimeMs + _
+            RequireTimeSpanOperandMs(operand, "Add"), mDateTimeOffsetMinutes)
+        Exit Function
+    End If
+
+    If mRole = ROLE_TIMESPAN Then
+        If Not IsMissing(value) Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "Add", _
+                "TimeSpan.Add accepts one TimeSpan."
+        End If
+        Set Add = BuildTimeSpan(mTimeSpanMs + _
+            RequireTimeSpanOperandMs(operand, "Add"))
+        Exit Function
+    End If
+
     If mRole = ROLE_LIST Then
         If Not IsMissing(value) Then
             RaiseContractError ERROR_INVALID_ARGUMENT, "Add", _
@@ -4718,7 +5234,23 @@ Attribute Add.VB_Description = "Adds a list item or creates an addition expressi
 End Function
 
 Public Function Subtract(ByVal operand As Variant) As ROneCOne
-Attribute Subtract.VB_Description = "Creates a subtraction expression."
+Attribute Subtract.VB_Description = "Subtracts times or durations, or creates an expression."
+    If mRole = ROLE_DATETIME Then
+        If IsDateTimeInstance(operand) Then
+            Set Subtract = BuildTimeSpan(mDateTimeMs - _
+                RequireDateTimeOperand(operand, "Subtract"))
+        Else
+            Set Subtract = BuildDateTime(mDateTimeMs - _
+                RequireTimeSpanOperandMs(operand, "Subtract"), _
+                mDateTimeOffsetMinutes)
+        End If
+        Exit Function
+    End If
+    If mRole = ROLE_TIMESPAN Then
+        Set Subtract = BuildTimeSpan(mTimeSpanMs - _
+            RequireTimeSpanOperandMs(operand, "Subtract"))
+        Exit Function
+    End If
     Set Subtract = CreateBinaryExpression(OP_SUBTRACT, operand)
 End Function
 
@@ -4738,7 +5270,11 @@ Attribute Modulo.VB_Description = "Creates a modulo expression."
 End Function
 
 Public Function Negate() As ROneCOne
-Attribute Negate.VB_Description = "Creates a numeric negation expression."
+Attribute Negate.VB_Description = "Negates a duration or creates a negation expression."
+    If mRole = ROLE_TIMESPAN Then
+        Set Negate = BuildTimeSpan(-mTimeSpanMs)
+        Exit Function
+    End If
     Set Negate = CreateUnaryExpression(OP_NEGATE)
 End Function
 
@@ -7982,6 +8518,11 @@ Attribute RegexError.VB_Description = "Gets the ROneCOne regular expression erro
     RegexError = ERROR_REGEX
 End Property
 
+Public Property Get FormatError() As Long
+Attribute FormatError.VB_Description = "Gets the ROneCOne text format error number."
+    FormatError = ERROR_FORMAT
+End Property
+
 Public Property Get UnboundParameterError() As Long
 Attribute UnboundParameterError.VB_Description = "Gets the unbound-parameter error number."
     UnboundParameterError = ERROR_UNBOUND_PARAMETER
@@ -8045,6 +8586,21 @@ End Property
 Friend Property Get InternalRole() As Long
 Attribute InternalRole.VB_MemberFlags = "40"
     InternalRole = mRole
+End Property
+
+Friend Property Get InternalDateTimeMs() As Double
+Attribute InternalDateTimeMs.VB_MemberFlags = "40"
+    InternalDateTimeMs = mDateTimeMs
+End Property
+
+Friend Property Get InternalDateTimeOffsetMinutes() As Long
+Attribute InternalDateTimeOffsetMinutes.VB_MemberFlags = "40"
+    InternalDateTimeOffsetMinutes = mDateTimeOffsetMinutes
+End Property
+
+Friend Property Get InternalTimeSpanMs() As Double
+Attribute InternalTimeSpanMs.VB_MemberFlags = "40"
+    InternalTimeSpanMs = mTimeSpanMs
 End Property
 
 Friend Property Get InternalOperator() As Long
@@ -8899,6 +9455,25 @@ End Sub
 
 Friend Sub ConfigureConvertFactory()
     mRole = ROLE_CONVERT_FACTORY
+End Sub
+
+Friend Sub ConfigureDateTimeFactory()
+    mRole = ROLE_DATETIME_FACTORY
+End Sub
+
+Friend Sub ConfigureDateTime(ByVal msValue As Double, ByVal offsetMinutes As Long)
+    mRole = ROLE_DATETIME
+    mDateTimeMs = msValue
+    mDateTimeOffsetMinutes = offsetMinutes
+End Sub
+
+Friend Sub ConfigureTimeSpanFactory()
+    mRole = ROLE_TIMESPAN_FACTORY
+End Sub
+
+Friend Sub ConfigureTimeSpan(ByVal msValue As Double)
+    mRole = ROLE_TIMESPAN
+    mTimeSpanMs = msValue
 End Sub
 
 Friend Sub ConfigureProcessResult( _
@@ -12203,6 +12778,34 @@ Private Sub RequireConvertFactory(ByVal memberName As String)
     End If
 End Sub
 
+Private Sub RequireDateTimeFactory(ByVal memberName As String)
+    If mRole <> ROLE_DATETIME_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires the DateTime surface."
+    End If
+End Sub
+
+Private Sub RequireDateTime(ByVal memberName As String)
+    If mRole <> ROLE_DATETIME Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires a DateTime value."
+    End If
+End Sub
+
+Private Sub RequireTimeSpanFactory(ByVal memberName As String)
+    If mRole <> ROLE_TIMESPAN_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires the TimeSpan surface."
+    End If
+End Sub
+
+Private Sub RequireTimeSpan(ByVal memberName As String)
+    If mRole <> ROLE_TIMESPAN Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires a TimeSpan value."
+    End If
+End Sub
+
 Private Function BuildRegexMatch(ByVal rawMatch As Object) As ROneCOne
     Dim groupIndex As Long
     Dim groups As ROneCOne
@@ -13001,8 +13604,8 @@ Private Function CsvTryIsoDate( _
     If monthPart < 1 Or monthPart > 12 Then Exit Function
     If dayPart < 1 Or dayPart > 31 Then Exit Function
     result = DateSerial(yearPart, monthPart, dayPart)
-    If Year(result) <> yearPart Or Month(result) <> monthPart Or _
-        Day(result) <> dayPart Then Exit Function
+    If VBA.Year(result) <> yearPart Or VBA.Month(result) <> monthPart Or _
+        VBA.Day(result) <> dayPart Then Exit Function
     If textLength = 19 Then
         hourPart = CLng(Mid$(fieldText, 12, 2))
         minutePart = CLng(Mid$(fieldText, 15, 2))
@@ -20102,6 +20705,634 @@ Private Function TypeNameForVarType(ByVal valueType As VbVarType) As String
         Case Else
             TypeNameForVarType = "VarType " & CStr(valueType)
     End Select
+End Function
+
+' ---------------------------------------------------------------------------
+' DateTime and TimeSpan core: instants are milliseconds since the Unix epoch
+' in universal time, durations are signed milliseconds, and every calendar
+' operation runs on exact integer Double arithmetic to keep clock components
+' stable across the supported years 0100 through 9999.
+' ---------------------------------------------------------------------------
+
+Private Function EpochDate() As Date
+    EpochDate = DateSerial(1970, 1, 1)
+End Function
+
+Private Function DateToMs(ByVal value As Date) As Double
+    Dim dateOnly As Date
+    Dim dayCount As Double
+    Dim msOfDay As Double
+
+    dateOnly = DateSerial(VBA.Year(value), VBA.Month(value), VBA.Day(value))
+    dayCount = DateDiff("d", EpochDate(), dateOnly)
+    ' Pre-1900 VBA dates carry the time of day as a negative fraction, so the
+    ' magnitude of the fraction is the clock time in both eras.
+    msOfDay = Int(Abs(CDbl(value) - CDbl(dateOnly)) * MS_PER_DAY + 0.5)
+    DateToMs = dayCount * MS_PER_DAY + msOfDay
+End Function
+
+Private Function MsToDate(ByVal msValue As Double) As Date
+    Dim clockDate As Date
+    Dim msOfDay As Long
+
+    MsToClockParts msValue, clockDate, msOfDay
+    If CDbl(clockDate) < 0 Then
+        MsToDate = CDate(CDbl(clockDate) - msOfDay / MS_PER_DAY)
+    Else
+        MsToDate = CDate(CDbl(clockDate) + msOfDay / MS_PER_DAY)
+    End If
+End Function
+
+Private Function FloorDivDouble(ByVal value As Double, ByVal divisor As Double) As Double
+    Dim result As Double
+
+    result = Int(value / divisor)
+    ' Floating division can land one step off at exact multiples; the integer
+    ' comparisons below are exact because every quantity stays under 2^53.
+    If (result + 1#) * divisor <= value Then result = result + 1#
+    If result * divisor > value Then result = result - 1#
+    FloorDivDouble = result
+End Function
+
+Private Function RoundToMs(ByVal value As Double) As Double
+    If value >= 0 Then
+        RoundToMs = Int(value + 0.5)
+    Else
+        RoundToMs = -Int(-value + 0.5)
+    End If
+End Function
+
+Private Sub MsToClockParts( _
+    ByVal msValue As Double, _
+    ByRef clockDate As Date, _
+    ByRef msOfDay As Long _
+)
+    Dim dayCount As Double
+
+    dayCount = FloorDivDouble(msValue, MS_PER_DAY)
+    clockDate = DateAdd("d", dayCount, EpochDate())
+    msOfDay = CLng(msValue - dayCount * MS_PER_DAY)
+End Sub
+
+Private Function DateTimeClockMs() As Double
+    DateTimeClockMs = mDateTimeMs + CDbl(mDateTimeOffsetMinutes) * MS_PER_MINUTE
+End Function
+
+Private Function SystemTimeToMs(ByRef value As SYSTEMTIME) As Double
+    SystemTimeToMs = DateToMs(DateSerial(value.wYear, value.wMonth, value.wDay)) + _
+        CDbl(value.wHour) * MS_PER_HOUR + CDbl(value.wMinute) * MS_PER_MINUTE + _
+        CDbl(value.wSecond) * MS_PER_SECOND + CDbl(value.wMilliseconds)
+End Function
+
+Private Function MsToSystemTime( _
+    ByVal msValue As Double, _
+    ByVal memberName As String _
+) As SYSTEMTIME
+    Dim clockDate As Date
+    Dim msOfDay As Long
+
+    MsToClockParts msValue, clockDate, msOfDay
+    If VBA.Year(clockDate) < 1601 Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            "Windows time zone conversion supports years 1601 and later."
+    End If
+    MsToSystemTime.wYear = CInt(VBA.Year(clockDate))
+    MsToSystemTime.wMonth = CInt(VBA.Month(clockDate))
+    MsToSystemTime.wDay = CInt(VBA.Day(clockDate))
+    MsToSystemTime.wHour = CInt(msOfDay \ 3600000)
+    MsToSystemTime.wMinute = CInt((msOfDay \ 60000) Mod 60)
+    MsToSystemTime.wSecond = CInt((msOfDay \ 1000) Mod 60)
+    MsToSystemTime.wMilliseconds = CInt(msOfDay Mod 1000)
+End Function
+
+Private Function UtcMsToLocalMs( _
+    ByVal utcMs As Double, _
+    ByVal memberName As String _
+) As Double
+    Dim localTime As SYSTEMTIME
+    Dim utcTime As SYSTEMTIME
+
+    utcTime = MsToSystemTime(utcMs, memberName)
+    If SystemTimeToTzSpecificLocalTime(0, utcTime, localTime) = 0 Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            "Windows rejected the universal to local time conversion."
+    End If
+    UtcMsToLocalMs = SystemTimeToMs(localTime)
+End Function
+
+Private Function LocalClockMsToUtcMs( _
+    ByVal clockMs As Double, _
+    ByVal memberName As String _
+) As Double
+    Dim localTime As SYSTEMTIME
+    Dim utcTime As SYSTEMTIME
+
+    localTime = MsToSystemTime(clockMs, memberName)
+    If TzSpecificLocalTimeToSystemTime(0, localTime, utcTime) = 0 Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            "Windows rejected the local to universal time conversion."
+    End If
+    LocalClockMsToUtcMs = SystemTimeToMs(utcTime)
+End Function
+
+Private Function LocalOffsetMinutesForUtc( _
+    ByVal utcMs As Double, _
+    ByVal memberName As String _
+) As Long
+    LocalOffsetMinutesForUtc = CLng( _
+        (UtcMsToLocalMs(utcMs, memberName) - utcMs) / MS_PER_MINUTE)
+End Function
+
+Private Function BuildDateTime( _
+    ByVal msValue As Double, _
+    ByVal offsetMinutes As Long _
+) As ROneCOne
+    Dim instance As ROneCOne
+
+    If msValue < MIN_DATETIME_MS Or msValue > MAX_DATETIME_MS Or _
+        msValue + CDbl(offsetMinutes) * MS_PER_MINUTE < MIN_DATETIME_MS Or _
+        msValue + CDbl(offsetMinutes) * MS_PER_MINUTE > MAX_DATETIME_MS Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "DateTime", _
+            "The instant falls outside the supported years 0100 through 9999."
+    End If
+    Set instance = New ROneCOne
+    instance.ConfigureDateTime msValue, offsetMinutes
+    Set BuildDateTime = instance
+End Function
+
+Private Function BuildTimeSpan(ByVal msValue As Double) As ROneCOne
+    Dim instance As ROneCOne
+
+    Set instance = New ROneCOne
+    instance.ConfigureTimeSpan msValue
+    Set BuildTimeSpan = instance
+End Function
+
+Private Function AddClockInterval( _
+    ByVal intervalCode As String, _
+    ByVal amount As Long, _
+    ByVal memberName As String _
+) As ROneCOne
+    Dim clockDate As Date
+    Dim moved As Date
+    Dim msOfDay As Long
+
+    MsToClockParts DateTimeClockMs(), clockDate, msOfDay
+    On Error GoTo Failed
+    moved = DateAdd(intervalCode, amount, clockDate)
+    On Error GoTo 0
+    Set AddClockInterval = BuildDateTime(DateToMs(moved) + CDbl(msOfDay) - _
+        CDbl(mDateTimeOffsetMinutes) * MS_PER_MINUTE, mDateTimeOffsetMinutes)
+    Exit Function
+Failed:
+    RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+        "The result falls outside the supported years 0100 through 9999."
+End Function
+
+Private Function DateTimeIsoText() As String
+    Dim clockDate As Date
+    Dim msOfDay As Long
+    Dim result As String
+
+    MsToClockParts DateTimeClockMs(), clockDate, msOfDay
+    result = PadNumber(VBA.Year(clockDate), 4) & "-" & _
+        PadNumber(VBA.Month(clockDate), 2) & "-" & _
+        PadNumber(VBA.Day(clockDate), 2) & "T" & _
+        PadNumber(msOfDay \ 3600000, 2) & ":" & _
+        PadNumber((msOfDay \ 60000) Mod 60, 2) & ":" & _
+        PadNumber((msOfDay \ 1000) Mod 60, 2)
+    If (msOfDay Mod 1000) <> 0 Then
+        result = result & "." & PadNumber(msOfDay Mod 1000, 3)
+    End If
+    DateTimeIsoText = result & OffsetSuffixText(mDateTimeOffsetMinutes)
+End Function
+
+Private Function OffsetSuffixText(ByVal offsetMinutes As Long) As String
+    Dim magnitude As Long
+    Dim signText As String
+
+    If offsetMinutes = 0 Then
+        OffsetSuffixText = "Z"
+        Exit Function
+    End If
+    magnitude = Abs(offsetMinutes)
+    signText = "+"
+    If offsetMinutes < 0 Then signText = "-"
+    OffsetSuffixText = signText & PadNumber(magnitude \ 60, 2) & ":" & _
+        PadNumber(magnitude Mod 60, 2)
+End Function
+
+Private Function FormatDateTimeTokens(ByVal pattern As String) As String
+    Dim clockDate As Date
+    Dim index As Long
+    Dim msOfDay As Long
+    Dim probe As String
+    Dim result As String
+    Dim runLength As Long
+
+    MsToClockParts DateTimeClockMs(), clockDate, msOfDay
+    index = 1
+    Do While index <= Len(pattern)
+        probe = Mid$(pattern, index, 1)
+        runLength = 1
+        Do While Mid$(pattern, index + runLength, 1) = probe
+            runLength = runLength + 1
+        Loop
+        If (probe >= "a" And probe <= "z") Or (probe >= "A" And probe <= "Z") Then
+            result = result & DateTimeTokenText(probe, runLength, clockDate, msOfDay)
+        Else
+            result = result & String$(runLength, probe)
+        End If
+        index = index + runLength
+    Loop
+    FormatDateTimeTokens = result
+End Function
+
+Private Function DateTimeTokenText( _
+    ByVal token As String, _
+    ByVal runLength As Long, _
+    ByVal clockDate As Date, _
+    ByVal msOfDay As Long _
+) As String
+    Select Case token & CStr(runLength)
+        Case "y4"
+            DateTimeTokenText = PadNumber(VBA.Year(clockDate), 4)
+        Case "M2"
+            DateTimeTokenText = PadNumber(VBA.Month(clockDate), 2)
+        Case "d2"
+            DateTimeTokenText = PadNumber(VBA.Day(clockDate), 2)
+        Case "H2"
+            DateTimeTokenText = PadNumber(msOfDay \ 3600000, 2)
+        Case "m2"
+            DateTimeTokenText = PadNumber((msOfDay \ 60000) Mod 60, 2)
+        Case "s2"
+            DateTimeTokenText = PadNumber((msOfDay \ 1000) Mod 60, 2)
+        Case "f3"
+            DateTimeTokenText = PadNumber(msOfDay Mod 1000, 3)
+        Case Else
+            RaiseFormatError "The format token '" & String$(runLength, token) & _
+                "' is not supported; use yyyy MM dd HH mm ss fff."
+    End Select
+End Function
+
+Private Function TimeSpanText() As String
+    Dim dayPart As Double
+    Dim magnitude As Double
+    Dim msPart As Double
+    Dim result As String
+
+    magnitude = Abs(mTimeSpanMs)
+    dayPart = Fix(magnitude / MS_PER_DAY)
+    result = PadNumber(CLng(Fix(magnitude / MS_PER_HOUR) - dayPart * 24#), 2) & _
+        ":" & PadNumber(CLng(Fix(magnitude / MS_PER_MINUTE) - _
+        Fix(magnitude / MS_PER_HOUR) * 60#), 2) & _
+        ":" & PadNumber(CLng(Fix(magnitude / MS_PER_SECOND) - _
+        Fix(magnitude / MS_PER_MINUTE) * 60#), 2)
+    If dayPart > 0 Then result = CStr(dayPart) & "." & result
+    msPart = magnitude - Fix(magnitude / MS_PER_SECOND) * 1000#
+    If msPart > 0 Then result = result & "." & PadNumber(CLng(msPart), 3)
+    If mTimeSpanMs < 0 Then result = "-" & result
+    TimeSpanText = result
+End Function
+
+Private Function ParseDateTimeText( _
+    ByVal text As String, _
+    ByVal memberName As String _
+) As ROneCOne
+    Dim clockMs As Double
+    Dim hasOffset As Boolean
+    Dim offsetMinutes As Long
+    Dim utcMs As Double
+
+    If Not TryParseIsoDateTime(text, clockMs, offsetMinutes, hasOffset) Then
+        RaiseFormatError "The text is not ISO 8601 date and time: " & _
+            ClipForMessage(text)
+    End If
+    If hasOffset Then
+        utcMs = clockMs - CDbl(offsetMinutes) * MS_PER_MINUTE
+    Else
+        utcMs = LocalClockMsToUtcMs(clockMs, memberName)
+        offsetMinutes = CLng((clockMs - utcMs) / MS_PER_MINUTE)
+    End If
+    Set ParseDateTimeText = BuildDateTime(utcMs, offsetMinutes)
+End Function
+
+Private Function TryParseIsoDateTime( _
+    ByVal text As String, _
+    ByRef clockMs As Double, _
+    ByRef offsetMinutes As Long, _
+    ByRef hasOffset As Boolean _
+) As Boolean
+    Dim clockDate As Date
+    Dim dayPart As Long
+    Dim fractionMs As Long
+    Dim hourPart As Long
+    Dim minutePart As Long
+    Dim monthPart As Long
+    Dim offsetHours As Long
+    Dim offsetMins As Long
+    Dim offsetSign As Long
+    Dim parsed As String
+    Dim position As Long
+    Dim probe As String
+    Dim secondPart As Long
+    Dim textLength As Long
+    Dim yearPart As Long
+
+    hasOffset = False
+    offsetMinutes = 0
+    parsed = Trim$(text)
+    textLength = Len(parsed)
+    position = 1
+    If Not TryReadDigits(parsed, position, 4, yearPart) Then Exit Function
+    If yearPart < 100 Then Exit Function
+    If Not SkipExpectedChar(parsed, position, "-") Then Exit Function
+    If Not TryReadDigits(parsed, position, 2, monthPart) Then Exit Function
+    If Not SkipExpectedChar(parsed, position, "-") Then Exit Function
+    If Not TryReadDigits(parsed, position, 2, dayPart) Then Exit Function
+    If monthPart < 1 Or monthPart > 12 Then Exit Function
+    If dayPart < 1 Or dayPart > 31 Then Exit Function
+    clockDate = DateSerial(yearPart, monthPart, dayPart)
+    If VBA.Year(clockDate) <> yearPart Or VBA.Month(clockDate) <> monthPart Or _
+        VBA.Day(clockDate) <> dayPart Then Exit Function
+    If position <= textLength Then
+        probe = Mid$(parsed, position, 1)
+        If probe <> "T" And probe <> "t" And probe <> " " Then Exit Function
+        position = position + 1
+        If Not TryReadDigits(parsed, position, 2, hourPart) Then Exit Function
+        If Not SkipExpectedChar(parsed, position, ":") Then Exit Function
+        If Not TryReadDigits(parsed, position, 2, minutePart) Then Exit Function
+        If hourPart > 23 Or minutePart > 59 Then Exit Function
+        If PeekChar(parsed, position) = ":" Then
+            position = position + 1
+            If Not TryReadDigits(parsed, position, 2, secondPart) Then Exit Function
+            If secondPart > 59 Then Exit Function
+            If PeekChar(parsed, position) = "." Then
+                position = position + 1
+                If Not TryReadFractionMs(parsed, position, fractionMs) Then
+                    Exit Function
+                End If
+            End If
+        End If
+        probe = PeekChar(parsed, position)
+        If probe = "Z" Or probe = "z" Then
+            hasOffset = True
+            position = position + 1
+        ElseIf probe = "+" Or probe = "-" Then
+            offsetSign = 1
+            If probe = "-" Then offsetSign = -1
+            position = position + 1
+            If Not TryReadDigits(parsed, position, 2, offsetHours) Then
+                Exit Function
+            End If
+            If PeekChar(parsed, position) = ":" Then position = position + 1
+            If position <= textLength Then
+                If Not TryReadDigits(parsed, position, 2, offsetMins) Then
+                    Exit Function
+                End If
+            End If
+            If offsetHours > 14 Or offsetMins > 59 Then Exit Function
+            offsetMinutes = offsetSign * (offsetHours * 60 + offsetMins)
+            If Abs(offsetMinutes) > 840 Then Exit Function
+            hasOffset = True
+        End If
+    End If
+    If position <= textLength Then Exit Function
+    clockMs = DateToMs(clockDate) + CDbl(hourPart) * MS_PER_HOUR + _
+        CDbl(minutePart) * MS_PER_MINUTE + CDbl(secondPart) * MS_PER_SECOND + _
+        fractionMs
+    TryParseIsoDateTime = True
+End Function
+
+Private Function ParseTimeSpanText(ByVal text As String) As ROneCOne
+    Dim msValue As Double
+
+    If Not TryParseTimeSpanCore(Trim$(text), msValue) Then
+        RaiseFormatError "The text is not a d.hh:mm:ss duration: " & _
+            ClipForMessage(text)
+    End If
+    Set ParseTimeSpanText = BuildTimeSpan(msValue)
+End Function
+
+Private Function TryParseTimeSpanCore( _
+    ByVal text As String, _
+    ByRef msValue As Double _
+) As Boolean
+    Dim dayCount As Double
+    Dim firstRun As String
+    Dim fractionMs As Long
+    Dim hourPart As Long
+    Dim minutePart As Long
+    Dim negative As Boolean
+    Dim position As Long
+    Dim runStart As Long
+    Dim secondPart As Long
+    Dim textLength As Long
+
+    textLength = Len(text)
+    position = 1
+    If PeekChar(text, position) = "-" Then
+        negative = True
+        position = position + 1
+    End If
+    runStart = position
+    Do While position <= textLength
+        If Mid$(text, position, 1) < "0" Or Mid$(text, position, 1) > "9" Then
+            Exit Do
+        End If
+        position = position + 1
+    Loop
+    If position = runStart Then Exit Function
+    firstRun = Mid$(text, runStart, position - runStart)
+    If Len(firstRun) > 7 Then Exit Function
+    If PeekChar(text, position) = "." Then
+        dayCount = CDbl(firstRun)
+        position = position + 1
+        If Not TryReadDigits(text, position, 2, hourPart) Then Exit Function
+    Else
+        If Len(firstRun) > 2 Then Exit Function
+        hourPart = CLng(firstRun)
+    End If
+    If Not SkipExpectedChar(text, position, ":") Then Exit Function
+    If Not TryReadDigits(text, position, 2, minutePart) Then Exit Function
+    If PeekChar(text, position) = ":" Then
+        position = position + 1
+        If Not TryReadDigits(text, position, 2, secondPart) Then Exit Function
+        If PeekChar(text, position) = "." Then
+            position = position + 1
+            If Not TryReadFractionMs(text, position, fractionMs) Then
+                Exit Function
+            End If
+        End If
+    End If
+    If position <= textLength Then Exit Function
+    If hourPart > 23 Or minutePart > 59 Or secondPart > 59 Then Exit Function
+    msValue = dayCount * MS_PER_DAY + CDbl(hourPart) * MS_PER_HOUR + _
+        CDbl(minutePart) * MS_PER_MINUTE + CDbl(secondPart) * MS_PER_SECOND + _
+        fractionMs
+    If negative Then msValue = -msValue
+    TryParseTimeSpanCore = True
+End Function
+
+Private Function TryReadDigits( _
+    ByVal text As String, _
+    ByRef position As Long, _
+    ByVal digitCount As Long, _
+    ByRef result As Long _
+) As Boolean
+    Dim index As Long
+    Dim probe As String
+
+    If position + digitCount - 1 > Len(text) Then Exit Function
+    result = 0
+    For index = 1 To digitCount
+        probe = Mid$(text, position, 1)
+        If probe < "0" Or probe > "9" Then Exit Function
+        result = result * 10 + (Asc(probe) - 48)
+        position = position + 1
+    Next index
+    TryReadDigits = True
+End Function
+
+Private Function TryReadFractionMs( _
+    ByVal text As String, _
+    ByRef position As Long, _
+    ByRef result As Long _
+) As Boolean
+    Dim digitCount As Long
+    Dim digits As String
+    Dim probe As String
+
+    Do While position <= Len(text)
+        probe = Mid$(text, position, 1)
+        If probe < "0" Or probe > "9" Then Exit Do
+        If digitCount < 3 Then digits = digits & probe
+        digitCount = digitCount + 1
+        position = position + 1
+    Loop
+    If digitCount = 0 Or digitCount > 7 Then Exit Function
+    Do While Len(digits) < 3
+        digits = digits & "0"
+    Loop
+    result = CLng(digits)
+    TryReadFractionMs = True
+End Function
+
+Private Function SkipExpectedChar( _
+    ByVal text As String, _
+    ByRef position As Long, _
+    ByVal expected As String _
+) As Boolean
+    If position > Len(text) Then Exit Function
+    If Mid$(text, position, 1) <> expected Then Exit Function
+    position = position + 1
+    SkipExpectedChar = True
+End Function
+
+Private Function PeekChar(ByVal text As String, ByVal position As Long) As String
+    If position > Len(text) Then Exit Function
+    PeekChar = Mid$(text, position, 1)
+End Function
+
+Private Function PadNumber(ByVal value As Long, ByVal width As Long) As String
+    PadNumber = CStr(value)
+    If Len(PadNumber) < width Then
+        PadNumber = String$(width - Len(PadNumber), "0") & PadNumber
+    End If
+End Function
+
+Private Function ClipForMessage(ByVal text As String) As String
+    If Len(text) > 60 Then
+        ClipForMessage = Left$(text, 57) & "..."
+    Else
+        ClipForMessage = text
+    End If
+End Function
+
+Private Sub RaiseFormatError(ByVal message As String)
+    Err.Raise ERROR_FORMAT, "ROneCOne.FormatException", message
+End Sub
+
+Private Function IsDateTimeInstance(ByVal value As Variant) As Boolean
+    Dim runtimeValue As ROneCOne
+
+    If Not IsObject(value) Then Exit Function
+    If Not TypeOf value Is ROneCOne Then Exit Function
+    Set runtimeValue = value
+    If runtimeValue Is Nothing Then Exit Function
+    IsDateTimeInstance = (runtimeValue.InternalRole = ROLE_DATETIME)
+End Function
+
+Private Function RequireDateTimeOperand( _
+    ByVal value As Variant, _
+    ByVal memberName As String _
+) As Double
+    Dim runtimeValue As ROneCOne
+
+    If Not IsDateTimeInstance(value) Then
+        RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
+            memberName & " requires a DateTime value."
+    End If
+    Set runtimeValue = value
+    RequireDateTimeOperand = runtimeValue.InternalDateTimeMs
+End Function
+
+Private Function RequireTimeSpanOperandMs( _
+    ByVal value As Variant, _
+    ByVal memberName As String _
+) As Double
+    Dim runtimeValue As ROneCOne
+
+    If IsObject(value) Then
+        If TypeOf value Is ROneCOne Then
+            Set runtimeValue = value
+            If Not runtimeValue Is Nothing Then
+                If runtimeValue.InternalRole = ROLE_TIMESPAN Then
+                    RequireTimeSpanOperandMs = runtimeValue.InternalTimeSpanMs
+                    Exit Function
+                End If
+            End If
+        End If
+    End If
+    RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
+        memberName & " requires a TimeSpan value."
+End Function
+
+Private Function CoerceOffsetMinutes( _
+    ByVal offsetValue As Variant, _
+    ByVal memberName As String _
+) As Long
+    Dim minutesValue As Double
+
+    If IsObject(offsetValue) Then
+        minutesValue = RequireTimeSpanOperandMs(offsetValue, memberName) / _
+            MS_PER_MINUTE
+    ElseIf IsNumeric(offsetValue) And VarType(offsetValue) <> vbString Then
+        minutesValue = CDbl(offsetValue)
+    Else
+        RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
+            memberName & " requires a TimeSpan or whole minutes."
+    End If
+    If minutesValue <> Fix(minutesValue) Or Abs(minutesValue) > 840 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "The offset must be whole minutes within 14 hours of UTC."
+    End If
+    CoerceOffsetMinutes = CLng(minutesValue)
+End Function
+
+Private Function RequireIntegralNumber( _
+    ByVal value As Variant, _
+    ByVal memberName As String _
+) As Double
+    If IsObject(value) Or VarType(value) = vbString Or Not IsNumeric(value) Then
+        RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
+            memberName & " requires a whole number."
+    End If
+    RequireIntegralNumber = CDbl(value)
+    If RequireIntegralNumber <> Fix(RequireIntegralNumber) Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            memberName & " requires a whole number."
+    End If
 End Function
 
 Private Sub RaiseContractError( _

@@ -653,6 +653,47 @@ class SourceContractTests(unittest.TestCase):
         ):
             self.assertIn(member, self.source)
 
+    def test_datetime_and_timespan_surfaces_are_present(self) -> None:
+        for member in (
+            "Public Property Get DateTime()",
+            "Public Property Get TimeSpan()",
+            "Public Function Parse(",
+            "Public Function TryParse(",
+            "Public Property Get UtcNow()",
+            "Public Property Get Now()",
+            "Public Property Get Today()",
+            "Public Function FromUnixTimeSeconds(",
+            "Public Function FromUnixTimeMilliseconds(",
+            "Public Function FromLocal(",
+            "Public Function FromUtc(",
+            "Public Function ToUnixTimeSeconds(",
+            "Public Function ToUnixTimeMilliseconds(",
+            "Public Function ToIsoString(",
+            "Public Function ToString(",
+            "Public Function CompareTo(",
+            "Public Function ToUniversalTime(",
+            "Public Function ToLocalTime(",
+            "Public Function ToOffset(",
+            "Public Function AddMonths(",
+            "Public Function AddDays(",
+            "Public Property Get DayOfWeek()",
+            "Public Property Get UtcDateTime()",
+            "Public Property Get LocalDateTime()",
+            "Public Property Get Offset()",
+            "Public Function FromDays(",
+            "Public Function FromMilliseconds(",
+            "Public Property Get TotalSeconds()",
+            "Public Function Duration(",
+            "Public Property Get FormatError()",
+            "Private Type SYSTEMTIME",
+            "SystemTimeToTzSpecificLocalTime",
+            "TzSpecificLocalTimeToSystemTime",
+        ):
+            self.assertIn(member, self.source)
+        # Local conversions must always delegate to Windows; the runtime never
+        # hard-codes an offset or daylight saving rule of its own.
+        self.assertNotIn("GetTimeZoneInformation", self.source)
+
     def test_json_surface_is_present_and_runtime_native(self) -> None:
         for member in (
             "Public Property Get Json()",

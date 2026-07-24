@@ -66,6 +66,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestRegexSurface
     mCurrentTest = "TestHashSurface"
     TestHashSurface
+    mCurrentTest = "TestDateTimeSurface"
+    TestDateTimeSurface
     mCurrentTest = "TestHttpSurface"
     TestHttpSurface
     mCurrentTest = vbNullString
@@ -1675,6 +1677,186 @@ Private Sub TestHashSurface()
     On Error GoTo 0
     AssertEqual "hex rejects odd length", _
         ROneCOne.InvalidArgumentError, conversionError
+End Sub
+
+Private Sub TestDateTimeSurface()
+    Dim currentUtc As ROneCOne
+    Dim localWrap As ROneCOne
+    Dim missError As Long
+    Dim moment As ROneCOne
+    Dim other As ROneCOne
+    Dim parsedOk As Boolean
+    Dim span As ROneCOne
+    Dim tryResult As ROneCOne
+
+    ' Instants mirror DateTimeOffset: a clock time plus an offset, stored as
+    ' milliseconds since the Unix epoch in universal time. Local conversions
+    ' are delegated to Windows so daylight saving applies per instant.
+    mCurrentTest = "TestDateTimeSurface.Parse"
+    Set moment = ROneCOne.DateTime.Parse("2026-07-24T18:30:05.123+02:00")
+    AssertEqual "datetime year", 2026&, moment.Year
+    AssertEqual "datetime month", 7&, moment.Month
+    AssertEqual "datetime day", 24&, moment.Day
+    AssertEqual "datetime hour", 18&, moment.Hour
+    AssertEqual "datetime minute", 30&, moment.Minute
+    AssertEqual "datetime second", 5&, moment.Second
+    AssertEqual "datetime millisecond", 123&, moment.Millisecond
+    AssertEqual "datetime offset minutes", 120#, moment.Offset.TotalMinutes
+    AssertEqual "datetime iso round trip", _
+        "2026-07-24T18:30:05.123+02:00", moment.ToIsoString
+    AssertEqual "datetime unix seconds", 1784910605, _
+        CDbl(moment.ToUnixTimeSeconds)
+    AssertEqual "datetime unix milliseconds", 1784910605123#, _
+        CDbl(moment.ToUnixTimeMilliseconds)
+    AssertEqual "datetime universal view", "2026-07-24T16:30:05.123Z", _
+        moment.ToUniversalTime.ToIsoString
+
+    mCurrentTest = "TestDateTimeSurface.Epoch"
+    Set moment = ROneCOne.DateTime.Parse("1970-01-01T00:00:00Z")
+    AssertEqual "epoch unix zero", 0&, CDbl(moment.ToUnixTimeSeconds)
+    AssertEqual "epoch day of week", 4&, moment.DayOfWeek
+    AssertEqual "epoch day of year", 1&, moment.DayOfYear
+    Set moment = ROneCOne.DateTime.FromUnixTimeMilliseconds(123)
+    AssertEqual "from unix ms iso", "1970-01-01T00:00:00.123Z", _
+        moment.ToIsoString
+    Set moment = ROneCOne.DateTime.FromUnixTimeSeconds(1784910605)
+    AssertEqual "from unix seconds round trip", 1784910605, _
+        CDbl(moment.ToUnixTimeSeconds)
+
+    mCurrentTest = "TestDateTimeSurface.Comparison"
+    Set moment = ROneCOne.DateTime.Parse("2026-07-24T18:00:00+02:00")
+    Set other = ROneCOne.DateTime.Parse("2026-07-24T16:00:00Z")
+    AssertEqual "offset views same instant", 0&, moment.CompareTo(other)
+    AssertEqual "later instant compares greater", 1&, _
+        moment.AddSeconds(1).CompareTo(other)
+    AssertEqual "earlier instant compares less", -1&, _
+        moment.AddSeconds(-1).CompareTo(other)
+    AssertEqual "subtract instants", 0#, moment.Subtract(other).TotalSeconds
+    AssertEqual "to offset keeps instant", 0&, _
+        moment.ToOffset(-300).CompareTo(other)
+    AssertEqual "to offset clock hour", 11&, moment.ToOffset(-300).Hour
+
+    mCurrentTest = "TestDateTimeSurface.Arithmetic"
+    Set moment = ROneCOne.DateTime.Parse("2026-01-31T12:00:00Z")
+    AssertEqual "add months clamps", "2026-02-28T12:00:00Z", _
+        moment.AddMonths(1).ToIsoString
+    AssertEqual "add years", "2027-01-31T12:00:00Z", _
+        moment.AddYears(1).ToIsoString
+    AssertEqual "add days fraction", "2026-02-01T00:00:00Z", _
+        moment.AddDays(0.5).ToIsoString
+    AssertEqual "add hours", "2026-01-31T13:30:00Z", _
+        moment.AddHours(1.5).ToIsoString
+    Set span = ROneCOne.TimeSpan.FromMinutes(90)
+    AssertEqual "add timespan", "2026-01-31T13:30:00Z", _
+        moment.Add(span).ToIsoString
+    AssertEqual "subtract timespan", "2026-01-31T10:30:00Z", _
+        moment.Subtract(span).ToIsoString
+
+    mCurrentTest = "TestDateTimeSurface.Format"
+    Set moment = ROneCOne.DateTime.Parse("2026-07-04T09:05:07.080Z")
+    AssertEqual "custom tokens", "2026-07-04 09:05:07.080", _
+        moment.ToString("yyyy-MM-dd HH:mm:ss.fff")
+    AssertEqual "default tostring is iso", moment.ToIsoString, moment.ToString
+    missError = 0
+    On Error Resume Next
+    moment.ToString "yyyy-QQ"
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "unknown token raises", ROneCOne.FormatError, missError
+
+    mCurrentTest = "TestDateTimeSurface.LocalZone"
+    Set currentUtc = ROneCOne.DateTime.UtcNow
+    AssertEqual "utcnow offset", 0#, currentUtc.Offset.TotalMinutes
+    AssertTrue "now equals utcnow instant", _
+        Abs(CDbl(ROneCOne.DateTime.Now.ToUnixTimeMilliseconds) - _
+        CDbl(currentUtc.ToUnixTimeMilliseconds)) < 5000
+    AssertTrue "vba now matches local clock", _
+        Abs((ROneCOne.DateTime.Now.LocalDateTime - VBA.Now) * 86400#) < 5
+    AssertEqual "today has no clock time", 0&, _
+        ROneCOne.DateTime.Today.Hour * 3600 + _
+        ROneCOne.DateTime.Today.Minute * 60 + ROneCOne.DateTime.Today.Second
+    Set localWrap = ROneCOne.DateTime.FromLocal(DateSerial(2026, 1, 15))
+    AssertEqual "fromlocal round trip", DateSerial(2026, 1, 15), _
+        localWrap.LocalDateTime
+    AssertEqual "fromlocal utc round trip", 0&, _
+        ROneCOne.DateTime.FromUtc(localWrap.UtcDateTime).CompareTo(localWrap)
+    Set moment = ROneCOne.DateTime.Parse("2026-01-15T00:00:00")
+    AssertEqual "no offset assumes local", 0&, moment.CompareTo(localWrap)
+    AssertEqual "tolocaltime keeps instant", 0&, _
+        moment.ToLocalTime.CompareTo(moment)
+
+    mCurrentTest = "TestDateTimeSurface.Failures"
+    missError = 0
+    On Error Resume Next
+    ROneCOne.DateTime.Parse "2026-02-30"
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "impossible date raises", ROneCOne.FormatError, missError
+    missError = 0
+    On Error Resume Next
+    ROneCOne.DateTime.Parse "2026-07-24T25:00:00Z"
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "impossible hour raises", ROneCOne.FormatError, missError
+    missError = 0
+    On Error Resume Next
+    ROneCOne.DateTime.Parse "2026-07-24T10:00:00+15:00"
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "impossible offset raises", ROneCOne.FormatError, missError
+    parsedOk = ROneCOne.DateTime.TryParse("not a date", tryResult)
+    AssertFalse "tryparse rejects junk", parsedOk
+    AssertTrue "tryparse leaves nothing", tryResult Is Nothing
+    parsedOk = ROneCOne.DateTime.TryParse("2026-07-24", tryResult)
+    AssertTrue "tryparse accepts date", parsedOk
+    AssertEqual "tryparse value", 2026&, tryResult.Year
+
+    mCurrentTest = "TestDateTimeSurface.TimeSpan"
+    Set span = ROneCOne.TimeSpan.FromMinutes(90)
+    AssertEqual "timespan total hours", 1.5, span.TotalHours
+    AssertEqual "timespan hours part", 1&, span.Hours
+    AssertEqual "timespan minutes part", 30&, span.Minutes
+    AssertEqual "timespan text", "01:30:00", span.ToString
+    Set span = ROneCOne.TimeSpan.FromMinutes(-90)
+    AssertEqual "negative hours part", -1&, span.Hours
+    AssertEqual "negative minutes part", -30&, span.Minutes
+    AssertEqual "negative text", "-01:30:00", span.ToString
+    AssertEqual "duration text", "01:30:00", span.Duration.ToString
+    AssertEqual "negate total minutes", 90#, span.Negate.TotalMinutes
+    Set span = ROneCOne.TimeSpan.FromDays(1.5)
+    AssertEqual "day text", "1.12:00:00", span.ToString
+    AssertEqual "parse day round trip", 0&, _
+        ROneCOne.TimeSpan.Parse("1.12:00:00").CompareTo(span)
+    AssertEqual "parse fraction ms", 1500#, _
+        ROneCOne.TimeSpan.Parse("00:00:01.5").TotalMilliseconds
+    AssertEqual "add spans", 2.5, ROneCOne.TimeSpan.FromDays(1).Add( _
+        ROneCOne.TimeSpan.FromDays(1.5)).TotalDays
+    AssertEqual "subtract spans", -0.5, ROneCOne.TimeSpan.FromDays(1).Subtract( _
+        ROneCOne.TimeSpan.FromDays(1.5)).TotalDays
+    AssertEqual "zero total", 0#, ROneCOne.TimeSpan.Zero.TotalMilliseconds
+    missError = 0
+    On Error Resume Next
+    ROneCOne.TimeSpan.Parse "25:00:00"
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "timespan hour bound raises", ROneCOne.FormatError, missError
+
+    mCurrentTest = "TestDateTimeSurface.Guards"
+    missError = 0
+    On Error Resume Next
+    ROneCOne.DateTime.FromDays 1
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "factory role guard", _
+        ROneCOne.InvalidOperationError, missError
+    Set moment = ROneCOne.DateTime.Parse("2026-01-15T00:00:00Z")
+    missError = 0
+    On Error Resume Next
+    moment.Add ROneCOne.DateTime.UtcNow
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "add requires timespan", _
+        ROneCOne.TypeMismatchError, missError
 End Sub
 
 Private Function ElapsedSecondsSince(ByVal started As Double) As Double
