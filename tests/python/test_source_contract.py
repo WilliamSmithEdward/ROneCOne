@@ -755,6 +755,16 @@ class SourceContractTests(unittest.TestCase):
         ):
             self.assertIn(member, self.source)
 
+    def test_file_watcher_surface_is_present(self) -> None:
+        for member in (
+            "Public Function FileWatcher(",
+            "Public Function WaitForChangeAsync(",
+            "Public Property Get ChangeType()",
+            "TASK_FILE_WATCH",
+            "WATCH_POLL_INTERVAL_MS",
+        ):
+            self.assertIn(member, self.source)
+
     def test_xml_surface_is_present_and_secured(self) -> None:
         for member in (
             "Public Property Get Xml()",

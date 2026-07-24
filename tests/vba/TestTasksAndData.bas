@@ -74,6 +74,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestEscapingSurface
     mCurrentTest = "TestLoggerSurface"
     TestLoggerSurface
+    mCurrentTest = "TestFileWatcherSurface"
+    TestFileWatcherSurface
     mCurrentTest = "TestXmlSurface"
     TestXmlSurface
     mCurrentTest = "TestHttpSurface"
@@ -2106,6 +2108,81 @@ Private Sub TestLoggerSurface()
     On Error GoTo 0
     AssertEqual "logger missing folder raises io", _
         ROneCOne.IOError, missError
+End Sub
+
+Private Sub TestFileWatcherSurface()
+    Dim change As ROneCOne
+    Dim missError As Long
+    Dim source As ROneCOne
+    Dim task As ROneCOne
+    Dim watchRoot As String
+    Dim watcher As ROneCOne
+
+    ' A watch task snapshots the folder when created and rescans while
+    ' awaited, so a change landing before the await is still observed.
+    mCurrentTest = "TestFileWatcherSurface.Changes"
+    watchRoot = CStr(ROneCOne.Path.Combine( _
+        CStr(ROneCOne.Path.GetTempPath), "ROneCOne_Watch_Test"))
+    If ROneCOne.Directory.Exists(watchRoot) Then
+        ROneCOne.Directory.Delete watchRoot, True
+    End If
+    ROneCOne.Directory.CreateDirectory watchRoot
+    Set watcher = ROneCOne.FileWatcher(watchRoot, "*.txt")
+    Set task = watcher.WaitForChangeAsync
+    ROneCOne.File.WriteAllText _
+        CStr(ROneCOne.Path.Combine(watchRoot, "a.txt")), "one"
+    Set change = task.Await
+    AssertEqual "watcher created type", "Created", change.ChangeType
+    AssertEqual "watcher created name", "a.txt", change.Name
+
+    Set task = watcher.WaitForChangeAsync
+    ROneCOne.File.AppendAllText _
+        CStr(ROneCOne.Path.Combine(watchRoot, "a.txt")), " and more"
+    Set change = task.Await
+    AssertEqual "watcher changed type", "Changed", change.ChangeType
+    AssertEqual "watcher changed name", "a.txt", change.Name
+
+    Set task = watcher.WaitForChangeAsync
+    ROneCOne.File.WriteAllText _
+        CStr(ROneCOne.Path.Combine(watchRoot, "b.csv")), "ignored"
+    ROneCOne.File.WriteAllText _
+        CStr(ROneCOne.Path.Combine(watchRoot, "c.txt")), "seen"
+    Set change = task.Await
+    AssertEqual "watcher filter honored", "c.txt", change.Name
+
+    Set task = watcher.WaitForChangeAsync
+    ROneCOne.File.Delete CStr(ROneCOne.Path.Combine(watchRoot, "a.txt"))
+    Set change = task.Await
+    AssertEqual "watcher deleted type", "Deleted", change.ChangeType
+    AssertEqual "watcher deleted name", "a.txt", change.Name
+
+    mCurrentTest = "TestFileWatcherSurface.Coordination"
+    missError = 0
+    On Error Resume Next
+    watcher.WaitForChangeAsync.WaitAsync(150).Await
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "watcher timeout composes", ROneCOne.TimeoutError, missError
+    Set source = ROneCOne.CancellationTokenSource
+    source.Cancel
+    Set task = watcher.WaitForChangeAsync(source.Token)
+    missError = 0
+    On Error Resume Next
+    task.Await
+    missError = Err.Number
+    On Error GoTo 0
+    AssertTrue "watcher canceled raises", missError <> 0
+    AssertTrue "watcher canceled state", task.IsCanceled
+
+    mCurrentTest = "TestFileWatcherSurface.Failures"
+    missError = 0
+    On Error Resume Next
+    ROneCOne.FileWatcher CStr(ROneCOne.Path.Combine( _
+        watchRoot, "not_there"))
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "watcher missing folder raises", ROneCOne.IOError, missError
+    ROneCOne.Directory.Delete watchRoot, True
 End Sub
 
 Private Sub TestXmlSurface()

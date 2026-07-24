@@ -184,6 +184,8 @@ Private Const ROLE_XML_NODE As Long = 67
 Private Const ROLE_URI_FACTORY As Long = 68
 Private Const ROLE_WEB_UTILITY_FACTORY As Long = 69
 Private Const ROLE_LOGGER As Long = 70
+Private Const ROLE_FILE_WATCHER As Long = 71
+Private Const ROLE_FILE_CHANGE As Long = 72
 
 Private Const TASK_WORK As Long = 1
 Private Const TASK_COMPLETED As Long = 2
@@ -198,6 +200,10 @@ Private Const TASK_WAIT_ASYNC As Long = 10
 Private Const TASK_HTTP_SEND As Long = 11
 Private Const TASK_DB_ASYNC As Long = 12
 Private Const TASK_PROCESS_RUN As Long = 13
+Private Const TASK_FILE_WATCH As Long = 14
+
+' A watch task rescans its folder at most this often while awaited.
+Private Const WATCH_POLL_INTERVAL_MS As Long = 250
 
 Private Const TASK_STATUS_CREATED As Long = 0
 Private Const TASK_STATUS_RUNNING As Long = 1
@@ -532,6 +538,10 @@ Private mDateTimeOffsetMinutes As Long
 Private mTimeSpanMs As Double
 Private mStringBuilder As JsonTextBuilder
 Private mLoggerMinimumLevel As Long
+Private mWatcherFilter As String
+Private mWatcherChangeType As String
+Private mWatcherSnapshot As Collection
+Private mWatcherLastTick As LongLong
 Private mHttpBaseAddress As String
 Private mHttpTimeoutMs As Long
 Private mHttpHeaderNames As Collection
@@ -3262,6 +3272,47 @@ Attribute FromHexString.VB_Description = "Decodes hexadecimal text into a Byte a
     FromHexString = bytes
 End Function
 
+Public Function FileWatcher( _
+    ByVal folderPath As String, _
+    Optional ByVal filterPattern As String = "*" _
+) As ROneCOne
+Attribute FileWatcher.VB_Description = "Watches a folder for awaitable file changes."
+    Dim instance As ROneCOne
+
+    If Not CreateFileSystemObject().FolderExists(folderPath) Then
+        RaiseIoError "The folder '" & folderPath & "' does not exist."
+    End If
+    If Len(Trim$(filterPattern)) = 0 Then filterPattern = "*"
+    Set instance = New ROneCOne
+    instance.ConfigureFileWatcher folderPath, filterPattern
+    Set FileWatcher = instance
+End Function
+
+Public Function WaitForChangeAsync( _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute WaitForChangeAsync.VB_Description = "Returns a Task resolving on the next file change."
+    Dim taskValue As ROneCOne
+
+    RequireFileWatcher "WaitForChangeAsync"
+    ValidateCancellationToken cancellationToken, "WaitForChangeAsync"
+    ' The baseline is captured now, so a change landing between this call
+    ' and the await is still observed on the first poll.
+    Set taskValue = New ROneCOne
+    taskValue.ConfigureWatchTask Me, _
+        WatcherSnapshot(mName, mWatcherFilter), cancellationToken
+    Set WaitForChangeAsync = taskValue
+End Function
+
+Public Property Get ChangeType() As String
+Attribute ChangeType.VB_Description = "Gets Created, Changed, or Deleted for a file change."
+    If mRole <> ROLE_FILE_CHANGE Then
+        RaiseContractError ERROR_INVALID_OPERATION, "ChangeType", _
+            "ChangeType requires a file change value."
+    End If
+    ChangeType = mWatcherChangeType
+End Property
+
 Public Function Logger( _
     ByVal filePath As String, _
     Optional ByVal minimumLevel As String = "Information" _
@@ -3543,9 +3594,16 @@ Attribute Load.VB_Description = "Loads an XML file, honoring its declared encodi
 End Function
 
 Public Property Get Name() As String
-Attribute Name.VB_Description = "Gets an XML node's element name."
-    RequireXmlNode "Name"
-    Name = mProviderObject.nodeName
+Attribute Name.VB_Description = "Gets an XML node's name or a changed file's name."
+    Select Case mRole
+        Case ROLE_XML_NODE
+            Name = mProviderObject.nodeName
+        Case ROLE_FILE_CHANGE
+            Name = mName
+        Case Else
+            RaiseContractError ERROR_INVALID_OPERATION, "Name", _
+                "Name requires an XML node or a file change."
+    End Select
 End Property
 
 Public Function GetAttribute(ByVal attributeName As String) As String
@@ -10117,6 +10175,44 @@ Friend Sub ConfigureLogger(ByVal filePath As String, ByVal levelValue As Long)
     mLoggerMinimumLevel = levelValue
 End Sub
 
+Friend Sub ConfigureFileWatcher( _
+    ByVal folderPath As String, _
+    ByVal filterPattern As String _
+)
+    mRole = ROLE_FILE_WATCHER
+    mName = folderPath
+    mWatcherFilter = filterPattern
+End Sub
+
+Friend Sub ConfigureFileChange( _
+    ByVal changeType As String, _
+    ByVal fileName As String _
+)
+    mRole = ROLE_FILE_CHANGE
+    mWatcherChangeType = changeType
+    mName = fileName
+End Sub
+
+Friend Sub ConfigureWatchTask( _
+    ByVal watcher As ROneCOne, _
+    ByVal baseline As Collection, _
+    ByVal cancellationToken As ROneCOne _
+)
+    ConfigureTask TASK_FILE_WATCH, Nothing, cancellationToken
+    Set mSource = watcher
+    Set mWatcherSnapshot = baseline
+End Sub
+
+Friend Property Get InternalWatcherFolder() As String
+Attribute InternalWatcherFolder.VB_MemberFlags = "40"
+    InternalWatcherFolder = mName
+End Property
+
+Friend Property Get InternalWatcherFilter() As String
+Attribute InternalWatcherFilter.VB_MemberFlags = "40"
+    InternalWatcherFilter = mWatcherFilter
+End Property
+
 Friend Sub ConfigureWebUtilityFactory()
     mRole = ROLE_WEB_UTILITY_FACTORY
 End Sub
@@ -13525,6 +13621,13 @@ Private Sub RequireLogger(ByVal memberName As String)
     End If
 End Sub
 
+Private Sub RequireFileWatcher(ByVal memberName As String)
+    If mRole <> ROLE_FILE_WATCHER Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires a FileWatcher."
+    End If
+End Sub
+
 Private Sub RequireWebUtilityFactory(ByVal memberName As String)
     If mRole <> ROLE_WEB_UTILITY_FACTORY Then
         RaiseContractError ERROR_INVALID_OPERATION, memberName, _
@@ -15995,6 +16098,8 @@ Private Sub AdvanceTaskCore()
         Case TASK_PROCESS_RUN
             If Not mSource.InternalProcessPoll Then Exit Sub
             Set mTaskResult = CreateObjectResult(mSource)
+        Case TASK_FILE_WATCH
+            If Not InternalWatchPoll() Then Exit Sub
     End Select
     mTaskStatus = TASK_STATUS_COMPLETED
 End Sub
@@ -22360,6 +22465,101 @@ Private Function HexByteText(ByVal value As Byte) As String
 End Function
 
 ' ---------------------------------------------------------------------------
+' File watcher core: a watch task holds a name-size-time snapshot of one
+' folder and rescans it, throttled, while awaited. The first difference
+' found resolves the task as a Created, Changed, or Deleted value.
+' ---------------------------------------------------------------------------
+
+Private Function InternalWatchPoll() As Boolean
+    Dim baselineEntry As Variant
+    Dim currentEntry As Variant
+    Dim currentSnapshot As Collection
+    Dim entryName As String
+    Dim knownValue As String
+    Dim nowTick As LongLong
+
+    nowTick = GetTickCount64()
+    If mWatcherLastTick <> 0 Then
+        If nowTick - mWatcherLastTick < WATCH_POLL_INTERVAL_MS Then
+            Exit Function
+        End If
+    End If
+    mWatcherLastTick = nowTick
+    Set currentSnapshot = WatcherSnapshot(mSource.InternalWatcherFolder, _
+        mSource.InternalWatcherFilter)
+    For Each currentEntry In currentSnapshot
+        entryName = WatcherEntryName(CStr(currentEntry))
+        If Not WatcherTryValue(mWatcherSnapshot, entryName, knownValue) Then
+            Set mTaskResult = CreateObjectResult( _
+                BuildFileChange("Created", entryName))
+            InternalWatchPoll = True
+            Exit Function
+        ElseIf knownValue <> CStr(currentEntry) Then
+            Set mTaskResult = CreateObjectResult( _
+                BuildFileChange("Changed", entryName))
+            InternalWatchPoll = True
+            Exit Function
+        End If
+    Next currentEntry
+    For Each baselineEntry In mWatcherSnapshot
+        entryName = WatcherEntryName(CStr(baselineEntry))
+        If Not WatcherTryValue(currentSnapshot, entryName, knownValue) Then
+            Set mTaskResult = CreateObjectResult( _
+                BuildFileChange("Deleted", entryName))
+            InternalWatchPoll = True
+            Exit Function
+        End If
+    Next baselineEntry
+End Function
+
+Private Function WatcherSnapshot( _
+    ByVal folderPath As String, _
+    ByVal filterPattern As String _
+) As Collection
+    Dim entry As Object
+    Dim patternLower As String
+
+    ' The same escape-and-Like matching the Directory surface uses, so a
+    ' watcher filter behaves exactly like a GetFiles pattern.
+    patternLower = LCase$(VBA.Replace$(filterPattern, "[", "[[]"))
+    Set WatcherSnapshot = New Collection
+    For Each entry In CreateFileSystemObject().GetFolder(folderPath).Files
+        If LCase$(entry.Name) Like patternLower Then
+            WatcherSnapshot.Add entry.Name & "|" & CStr(entry.Size) & _
+                "|" & CStr(CDbl(entry.DateLastModified)), _
+                "k" & LCase$(entry.Name)
+        End If
+    Next entry
+End Function
+
+Private Function WatcherEntryName(ByVal entryText As String) As String
+    WatcherEntryName = Left$(entryText, InStr(1, entryText, "|") - 1)
+End Function
+
+Private Function WatcherTryValue( _
+    ByVal snapshot As Collection, _
+    ByVal entryName As String, _
+    ByRef valueText As String _
+) As Boolean
+    On Error GoTo Missing
+    valueText = snapshot.Item("k" & LCase$(entryName))
+    WatcherTryValue = True
+    Exit Function
+Missing:
+End Function
+
+Private Function BuildFileChange( _
+    ByVal changeType As String, _
+    ByVal fileName As String _
+) As ROneCOne
+    Dim instance As ROneCOne
+
+    Set instance = New ROneCOne
+    instance.ConfigureFileChange changeType, fileName
+    Set BuildFileChange = instance
+End Function
+
+' ---------------------------------------------------------------------------
 ' Logger core: one UTC millisecond timestamp, a three-letter severity code,
 ' and a composite-formatted message per line. Every call appends through the
 ' file layer and closes, so written lines survive a crash.
@@ -22967,6 +23167,7 @@ Private Sub Class_Terminate()
     Set mNext = Nothing
     Set mObjectValue = Nothing
     Set mParameters = Nothing
+    Set mWatcherSnapshot = Nothing
     Set mTarget = Nothing
     Set mInvocationList = Nothing
     Set mTryBody = Nothing
