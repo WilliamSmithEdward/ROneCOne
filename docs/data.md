@@ -59,8 +59,12 @@ disposal failures when both occur. Adapter updates can opt into `UseTransaction`
 `ContinueUpdateOnError`; `LastUpdateErrors` retains row-level failures from a continued batch.
 Transactions commit only after the whole admitted batch succeeds and roll back on failure.
 
-The late-bound provider layer reports its capability honestly: `SupportsNativeAsync` is `False`
-and `AsyncMode` is `"Cooperative"`. Task-returning provider methods integrate with the scheduler
-but execute ADO calls on Excel's owning thread.
+The late-bound provider layer reports its async mode honestly: `AsyncMode` is `"Native"`.
+`OpenAsync`, `ExecuteReaderAsync`, `ExecuteScalarAsync`, and `FillAsync` start the operation
+inside ADO with the async option and the returned Task polls provider state cooperatively, so
+the provider works while Excel's thread stays free between polls. `ExecuteNonQueryAsync`,
+`UpdateAsync`, and `ReadAsync` complete their work inside one cooperative task step because ADO
+reports no usable async completion signal for records-affected counts or row-by-row updates.
+VBA itself never runs on more than one thread.
 
 [Back to the documentation index](README.md)

@@ -57,8 +57,10 @@ objects to another thread.
 
 ## Provider tasks
 
-Provider tasks use typed internal dispatch to avoid COM default-member coercion. Providers report
-`SupportsNativeAsync = False` and `AsyncMode = "Cooperative"`; the task-returning surface composes
-consistently without describing synchronous ADO calls as native asynchronous I/O.
+Provider tasks use typed internal dispatch to avoid COM default-member coercion. `OpenAsync`,
+`ExecuteReaderAsync`, `ExecuteScalarAsync`, and `FillAsync` start natively inside ADO with the
+async option and poll provider state from the scheduler, mirroring the HTTP transport pattern:
+the work overlaps inside the provider, never on a second VBA thread. `ExecuteNonQueryAsync`,
+`UpdateAsync`, and `ReadAsync` complete inside one cooperative step and are documented as such.
 
 [Back to the documentation index](README.md)

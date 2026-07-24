@@ -360,7 +360,6 @@ class SourceContractTests(unittest.TestCase):
             "AsPrimaryKey",
             "Row",
             "Using",
-            "SupportsNativeAsync",
             "AsyncMode",
             "UseTransaction",
             "ContinueUpdateOnError",

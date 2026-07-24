@@ -117,6 +117,7 @@ Private Const TASK_PROVIDER_CALL As Long = 8
 Private Const TASK_YIELD As Long = 9
 Private Const TASK_WAIT_ASYNC As Long = 10
 Private Const TASK_HTTP_SEND As Long = 11
+Private Const TASK_DB_ASYNC As Long = 12
 
 Private Const TASK_STATUS_CREATED As Long = 0
 Private Const TASK_STATUS_RUNNING As Long = 1
@@ -246,6 +247,15 @@ Private Const ERROR_JSON_PARSE As Long = vbObjectError + 4112
 
 Private Const HTTP_PROG_ID As String = "WinHttp.WinHttpRequest.5.1"
 Private Const HTTP_DEFAULT_TIMEOUT_MS As Long = 30000
+
+' ADO enumeration values used by the native async provider path: the option
+' flag that starts Open and Execute without blocking, and the State bits that
+' report an operation still connecting, executing, or fetching.
+Private Const ADO_ASYNC_OPTION As Long = 16
+Private Const ADO_STATE_OPEN As Long = 1
+Private Const ADO_STATE_CONNECTING As Long = 2
+Private Const ADO_STATE_EXECUTING As Long = 4
+Private Const ADO_STATE_FETCHING As Long = 8
 
 ' Reader state for the JSON parser: a 1-based cursor over the input plus a
 ' byte snapshot of the same text as UTF-16 code units, so scanning loops read
@@ -381,6 +391,7 @@ Private mAutoIncrementCurrent As LongLong
 Private mDefaultValue As ROneCOne
 Private mRowState As Long
 Private mProviderObject As Object
+Private mProviderCommand As Object
 Private mHttpBaseAddress As String
 Private mHttpTimeoutMs As Long
 Private mHttpHeaderNames As Collection
@@ -2856,24 +2867,19 @@ Attribute State.VB_Description = "Gets the .NET-aligned provider resource state.
     End Select
 End Property
 
-Public Property Get SupportsNativeAsync() As Boolean
-Attribute SupportsNativeAsync.VB_Description = "Reports native provider async support."
-    If mRole <> ROLE_DB_CONNECTION And mRole <> ROLE_DB_COMMAND And _
-        mRole <> ROLE_DB_READER And mRole <> ROLE_DB_ADAPTER Then
-        RaiseContractError ERROR_INVALID_OPERATION, "SupportsNativeAsync", _
-            "This property requires a provider resource."
-    End If
-    SupportsNativeAsync = False
-End Property
-
 Public Property Get AsyncMode() As String
-Attribute AsyncMode.VB_Description = "Gets the provider Task execution mode."
+Attribute AsyncMode.VB_Description = "Gets the provider async mode; Native polls inside ADO."
     If mRole <> ROLE_DB_CONNECTION And mRole <> ROLE_DB_COMMAND And _
         mRole <> ROLE_DB_READER And mRole <> ROLE_DB_ADAPTER Then
         RaiseContractError ERROR_INVALID_OPERATION, "AsyncMode", _
             "This property requires a provider resource."
     End If
-    AsyncMode = "Cooperative"
+    ' OpenAsync, ExecuteReaderAsync, ExecuteScalarAsync, and FillAsync start
+    ' the operation natively inside ADO and poll its State from the scheduler,
+    ' so Excel stays responsive while the provider works. ExecuteNonQueryAsync,
+    ' UpdateAsync, and ReadAsync complete their work inside one cooperative
+    ' task step because ADO reports no usable async completion for them.
+    AsyncMode = "Native"
 End Property
 
 Public Sub Connect()
@@ -2892,10 +2898,67 @@ End Sub
 Public Function OpenAsync( _
     Optional ByVal cancellationToken As ROneCOne _
 ) As ROneCOne
-Attribute OpenAsync.VB_Description = "Returns a cooperatively scheduled connection-open Task."
-    Set OpenAsync = CreateProviderTask( _
-        "Connect", cancellationToken:=cancellationToken)
+Attribute OpenAsync.VB_Description = "Opens the connection async and returns a polled Task."
+    Dim taskValue As ROneCOne
+
+    RequireDbConnection Me, "OpenAsync"
+    ValidateCancellationToken cancellationToken, "OpenAsync"
+    ' The provider starts connecting immediately with adAsyncConnect, so the
+    ' handshake proceeds inside ADO while the returned Task polls State
+    ' cooperatively on Excel's thread.
+    InternalBeginAsyncOpen
+    Set taskValue = New ROneCOne
+    taskValue.ConfigureDbAsyncTask Me, "Connect", Nothing, cancellationToken
+    Set OpenAsync = taskValue
 End Function
+
+Friend Sub InternalBeginAsyncOpen()
+    If Not mProviderObject Is Nothing Then
+        If CLng(CallByName(mProviderObject, "State", VbGet)) <> 0 Then Exit Sub
+    End If
+    Set mProviderObject = CreateObject("ADODB.Connection")
+    If mConnectionTimeout > 0 Then
+        CallByName mProviderObject, "ConnectionTimeout", VbLet, mConnectionTimeout
+    End If
+    mProviderObject.Open mConnectionString, , , ADO_ASYNC_OPTION
+End Sub
+
+Friend Function InternalDbConnectPoll() As Boolean
+    Dim stateValue As Long
+
+    If mProviderObject Is Nothing Then
+        InternalDbConnectPoll = True
+        Exit Function
+    End If
+    stateValue = CLng(CallByName(mProviderObject, "State", VbGet))
+    If (stateValue And ADO_STATE_CONNECTING) <> 0 Then Exit Function
+    If (stateValue And ADO_STATE_OPEN) <> 0 Then
+        InternalDbConnectPoll = True
+        Exit Function
+    End If
+    ' A closed connection after an async open means the handshake failed;
+    ' the provider left its explanation in the Errors collection.
+    RaiseDbAsyncFailure mProviderObject, "OpenAsync"
+End Function
+
+Friend Sub InternalDbAsyncAbort()
+    On Error Resume Next
+    If mRole = ROLE_DB_CONNECTION Then
+        If Not mProviderObject Is Nothing Then
+            CallByName mProviderObject, "Cancel", VbMethod
+            CallByName mProviderObject, "Close", VbMethod
+        End If
+        Set mProviderObject = Nothing
+    ElseIf mRole = ROLE_DB_READER Then
+        If Not mProviderCommand Is Nothing Then
+            CallByName mProviderCommand, "Cancel", VbMethod
+        End If
+        CloseProviderObject mProviderObject
+        Set mProviderObject = Nothing
+        Set mProviderCommand = Nothing
+    End If
+    On Error GoTo 0
+End Sub
 
 Public Sub Disconnect()
 Attribute Disconnect.VB_Description = "Closes a provider resource deterministically."
@@ -2906,6 +2969,7 @@ Attribute Disconnect.VB_Description = "Closes a provider resource deterministica
             End If
         End If
         Set mProviderObject = Nothing
+        Set mProviderCommand = Nothing
         Exit Sub
     End If
     RaiseContractError ERROR_INVALID_OPERATION, "Disconnect", _
@@ -2929,10 +2993,121 @@ End Function
 Public Function ExecuteReaderAsync( _
     Optional ByVal cancellationToken As ROneCOne _
 ) As ROneCOne
-Attribute ExecuteReaderAsync.VB_Description = "Returns a Task that executes a data reader."
-    Set ExecuteReaderAsync = CreateProviderTask( _
-        "ExecuteReader", cancellationToken:=cancellationToken)
+Attribute ExecuteReaderAsync.VB_Description = "Starts async execution; returns a reader Task."
+    Dim pending As ROneCOne
+    Dim taskValue As ROneCOne
+
+    RequireDbCommand Me, "ExecuteReaderAsync"
+    ValidateCancellationToken cancellationToken, "ExecuteReaderAsync"
+    Set pending = InternalBeginAsyncExecute
+    Set taskValue = New ROneCOne
+    taskValue.ConfigureDbAsyncTask pending, "Reader", Nothing, cancellationToken
+    Set ExecuteReaderAsync = taskValue
 End Function
+
+Friend Function InternalBeginAsyncExecute() As ROneCOne
+    Dim commandObject As Object
+    Dim pending As ROneCOne
+    Dim recordsAffected As Variant
+    Dim recordsetObject As Object
+
+    ' The statement starts running inside the provider with adAsyncExecute;
+    ' the returned pending reader owns the in-flight recordset and the command
+    ' so completion polling and cancellation both have their target.
+    Set commandObject = BuildAdoCommand
+    Set recordsetObject = commandObject.Execute(recordsAffected, , ADO_ASYNC_OPTION)
+    Set pending = New ROneCOne
+    pending.ConfigureDbReader recordsetObject
+    pending.InternalAttachProviderCommand commandObject
+    Set InternalBeginAsyncExecute = pending
+End Function
+
+Friend Sub InternalAttachProviderCommand(ByVal commandObject As Object)
+    Set mProviderCommand = commandObject
+End Sub
+
+Friend Function InternalDbResultPoll() As Boolean
+    Dim stateValue As Long
+
+    If mProviderObject Is Nothing Then
+        InternalDbResultPoll = True
+        Exit Function
+    End If
+    stateValue = CLng(CallByName(mProviderObject, "State", VbGet))
+    If (stateValue And (ADO_STATE_EXECUTING Or ADO_STATE_FETCHING)) <> 0 Then
+        Exit Function
+    End If
+    If (stateValue And ADO_STATE_OPEN) <> 0 Then
+        Set mProviderCommand = Nothing
+        InternalDbResultPoll = True
+        Exit Function
+    End If
+    ' A closed recordset before any row arrived means the async execution
+    ' failed; the connection's Errors collection carries the provider detail.
+    RaiseDbAsyncFailure DbAsyncErrorSource, "ExecuteAsync"
+End Function
+
+Friend Function InternalScalarHarvest() As Variant
+    Dim capturedDescription As String
+    Dim capturedNumber As Long
+    Dim capturedSource As String
+
+    On Error GoTo HarvestFailed
+    If Read Then AssignVariant InternalScalarHarvest, Item(0)
+    Disconnect
+    On Error GoTo 0
+    Exit Function
+
+HarvestFailed:
+    capturedNumber = Err.Number
+    capturedSource = Err.Source
+    capturedDescription = Err.Description
+    On Error Resume Next
+    Disconnect
+    On Error GoTo 0
+    Err.Raise capturedNumber, capturedSource, capturedDescription
+End Function
+
+Private Function DbAsyncErrorSource() As Object
+    Dim connectionObject As Object
+
+    On Error Resume Next
+    If Not mProviderCommand Is Nothing Then
+        Set connectionObject = CallByName( _
+            mProviderCommand, "ActiveConnection", VbGet)
+    End If
+    On Error GoTo 0
+    Set mProviderCommand = Nothing
+    Set mProviderObject = Nothing
+    Set DbAsyncErrorSource = connectionObject
+End Function
+
+Private Sub RaiseDbAsyncFailure( _
+    ByVal providerValue As Object, _
+    ByVal memberName As String _
+)
+    Dim errorItem As Object
+    Dim errorsObject As Object
+
+    On Error Resume Next
+    If Not providerValue Is Nothing Then
+        Set errorsObject = CallByName(providerValue, "Errors", VbGet)
+        If Not errorsObject Is Nothing Then
+            If CLng(CallByName(errorsObject, "Count", VbGet)) > 0 Then
+                Set errorItem = CallByName(errorsObject, "Item", VbGet, 0)
+            End If
+        End If
+    End If
+    On Error GoTo 0
+    If mRole = ROLE_DB_CONNECTION Then Set mProviderObject = Nothing
+    If errorItem Is Nothing Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            "The asynchronous provider operation failed without detail."
+    End If
+    Err.Raise CLng(CallByName(errorItem, "Number", VbGet)), _
+        CStr(CallByName(errorItem, "Source", VbGet)), _
+        CStr(CallByName(errorItem, "Description", VbGet))
+End Sub
 
 Public Function ExecuteNonQuery() As Long
 Attribute ExecuteNonQuery.VB_Description = "Executes a command and returns affected rows."
@@ -2997,9 +3172,16 @@ End Function
 Public Function ExecuteScalarAsync( _
     Optional ByVal cancellationToken As ROneCOne _
 ) As ROneCOne
-Attribute ExecuteScalarAsync.VB_Description = "Returns a Task that executes a scalar command."
-    Set ExecuteScalarAsync = CreateProviderTask( _
-        "ExecuteScalar", cancellationToken:=cancellationToken)
+Attribute ExecuteScalarAsync.VB_Description = "Starts async execution; returns a scalar Task."
+    Dim pending As ROneCOne
+    Dim taskValue As ROneCOne
+
+    RequireDbCommand Me, "ExecuteScalarAsync"
+    ValidateCancellationToken cancellationToken, "ExecuteScalarAsync"
+    Set pending = InternalBeginAsyncExecute
+    Set taskValue = New ROneCOne
+    taskValue.ConfigureDbAsyncTask pending, "Scalar", Nothing, cancellationToken
+    Set ExecuteScalarAsync = taskValue
 End Function
 
 Public Function BeginTransaction() As ROneCOne
@@ -3233,7 +3415,6 @@ End Property
 Public Function Fill(ByVal dataTarget As ROneCOne) As Long
 Attribute Fill.VB_Description = "Fills a DataTable or DataSet from a DataAdapter."
     Dim reader As ROneCOne
-    Dim table As ROneCOne
     Dim capturedDescription As String
     Dim capturedNumber As Long
     Dim capturedSource As String
@@ -3242,18 +3423,9 @@ Attribute Fill.VB_Description = "Fills a DataTable or DataSet from a DataAdapter
         RaiseContractError ERROR_INVALID_OPERATION, "Fill", _
             "Fill requires a DataAdapter."
     End If
-    If dataTarget.InternalRole = ROLE_DATA_SET Then
-        Set table = ROneCOne.DataTable("Table")
-        dataTarget.AddTable table
-    Else
-        RequireDataTable dataTarget, "Fill"
-        Set table = dataTarget
-    End If
     On Error GoTo FillFailed
     Set reader = mSource.ExecuteReader
-    Fill = FillTableFromReader(table, reader)
-    reader.Disconnect
-    table.AcceptChanges
+    Fill = InternalFillFromReader(reader, dataTarget)
     On Error GoTo 0
     Exit Function
 
@@ -3271,9 +3443,45 @@ Public Function FillAsync( _
     ByVal dataTarget As ROneCOne, _
     Optional ByVal cancellationToken As ROneCOne _
 ) As ROneCOne
-Attribute FillAsync.VB_Description = "Returns a Task that fills a DataTable or DataSet."
-    Set FillAsync = CreateProviderTask( _
-        "Fill", dataTarget, cancellationToken)
+Attribute FillAsync.VB_Description = "Starts a native async execution and returns a fill Task."
+    Dim arguments As Collection
+    Dim pending As ROneCOne
+    Dim taskValue As ROneCOne
+
+    If mRole <> ROLE_DB_ADAPTER Then
+        RaiseContractError ERROR_INVALID_OPERATION, "FillAsync", _
+            "FillAsync requires a DataAdapter."
+    End If
+    If dataTarget Is Nothing Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "FillAsync", _
+            "The fill target cannot be Nothing."
+    End If
+    ValidateCancellationToken cancellationToken, "FillAsync"
+    Set arguments = New Collection
+    arguments.Add WrapInvocationArgument(Me)
+    arguments.Add WrapInvocationArgument(dataTarget)
+    Set pending = mSource.InternalBeginAsyncExecute
+    Set taskValue = New ROneCOne
+    taskValue.ConfigureDbAsyncTask pending, "Fill", arguments, cancellationToken
+    Set FillAsync = taskValue
+End Function
+
+Friend Function InternalFillFromReader( _
+    ByVal reader As ROneCOne, _
+    ByVal dataTarget As ROneCOne _
+) As Long
+    Dim table As ROneCOne
+
+    If dataTarget.InternalRole = ROLE_DATA_SET Then
+        Set table = ROneCOne.DataTable("Table")
+        dataTarget.AddTable table
+    Else
+        RequireDataTable dataTarget, "Fill"
+        Set table = dataTarget
+    End If
+    InternalFillFromReader = FillTableFromReader(table, reader)
+    reader.Disconnect
+    table.AcceptChanges
 End Function
 
 Public Function Update(ByVal dataTarget As ROneCOne) As Long
@@ -7854,6 +8062,19 @@ Friend Sub ConfigureProviderTask( _
     Set mTaskChildren = arguments
 End Sub
 
+Friend Sub ConfigureDbAsyncTask( _
+    ByVal pendingSource As ROneCOne, _
+    ByVal resultMode As String, _
+    ByVal arguments As Collection, _
+    ByVal cancellationToken As ROneCOne _
+)
+    ConfigureTask TASK_DB_ASYNC, Nothing, cancellationToken
+    Set mSource = pendingSource
+    mMethodName = resultMode
+    If arguments Is Nothing Then Set arguments = New Collection
+    Set mTaskChildren = arguments
+End Sub
+
 Friend Sub ConfigureHttpClient()
     mRole = ROLE_HTTP_CLIENT
     mHttpTimeoutMs = HTTP_DEFAULT_TIMEOUT_MS
@@ -10616,6 +10837,13 @@ Private Function CreateReadOnlyCollectionFromItems( _
         ROneCOne.ReadOnlyCollectionOf(values)
 End Function
 
+Private Function DbAsyncTaskChild(ByVal index As Long) As ROneCOne
+    Dim wrapped As ROneCOne
+
+    Set wrapped = mTaskChildren.Item(index)
+    Set DbAsyncTaskChild = wrapped.InternalObjectValue
+End Function
+
 Private Function RequireProviderTaskTarget( _
     ByVal arguments As Collection _
 ) As ROneCOne
@@ -11949,8 +12177,10 @@ Private Sub AdvanceTaskCore()
     Dim sawCanceled As Boolean
 
     If TaskCancellationRequested Then
-        ' An in-flight web request must release its transport when canceled.
+        ' An in-flight web request must release its transport when canceled,
+        ' and an in-flight provider operation must cancel inside ADO.
         If mOperator = TASK_HTTP_SEND Then mSource.InternalHttpAbort
+        If mOperator = TASK_DB_ASYNC Then mSource.InternalDbAsyncAbort
         mTaskStatus = TASK_STATUS_CANCELED
         Exit Sub
     End If
@@ -12060,27 +12290,36 @@ Private Sub AdvanceTaskCore()
             Set mTaskResult = mTaskBody.InvokeValue(arguments)
         Case TASK_PROVIDER_CALL
             Select Case mMethodName
-                Case "Connect"
-                    mSource.Connect
-                    Set mTaskResult = CreateScalarResult(Empty)
-                Case "ExecuteReader"
-                    Set mTaskResult = CreateObjectResult(mSource.ExecuteReader)
                 Case "ExecuteNonQuery"
                     Set mTaskResult = CreateScalarResult(mSource.ExecuteNonQuery)
-                Case "ExecuteScalar"
-                    Set mTaskResult = WrapDataValue(mSource.ExecuteScalar)
                 Case "Read"
                     Set mTaskResult = CreateScalarResult(mSource.Read)
-                Case "Fill", "Update"
+                Case "Update"
                     Set dataTarget = RequireProviderTaskTarget(mTaskChildren)
-                    If mMethodName = "Fill" Then
-                        Set mTaskResult = CreateScalarResult(mSource.Fill(dataTarget))
-                    Else
-                        Set mTaskResult = CreateScalarResult(mSource.Update(dataTarget))
-                    End If
+                    Set mTaskResult = CreateScalarResult(mSource.Update(dataTarget))
                 Case Else
                     RaiseContractError ERROR_INVALID_OPERATION, "ProviderTask", _
                         "Unknown provider Task operation."
+            End Select
+        Case TASK_DB_ASYNC
+            Select Case mMethodName
+                Case "Connect"
+                    If Not mSource.InternalDbConnectPoll Then Exit Sub
+                    Set mTaskResult = CreateScalarResult(Empty)
+                Case "Reader"
+                    If Not mSource.InternalDbResultPoll Then Exit Sub
+                    Set mTaskResult = CreateObjectResult(mSource)
+                Case "Scalar"
+                    If Not mSource.InternalDbResultPoll Then Exit Sub
+                    Set mTaskResult = WrapDataValue(mSource.InternalScalarHarvest)
+                Case "Fill"
+                    If Not mSource.InternalDbResultPoll Then Exit Sub
+                    Set mTaskResult = CreateScalarResult( _
+                        DbAsyncTaskChild(1).InternalFillFromReader( _
+                            mSource, DbAsyncTaskChild(2)))
+                Case Else
+                    RaiseContractError ERROR_INVALID_OPERATION, "DbAsyncTask", _
+                        "Unknown provider async operation."
             End Select
     End Select
     mTaskStatus = TASK_STATUS_COMPLETED

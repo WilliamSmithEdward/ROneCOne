@@ -6,6 +6,12 @@ Private mFailed As Long
 Private mNextRow As Long
 Private mCurrentTest As String
 
+' The live suite machine provisions a local SQL Server default instance.
+' Integrated security keeps every credential out of the repository.
+Private Const SQL_SERVER_CONNECTION As String = _
+    "Provider=MSOLEDBSQL;Data Source=localhost;Initial Catalog=tempdb;" & _
+    "Integrated Security=SSPI;"
+
 Public Sub RunROneCOneTaskAndDataTests()
     Dim capturedDescription As String
     Dim capturedNumber As Long
@@ -48,6 +54,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestExistingRelationValidation
     mCurrentTest = "TestProviderSurface"
     TestProviderSurface
+    mCurrentTest = "TestSqlServerProvider"
+    TestSqlServerProvider
     mCurrentTest = "TestHttpSurface"
     TestHttpSurface
     mCurrentTest = vbNullString
@@ -456,9 +464,7 @@ Private Sub TestProviderSurface()
         "HDR=YES"";"
     Set connection = ROneCOne.DbConnection(connectionString)
     AssertEqual "provider starts closed", "Closed", connection.State
-    AssertFalse "provider reports native async truthfully", _
-        connection.SupportsNativeAsync
-    AssertEqual "provider async mode", "Cooperative", connection.AsyncMode
+    AssertEqual "provider async mode", "Native", connection.AsyncMode
     mCurrentTest = "TestProviderSurface.Connect"
     connection.Connect
     AssertEqual "provider opens", "Open", connection.State
@@ -539,6 +545,143 @@ Private Sub TestProviderSurface()
     mCurrentTest = "TestProviderSurface.Disconnect"
     connection.Disconnect
     AssertEqual "provider closes", "Closed", connection.State
+End Sub
+
+Private Sub TestSqlServerProvider()
+    Dim canceledError As Long
+    Dim command As ROneCOne
+    Dim connection As ROneCOne
+    Dim elapsed As Double
+    Dim failedConnection As ROneCOne
+    Dim failureError As Long
+    Dim filled As ROneCOne
+    Dim insertCount As Long
+    Dim reader As ROneCOne
+    Dim scalarTask As ROneCOne
+    Dim source As ROneCOne
+    Dim started As Double
+    Dim transaction As ROneCOne
+    Dim workCounter As Double
+
+    ' Live SQL Server contract against the local default instance over
+    ' MSOLEDBSQL with integrated security, so no credential lives in the
+    ' repository. OpenAsync and the execute verbs start natively inside ADO
+    ' and the Task polls provider state; the WAITFOR proof below shows the
+    ' VBA thread staying free while the server works.
+    mCurrentTest = "TestSqlServerProvider.OpenAsync"
+    Set connection = ROneCOne.DbConnection(SQL_SERVER_CONNECTION)
+    connection.OpenAsync.Await
+    AssertEqual "sql open state", "Open", connection.State
+    AssertEqual "sql async mode", "Native", connection.AsyncMode
+
+    mCurrentTest = "TestSqlServerProvider.Parameters"
+    ROneCOne.DbCommand( _
+        "CREATE TABLE #suite_orders (Id int NOT NULL, " & _
+        "Customer nvarchar(40) NOT NULL, Total float NOT NULL)", _
+        connection).ExecuteNonQuery
+    insertCount = ROneCOne.DbCommand( _
+        "INSERT INTO #suite_orders VALUES (?, ?, ?), (?, ?, ?)", connection) _
+        .WithParameter("Id1", 1&).WithParameter("Customer1", "Ada") _
+        .WithParameter("Total1", 12.5) _
+        .WithParameter("Id2", 2&).WithParameter("Customer2", "Grace") _
+        .WithParameter("Total2", 20#).ExecuteNonQuery
+    AssertEqual "sql parameterized insert count", 2&, insertCount
+    AssertEqual "sql scalar count", 2&, ROneCOne.DbCommand( _
+        "SELECT COUNT(*) FROM #suite_orders", connection).ExecuteScalar
+
+    mCurrentTest = "TestSqlServerProvider.ReaderAsync"
+    Set reader = ROneCOne.DbCommand( _
+        "SELECT Id, Customer, Total FROM #suite_orders ORDER BY Total DESC", _
+        connection).ExecuteReaderAsync.Await
+    AssertTrue "sql reader async first row", reader.Read
+    AssertEqual "sql reader async value", "Grace", reader.Item("Customer")
+    AssertEqual "sql reader async double", 20#, reader.Item("Total")
+    reader.Disconnect
+
+    mCurrentTest = "TestSqlServerProvider.FillAsync"
+    Set filled = ROneCOne.DataTable("SqlOrders")
+    AssertEqual "sql fill async count", 2&, ROneCOne.DbDataAdapter( _
+        ROneCOne.DbCommand( _
+        "SELECT Id, Customer, Total FROM #suite_orders ORDER BY Id", _
+        connection)).FillAsync(filled).Await
+    AssertEqual "sql filled first customer", "Ada", _
+        CStr(filled.Rows.Item(0).Item("Customer"))
+
+    mCurrentTest = "TestSqlServerProvider.Transactions"
+    Set transaction = connection.BeginTransaction
+    ROneCOne.DbCommand( _
+        "UPDATE #suite_orders SET Total = 99 WHERE Id = 1", connection) _
+        .ExecuteNonQuery
+    transaction.Rollback
+    AssertEqual "sql rollback restores", 12.5, ROneCOne.DbCommand( _
+        "SELECT Total FROM #suite_orders WHERE Id = 1", connection) _
+        .ExecuteScalar
+    Set transaction = connection.BeginTransaction
+    ROneCOne.DbCommand( _
+        "UPDATE #suite_orders SET Total = 30 WHERE Id = 1", connection) _
+        .ExecuteNonQuery
+    transaction.Commit
+    AssertEqual "sql commit persists", 30#, ROneCOne.DbCommand( _
+        "SELECT Total FROM #suite_orders WHERE Id = 1", connection) _
+        .ExecuteScalar
+
+    mCurrentTest = "TestSqlServerProvider.NativeOverlap"
+    Set command = ROneCOne.DbCommand( _
+        "SET NOCOUNT ON; WAITFOR DELAY '00:00:00.300'; " & _
+        "SELECT COUNT(*) FROM #suite_orders", connection)
+    started = Timer
+    Set scalarTask = command.ExecuteScalarAsync
+    AssertFalse "sql async starts pending", scalarTask.IsCompleted
+    ' Busy local work while the server sits in WAITFOR: with native async the
+    ' total stays near the 0.3s delay; a blocking execution would serialize
+    ' to at least 0.55s and fail the ceiling below.
+    workCounter = 0
+    Do While ElapsedSecondsSince(started) < 0.25
+        workCounter = workCounter + 1
+    Loop
+    AssertEqual "sql async awaited result", 2&, scalarTask.Await
+    elapsed = ElapsedSecondsSince(started)
+    AssertTrue "sql async overlapped provider wait", elapsed < 0.45
+    AssertTrue "sql busy loop actually ran", workCounter > 1000
+
+    mCurrentTest = "TestSqlServerProvider.Cancellation"
+    Set source = ROneCOne.CancellationTokenSource
+    Set scalarTask = ROneCOne.DbCommand( _
+        "SET NOCOUNT ON; WAITFOR DELAY '00:00:05'; SELECT 1", connection) _
+        .ExecuteScalarAsync(source.Token)
+    source.Cancel
+    canceledError = 0
+    On Error Resume Next
+    scalarTask.Await
+    canceledError = Err.Number
+    On Error GoTo 0
+    AssertTrue "sql canceled await raises", canceledError <> 0
+    AssertTrue "sql canceled task state", scalarTask.IsCanceled
+    AssertEqual "sql connection usable after cancel", 2&, ROneCOne.DbCommand( _
+        "SELECT COUNT(*) FROM #suite_orders", connection).ExecuteScalar
+
+    mCurrentTest = "TestSqlServerProvider.FailureShapes"
+    failureError = 0
+    On Error Resume Next
+    ROneCOne.DbCommand("SELECT missing_column FROM #suite_orders", _
+        connection).ExecuteScalarAsync.Await
+    failureError = Err.Number
+    On Error GoTo 0
+    AssertTrue "sql async execute failure surfaces", failureError <> 0
+    Set failedConnection = ROneCOne.DbConnection( _
+        "Provider=MSOLEDBSQL;Data Source=localhost;Initial Catalog=tempdb;" & _
+        "User ID=ronecone_missing_login;Password=not_a_secret;")
+    failureError = 0
+    On Error Resume Next
+    failedConnection.OpenAsync.Await
+    failureError = Err.Number
+    On Error GoTo 0
+    AssertTrue "sql async open failure surfaces", failureError <> 0
+    AssertEqual "sql failed connection state", "Closed", failedConnection.State
+
+    mCurrentTest = "TestSqlServerProvider.Disconnect"
+    connection.Disconnect
+    AssertEqual "sql connection closes", "Closed", connection.State
 End Sub
 
 Private Sub TestTaskLifecycle()
@@ -1014,6 +1157,13 @@ Private Sub TestRelationConstraints()
     On Error GoTo 0
     AssertTrue "foreign key rejects orphan", relationError <> 0
 End Sub
+
+Private Function ElapsedSecondsSince(ByVal started As Double) As Double
+    ElapsedSecondsSince = Timer - started
+    If ElapsedSecondsSince < 0 Then
+        ElapsedSecondsSince = ElapsedSecondsSince + 86400#
+    End If
+End Function
 
 Private Sub ResetResults()
     mPassed = 0

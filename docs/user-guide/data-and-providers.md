@@ -101,12 +101,30 @@ For deterministic cleanup around a zero-argument function, use
 
 ### Know your provider's limits
 
-Inspect `connection.AsyncMode` and `connection.SupportsNativeAsync` when behavior depends on
-provider capabilities; the built-in late-bound ADO path reports cooperative scheduling rather than
-native asynchronous I/O.
+`connection.AsyncMode` reports `"Native"`: `OpenAsync`, `ExecuteReaderAsync`,
+`ExecuteScalarAsync`, and `FillAsync` start the operation inside ADO and the returned Task polls
+provider state, so the provider works while Excel stays responsive. `ExecuteNonQueryAsync`,
+`UpdateAsync`, and `ReadAsync` run their work inside one cooperative task step instead, because
+ADO exposes no reliable async completion for affected-row counts or row-by-row updates.
 
 Provider capabilities still depend on the selected driver. For example, the Excel ISAM supports
 worksheet reads, updates, and inserts but rejects row deletion.
+
+### Pick a provider
+
+Connection strings choose the driver. The two the test suite exercises:
+
+- Workbooks through the ACE ISAM, shipped with Office:
+  `Provider=Microsoft.ACE.OLEDB.12.0;Data Source=C:\path\book.xlsx;Extended
+  Properties="Excel 12.0 Xml;HDR=YES";`
+- SQL Server through the Microsoft OLE DB driver:
+  `Provider=MSOLEDBSQL;Data Source=localhost;Initial Catalog=tempdb;Integrated
+  Security=SSPI;` (use `User ID=...;Password=...;` where SQL authentication is enabled).
+
+If `MSOLEDBSQL` is not installed, the connection open raises "Provider cannot be found"; install
+the Microsoft OLE DB Driver for SQL Server or use an ODBC connection string through `MSDASQL`.
+Connection failures surface the provider's own error text, such as "Login failed for user" for
+rejected credentials or "Could not open a connection to SQL Server" for an unreachable host.
 
 ## Where next
 

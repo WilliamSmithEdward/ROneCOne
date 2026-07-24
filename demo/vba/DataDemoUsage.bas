@@ -141,7 +141,7 @@ Private Sub WriteDataExamples( _
         .Range("E12").Value2 = scalarTask.Await
         .Range("E13").Value2 = IsNull(table.Rows.Item(0).Item("Note"))
         .Range("E14").Value2 = connection.AsyncMode
-        .Range("E15").Value2 = connection.SupportsNativeAsync
+        .Range("E15").Value2 = connection.State
     End With
 End Sub
 

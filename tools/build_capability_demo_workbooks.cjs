@@ -107,8 +107,8 @@ const capabilities = [
       ["Keep source ordering", "reader.GetString(0)", "filled.Rows.Item(0).Item(\"Name\")", "Grace"],
       ["Await a record count", "await command.ExecuteScalarAsync()", "command.ExecuteScalarAsync.Await", 2],
       ["Store a blank database value", "DBNull.Value", "ROneCOne.DBNull", true],
-      ["See how waiting works", "provider capability inspection", "connection.AsyncMode", "Cooperative"],
-      ["Confirm safe single-thread use", "provider capability inspection", "connection.SupportsNativeAsync", false],
+      ["See how queries wait", "provider capability inspection", "connection.AsyncMode", "Native"],
+      ["Confirm the connection is open", "provider state inspection", "connection.State", "Open"],
     ],
   },
   {

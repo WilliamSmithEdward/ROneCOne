@@ -112,6 +112,14 @@ The HTTP contract in the task and data suite, and the HTTP demo workbook, make l
 https://pokeapi.co, so those runs need internet access; every other gate runs offline. No other
 host is contacted.
 
+The SQL Server contract in the task and data suite ([ADR
+0014](decisions/0014-native-provider-async-over-adodb.md)) connects to the local default
+instance as `Provider=MSOLEDBSQL;Data Source=localhost;Initial Catalog=tempdb;Integrated
+Security=SSPI;`. Running the live suite therefore requires a reachable localhost SQL Server
+with the Microsoft OLE DB driver installed and a Windows login allowed into tempdb; every
+scratch object is a session temp table, so nothing persists. No credential is stored in the
+repository.
+
 pyVBAanalysis 1.2.0 treats a VBA bang identifier such as `!Age` as an ordinary variable token.
 Live bang examples therefore declare the token name in their local scope even though VBA uses it
 as a default-member name, not a variable value. This keeps both the normal and

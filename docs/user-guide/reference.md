@@ -104,7 +104,7 @@ Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 | Worksheet range | `DataTableFromRange`, `LoadFromRange`, `ListFromRange`, `ToRange` |
 | Provider access | `DbConnection`, `DbCommand`, `DbParameter`, `DbDataAdapter` |
 | Async provider access | `OpenAsync`, `ExecuteReaderAsync`, `FillAsync`, `UpdateAsync` |
-| Provider capability | `SupportsNativeAsync`, `AsyncMode` |
+| Provider capability | `AsyncMode`, `State` |
 | Deterministic cleanup | `Using(resource).Run(work)` |
 
 ## Type tokens

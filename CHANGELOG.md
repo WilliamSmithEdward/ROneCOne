@@ -6,6 +6,27 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
+## Unreleased
+
+### Added
+
+- Native provider async: `OpenAsync`, `ExecuteReaderAsync`, `ExecuteScalarAsync`, and
+  `FillAsync` now start their operation inside ADO with the async option at call time and the
+  returned Task polls provider state cooperatively, so a slow query no longer freezes Excel
+  while awaited. Failures surface the provider's own error detail, cancellation cancels the
+  in-flight ADO operation, and a live SQL Server timing proof gates the overlap. `AsyncMode`
+  reports `"Native"`; `ExecuteNonQueryAsync`, `UpdateAsync`, and `ReadAsync` keep documented
+  single-step execution because ADO exposes no reliable async completion for them. The live
+  suite now also exercises SQL Server on localhost through `MSOLEDBSQL` with integrated
+  security: parameterized inserts, transactions, async failure shapes, and cancellation. See
+  [ADR 0014](docs/decisions/0014-native-provider-async-over-adodb.md).
+
+### Removed
+
+- `SupportsNativeAsync` is gone: with the execute and open verbs genuinely native it stopped
+  describing anything a single Boolean could state truthfully. `AsyncMode` and the provider
+  documentation carry the exact per-verb behavior instead.
+
 ## 1.5.0 - 2026-07-23
 
 ### Added
