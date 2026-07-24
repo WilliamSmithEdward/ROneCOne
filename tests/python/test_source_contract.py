@@ -765,6 +765,26 @@ class SourceContractTests(unittest.TestCase):
         ):
             self.assertIn(member, self.source)
 
+    def test_zip_surface_is_present_and_guarded(self) -> None:
+        for member in (
+            "Public Property Get ZipFile()",
+            "Public Sub CreateFromDirectory(",
+            "Public Sub ExtractToDirectory(",
+            "Public Function OpenRead(",
+            "Public Property Get Entries()",
+            "Public Function GetEntry(",
+            "Public Property Get FullName()",
+            "Public Property Get CompressedLength()",
+            "Public Sub ExtractToFile(",
+            "Public Property Get ZipError()",
+            "Private Type InflateState",
+            "Private Sub InflateDynamicBlock(",
+            "Private Function ZipCrc32(",
+        ):
+            self.assertIn(member, self.source)
+        # Extraction must route every entry name through the escape guard.
+        self.assertIn("SafeRelativeEntryPath(CStr(rawEntry(0)))", self.source)
+
     def test_xml_surface_is_present_and_secured(self) -> None:
         for member in (
             "Public Property Get Xml()",

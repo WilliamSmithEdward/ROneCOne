@@ -76,6 +76,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestLoggerSurface
     mCurrentTest = "TestFileWatcherSurface"
     TestFileWatcherSurface
+    mCurrentTest = "TestZipSurface"
+    TestZipSurface
     mCurrentTest = "TestXmlSurface"
     TestXmlSurface
     mCurrentTest = "TestHttpSurface"
@@ -2183,6 +2185,150 @@ Private Sub TestFileWatcherSurface()
     On Error GoTo 0
     AssertEqual "watcher missing folder raises", ROneCOne.IOError, missError
     ROneCOne.Directory.Delete watchRoot, True
+End Sub
+
+Private Sub TestZipSurface()
+    Dim archive As ROneCOne
+    Dim archivePath As String
+    Dim entry As ROneCOne
+    Dim extractRoot As String
+    Dim hostileBytes As Variant
+    Dim hostilePath As String
+    Dim index As Long
+    Dim missError As Long
+    Dim result As ROneCOne
+    Dim sourceRoot As String
+    Dim zipRoot As String
+
+    ' The zip engine is pure VBA: reading inflates RFC 1951 streams with
+    ' CRC-32 verification and writing emits store-only archives. Interop
+    ' runs both ways through PowerShell's in-box archive cmdlets.
+    mCurrentTest = "TestZipSurface.RoundTrip"
+    zipRoot = CStr(ROneCOne.Path.Combine( _
+        CStr(ROneCOne.Path.GetTempPath), "ROneCOne_Zip_Test"))
+    If ROneCOne.Directory.Exists(zipRoot) Then
+        ROneCOne.Directory.Delete zipRoot, True
+    End If
+    sourceRoot = CStr(ROneCOne.Path.Combine(zipRoot, "source"))
+    ROneCOne.Directory.CreateDirectory _
+        CStr(ROneCOne.Path.Combine(sourceRoot, "sub"))
+    ROneCOne.Directory.CreateDirectory _
+        CStr(ROneCOne.Path.Combine(sourceRoot, "hollow"))
+    ROneCOne.File.WriteAllText _
+        CStr(ROneCOne.Path.Combine(sourceRoot, "a.txt")), "alpha beta"
+    ROneCOne.File.WriteAllText CStr(ROneCOne.Path.Combine( _
+        CStr(ROneCOne.Path.Combine(sourceRoot, "sub")), "b.csv")), _
+        "id,total" & vbCrLf & "1,2.5"
+    ROneCOne.File.WriteAllText _
+        CStr(ROneCOne.Path.Combine(sourceRoot, "empty.txt")), vbNullString
+    archivePath = CStr(ROneCOne.Path.Combine(zipRoot, "made.zip"))
+    ROneCOne.ZipFile.CreateFromDirectory sourceRoot, archivePath
+    Set archive = ROneCOne.ZipFile.OpenRead(archivePath)
+    AssertEqual "zip entry count", 4&, archive.Entries.Count
+    Set entry = archive.GetEntry("sub/b.csv")
+    AssertEqual "zip entry name", "b.csv", entry.Name
+    AssertEqual "zip entry full name", "sub/b.csv", entry.FullName
+    AssertEqual "zip store sizes equal", _
+        entry.CompressedLength, entry.Length
+    AssertTrue "zip entry text", _
+        InStr(1, entry.ReadAllText(), "1,2.5") > 0
+    AssertEqual "zip empty entry length", 0&, _
+        archive.GetEntry("empty.txt").Length
+    AssertTrue "zip miss is nothing", _
+        archive.GetEntry("not/there.txt") Is Nothing
+    extractRoot = CStr(ROneCOne.Path.Combine(zipRoot, "unpacked"))
+    ROneCOne.ZipFile.ExtractToDirectory archivePath, extractRoot
+    AssertEqual "zip extracted text", "alpha beta", _
+        ROneCOne.File.ReadAllText( _
+        CStr(ROneCOne.Path.Combine(extractRoot, "a.txt")))
+    AssertTrue "zip extracted empty dir", ROneCOne.Directory.Exists( _
+        CStr(ROneCOne.Path.Combine(extractRoot, "hollow")))
+    missError = 0
+    On Error Resume Next
+    ROneCOne.ZipFile.ExtractToDirectory archivePath, extractRoot
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "zip refuses overwrite", ROneCOne.IOError, missError
+    missError = 0
+    On Error Resume Next
+    ROneCOne.ZipFile.CreateFromDirectory sourceRoot, archivePath
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "zip refuses existing archive", ROneCOne.IOError, missError
+
+    mCurrentTest = "TestZipSurface.Interop"
+    Set result = ROneCOne.Process.RunAsync( _
+        "powershell -NoProfile -Command ""Expand-Archive -Path '" & _
+        archivePath & "' -DestinationPath '" & _
+        CStr(ROneCOne.Path.Combine(zipRoot, "ps_out")) & "'""").Await
+    AssertEqual "zip expand-archive exit", 0&, result.ExitCode
+    AssertEqual "zip expand-archive text", "alpha beta", _
+        ROneCOne.File.ReadAllText(CStr(ROneCOne.Path.Combine( _
+        CStr(ROneCOne.Path.Combine(zipRoot, "ps_out")), "a.txt")))
+    Set result = ROneCOne.Process.RunAsync( _
+        "powershell -NoProfile -Command ""Compress-Archive -Path '" & _
+        sourceRoot & "\*' -DestinationPath '" & _
+        CStr(ROneCOne.Path.Combine(zipRoot, "ps_made.zip")) & "'""").Await
+    AssertEqual "zip compress-archive exit", 0&, result.ExitCode
+    Set archive = ROneCOne.ZipFile.OpenRead( _
+        CStr(ROneCOne.Path.Combine(zipRoot, "ps_made.zip")))
+    AssertTrue "zip inflates dotnet deflate", InStr(1, _
+        archive.GetEntry("a.txt").ReadAllText(), "alpha beta") > 0
+
+    mCurrentTest = "TestZipSurface.Security"
+    ' A hostile name is spliced into a real archive by patching the entry
+    ' name bytes in place; every size and offset stays valid, so only the
+    ' extraction guard stands between the entry and an escape.
+    ROneCOne.Directory.CreateDirectory _
+        CStr(ROneCOne.Path.Combine(zipRoot, "trap"))
+    ROneCOne.File.WriteAllText CStr(ROneCOne.Path.Combine( _
+        CStr(ROneCOne.Path.Combine(zipRoot, "trap")), "aa.txt")), "boom"
+    ROneCOne.ZipFile.CreateFromDirectory _
+        CStr(ROneCOne.Path.Combine(zipRoot, "trap")), _
+        CStr(ROneCOne.Path.Combine(zipRoot, "trap.zip"))
+    hostileBytes = ROneCOne.File.ReadAllBytes( _
+        CStr(ROneCOne.Path.Combine(zipRoot, "trap.zip")))
+    For index = 0 To UBound(hostileBytes) - 5
+        If hostileBytes(index) = 97 And hostileBytes(index + 1) = 97 And _
+            hostileBytes(index + 2) = 46 And _
+            hostileBytes(index + 3) = 116 And _
+            hostileBytes(index + 4) = 120 And _
+            hostileBytes(index + 5) = 116 Then
+            hostileBytes(index) = 46
+            hostileBytes(index + 1) = 46
+            hostileBytes(index + 2) = 47
+            hostileBytes(index + 3) = 97
+            hostileBytes(index + 4) = 46
+            hostileBytes(index + 5) = 98
+        End If
+    Next index
+    hostilePath = CStr(ROneCOne.Path.Combine(zipRoot, "hostile.zip"))
+    ROneCOne.File.WriteAllBytes hostilePath, hostileBytes
+    AssertEqual "zip hostile still lists", 1&, _
+        ROneCOne.ZipFile.OpenRead(hostilePath).Entries.Count
+    missError = 0
+    On Error Resume Next
+    ROneCOne.ZipFile.ExtractToDirectory hostilePath, _
+        CStr(ROneCOne.Path.Combine(zipRoot, "guarded"))
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "zip slip blocked", ROneCOne.ZipError, missError
+
+    mCurrentTest = "TestZipSurface.Guards"
+    missError = 0
+    On Error Resume Next
+    ROneCOne.ZipFile.OpenRead CStr(ROneCOne.Path.Combine( _
+        zipRoot, "missing.zip"))
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "zip missing archive raises io", ROneCOne.IOError, missError
+    missError = 0
+    On Error Resume Next
+    Set archive = ROneCOne.ZipFile.Entries
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "zip role guard", ROneCOne.InvalidOperationError, missError
+    ROneCOne.Directory.Delete zipRoot, True
 End Sub
 
 Private Sub TestXmlSurface()

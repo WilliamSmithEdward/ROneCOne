@@ -82,6 +82,18 @@ Private Type SYSTEMTIME
     wMilliseconds As Integer
 End Type
 
+' Decoder state for the pure-VBA RFC 1951 inflate engine behind the zip
+' surface: a cursor and bit buffer over the loaded archive bytes, plus the
+' growing output. The archive itself stays in one shared working buffer.
+Private Type InflateState
+    position As Long
+    limit As Long
+    bitBuffer As Long
+    bitCount As Long
+    output() As Byte
+    outPosition As Long
+End Type
+
 Private Declare PtrSafe Sub GetSystemTime Lib "kernel32" ( _
     ByRef systemTime As SYSTEMTIME)
 Private Declare PtrSafe Function SystemTimeToTzSpecificLocalTime Lib "kernel32" ( _
@@ -186,6 +198,9 @@ Private Const ROLE_WEB_UTILITY_FACTORY As Long = 69
 Private Const ROLE_LOGGER As Long = 70
 Private Const ROLE_FILE_WATCHER As Long = 71
 Private Const ROLE_FILE_CHANGE As Long = 72
+Private Const ROLE_ZIPFILE_FACTORY As Long = 73
+Private Const ROLE_ZIP_ARCHIVE As Long = 74
+Private Const ROLE_ZIP_ENTRY As Long = 75
 
 Private Const TASK_WORK As Long = 1
 Private Const TASK_COMPLETED As Long = 2
@@ -336,6 +351,7 @@ Private Const ERROR_PROCESS As Long = vbObjectError + 4115
 Private Const ERROR_REGEX As Long = vbObjectError + 4116
 Private Const ERROR_FORMAT As Long = vbObjectError + 4117
 Private Const ERROR_XML As Long = vbObjectError + 4118
+Private Const ERROR_ZIP As Long = vbObjectError + 4119
 
 Private Const HTTP_PROG_ID As String = "WinHttp.WinHttpRequest.5.1"
 Private Const HTTP_DEFAULT_TIMEOUT_MS As Long = 30000
@@ -542,6 +558,26 @@ Private mWatcherFilter As String
 Private mWatcherChangeType As String
 Private mWatcherSnapshot As Collection
 Private mWatcherLastTick As LongLong
+Private mZipWork() As Byte
+Private mZipTablesReady As Boolean
+Private mPow2() As Long
+Private mCrcTable() As LongLong
+Private mZipLengthBase() As Long
+Private mZipLengthExtra() As Long
+Private mZipDistBase() As Long
+Private mZipDistExtra() As Long
+Private mFixedLitCounts() As Long
+Private mFixedLitSymbols() As Long
+Private mFixedDistCounts() As Long
+Private mFixedDistSymbols() As Long
+Private mZipEntries As Collection
+Private mZipArchivePath As String
+Private mZipEntryMethod As Long
+Private mZipEntryCrc As Double
+Private mZipEntryCompressedSize As Long
+Private mZipEntrySize As Long
+Private mZipEntryOffset As Long
+Private mZipEntryIsDirectory As Boolean
 Private mHttpBaseAddress As String
 Private mHttpTimeoutMs As Long
 Private mHttpHeaderNames As Collection
@@ -2746,11 +2782,27 @@ Attribute Csv.VB_Description = "Gets the CSV serializer surface for DataTables a
 End Property
 
 Public Function ReadAllText( _
-    ByVal filePath As String, _
+    Optional ByVal filePath As String = vbNullString, _
     Optional ByVal encoding As String = "utf-8" _
 ) As String
-Attribute ReadAllText.VB_Description = "Reads a text file; a byte-order mark picks the decoder."
+Attribute ReadAllText.VB_Description = "Reads a file or a zip entry as decoded text."
+    Dim dataBytes() As Byte
+
+    If mRole = ROLE_ZIP_ENTRY Then
+        If Len(filePath) > 0 Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "ReadAllText", _
+                "A zip entry reads itself; no path is accepted."
+        End If
+        dataBytes = ZipEntryBytes("ReadAllText")
+        ReadAllText = ZipEntryText(dataBytes, _
+            NormalizeTextEncoding(encoding, "ReadAllText"))
+        Exit Function
+    End If
     RequireFileFactory "ReadAllText"
+    If Len(filePath) = 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "ReadAllText", _
+            "ReadAllText requires a file path."
+    End If
     ReadAllText = IoReadTextFile(filePath, _
         NormalizeTextEncoding(encoding, "ReadAllText"), "ReadAllText")
 End Function
@@ -2835,9 +2887,23 @@ Attribute WriteAllLines.VB_Description = "Writes lines, terminating every one in
         NormalizeTextEncoding(encoding, "WriteAllLines"), False, "WriteAllLines"
 End Sub
 
-Public Function ReadAllBytes(ByVal filePath As String) As Variant
-Attribute ReadAllBytes.VB_Description = "Reads a whole file as a Byte array."
+Public Function ReadAllBytes( _
+    Optional ByVal filePath As String = vbNullString _
+) As Variant
+Attribute ReadAllBytes.VB_Description = "Reads a file or a zip entry as a Byte array."
+    If mRole = ROLE_ZIP_ENTRY Then
+        If Len(filePath) > 0 Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "ReadAllBytes", _
+                "A zip entry reads itself; no path is accepted."
+        End If
+        ReadAllBytes = ZipEntryBytes("ReadAllBytes")
+        Exit Function
+    End If
     RequireFileFactory "ReadAllBytes"
+    If Len(filePath) = 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "ReadAllBytes", _
+            "ReadAllBytes requires a file path."
+    End If
     ReadAllBytes = IoReadAllBytesCore(filePath, "ReadAllBytes")
 End Function
 
@@ -3137,15 +3203,17 @@ Attribute FirstIndex.VB_Description = "Gets a match's zero-based position in the
 End Property
 
 Public Property Get Length() As Long
-Attribute Length.VB_Description = "Gets a match's character length or a builder's text length."
+Attribute Length.VB_Description = "Gets a match, builder, or zip entry length."
     Select Case mRole
         Case ROLE_REGEX_MATCH
             Length = mRegexLength
         Case ROLE_STRING_BUILDER
             Length = mStringBuilder.used
+        Case ROLE_ZIP_ENTRY
+            Length = mZipEntrySize
         Case Else
             RaiseContractError ERROR_INVALID_OPERATION, "Length", _
-                "Length requires a match or a StringBuilder."
+                "Length requires a match, StringBuilder, or zip entry."
     End Select
 End Property
 
@@ -3271,6 +3339,164 @@ Attribute FromHexString.VB_Description = "Decodes hexadecimal text into a Byte a
     Next index
     FromHexString = bytes
 End Function
+
+Public Property Get ZipFile() As ROneCOne
+Attribute ZipFile.VB_Description = "Gets the System.IO.Compression-style zip surface."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigureZipFileFactory
+    Set ZipFile = factory
+End Property
+
+Public Sub CreateFromDirectory( _
+    ByVal sourceDirectoryName As String, _
+    ByVal destinationArchiveFileName As String _
+)
+Attribute CreateFromDirectory.VB_Description = "Zips a folder tree into a new stored archive."
+    Dim fso As Object
+
+    RequireZipFileFactory "CreateFromDirectory"
+    Set fso = CreateFileSystemObject()
+    If Not fso.FolderExists(sourceDirectoryName) Then
+        RaiseIoError "The folder '" & sourceDirectoryName & _
+            "' does not exist."
+    End If
+    If fso.FileExists(destinationArchiveFileName) Then
+        RaiseIoError "The archive '" & destinationArchiveFileName & _
+            "' already exists."
+    End If
+    ZipWriteArchiveFromDirectory sourceDirectoryName, _
+        destinationArchiveFileName
+End Sub
+
+Public Sub ExtractToDirectory( _
+    ByVal sourceArchiveFileName As String, _
+    ByVal destinationDirectoryName As String _
+)
+Attribute ExtractToDirectory.VB_Description = "Extracts an archive, refusing existing files."
+    Dim dataBytes() As Byte
+    Dim fso As Object
+    Dim parentPath As String
+    Dim rawEntry As Variant
+    Dim rawEntries As Collection
+    Dim safePath As String
+    Dim targetPath As String
+
+    RequireZipFileFactory "ExtractToDirectory"
+    mZipWork = IoReadAllBytesCore(sourceArchiveFileName, _
+        "ExtractToDirectory")
+    Set rawEntries = ZipReadDirectoryCore()
+    Set fso = CreateFileSystemObject()
+    DirectoryCreateCore destinationDirectoryName, "ExtractToDirectory"
+    For Each rawEntry In rawEntries
+        safePath = SafeRelativeEntryPath(CStr(rawEntry(0)))
+        targetPath = fso.BuildPath(destinationDirectoryName, safePath)
+        If CBool(rawEntry(7)) Then
+            DirectoryCreateCore targetPath, "ExtractToDirectory"
+        Else
+            parentPath = fso.GetParentFolderName(targetPath)
+            If Len(parentPath) > 0 Then
+                DirectoryCreateCore parentPath, "ExtractToDirectory"
+            End If
+            If fso.FileExists(targetPath) Then
+                Erase mZipWork
+                RaiseIoError "The file '" & targetPath & _
+                    "' already exists."
+            End If
+            dataBytes = ZipExtractEntryCore(CStr(rawEntry(0)), _
+                CLng(rawEntry(1)), CDbl(rawEntry(3)), CLng(rawEntry(4)), _
+                CLng(rawEntry(5)), CLng(rawEntry(6)), False)
+            IoWriteAllBytesCore targetPath, dataBytes, "ExtractToDirectory"
+        End If
+    Next rawEntry
+    Erase mZipWork
+End Sub
+
+Public Function OpenRead(ByVal archiveFileName As String) As ROneCOne
+Attribute OpenRead.VB_Description = "Opens an archive for reading its entries."
+    Dim archive As ROneCOne
+    Dim entry As ROneCOne
+    Dim entryObjects As Collection
+    Dim rawEntry As Variant
+    Dim rawEntries As Collection
+
+    RequireZipFileFactory "OpenRead"
+    mZipWork = IoReadAllBytesCore(archiveFileName, "OpenRead")
+    Set rawEntries = ZipReadDirectoryCore()
+    Erase mZipWork
+    Set entryObjects = New Collection
+    For Each rawEntry In rawEntries
+        Set entry = New ROneCOne
+        entry.ConfigureZipEntry archiveFileName, CStr(rawEntry(0)), _
+            CLng(rawEntry(1)), CDbl(rawEntry(3)), CLng(rawEntry(4)), _
+            CLng(rawEntry(5)), CLng(rawEntry(6)), CBool(rawEntry(7))
+        entryObjects.Add entry
+    Next rawEntry
+    Set archive = New ROneCOne
+    archive.ConfigureZipArchive archiveFileName, entryObjects
+    Set OpenRead = archive
+End Function
+
+Public Property Get Entries() As ROneCOne
+Attribute Entries.VB_Description = "Gets an archive's entries as a queryable typed list."
+    Dim entry As Variant
+    Dim results As ROneCOne
+
+    RequireZipArchive "Entries"
+    Set results = ROneCOne.ListOf(Me)
+    For Each entry In mZipEntries
+        results.Add entry
+    Next entry
+    Set Entries = results
+End Property
+
+Public Function GetEntry(ByVal entryName As String) As ROneCOne
+Attribute GetEntry.VB_Description = "Finds an entry by exact name; Nothing when absent."
+    Dim entry As Variant
+
+    RequireZipArchive "GetEntry"
+    For Each entry In mZipEntries
+        If entry.FullName = entryName Then
+            Set GetEntry = entry
+            Exit Function
+        End If
+    Next entry
+End Function
+
+Public Property Get FullName() As String
+Attribute FullName.VB_Description = "Gets an entry's full name inside the archive."
+    RequireZipEntry "FullName"
+    FullName = mName
+End Property
+
+Public Property Get CompressedLength() As Long
+Attribute CompressedLength.VB_Description = "Gets an entry's compressed size in bytes."
+    RequireZipEntry "CompressedLength"
+    CompressedLength = mZipEntryCompressedSize
+End Property
+
+Public Sub ExtractToFile( _
+    ByVal destinationFileName As String, _
+    Optional ByVal overwrite As Boolean = False _
+)
+Attribute ExtractToFile.VB_Description = "Writes one entry's bytes to a file on disk."
+    Dim dataBytes() As Byte
+
+    RequireZipEntry "ExtractToFile"
+    If mZipEntryIsDirectory Then
+        RaiseContractError ERROR_INVALID_OPERATION, "ExtractToFile", _
+            "A directory entry has no file to extract."
+    End If
+    If Not overwrite Then
+        If CreateFileSystemObject().FileExists(destinationFileName) Then
+            RaiseIoError "The file '" & destinationFileName & _
+                "' already exists."
+        End If
+    End If
+    dataBytes = ZipEntryBytes("ExtractToFile")
+    IoWriteAllBytesCore destinationFileName, dataBytes, "ExtractToFile"
+End Sub
 
 Public Function FileWatcher( _
     ByVal folderPath As String, _
@@ -3594,15 +3820,17 @@ Attribute Load.VB_Description = "Loads an XML file, honoring its declared encodi
 End Function
 
 Public Property Get Name() As String
-Attribute Name.VB_Description = "Gets an XML node's name or a changed file's name."
+Attribute Name.VB_Description = "Gets an XML node, file change, or zip entry name."
     Select Case mRole
         Case ROLE_XML_NODE
             Name = mProviderObject.nodeName
         Case ROLE_FILE_CHANGE
             Name = mName
+        Case ROLE_ZIP_ENTRY
+            Name = Mid$(mName, InStrRev(mName, "/") + 1)
         Case Else
             RaiseContractError ERROR_INVALID_OPERATION, "Name", _
-                "Name requires an XML node or a file change."
+                "Name requires an XML node, file change, or zip entry."
     End Select
 End Property
 
@@ -9186,6 +9414,11 @@ Attribute XmlError.VB_Description = "Gets the ROneCOne XML parse and query error
     XmlError = ERROR_XML
 End Property
 
+Public Property Get ZipError() As Long
+Attribute ZipError.VB_Description = "Gets the ROneCOne zip archive error number."
+    ZipError = ERROR_ZIP
+End Property
+
 Public Property Get UnboundParameterError() As Long
 Attribute UnboundParameterError.VB_Description = "Gets the unbound-parameter error number."
     UnboundParameterError = ERROR_UNBOUND_PARAMETER
@@ -10212,6 +10445,40 @@ Friend Property Get InternalWatcherFilter() As String
 Attribute InternalWatcherFilter.VB_MemberFlags = "40"
     InternalWatcherFilter = mWatcherFilter
 End Property
+
+Friend Sub ConfigureZipFileFactory()
+    mRole = ROLE_ZIPFILE_FACTORY
+End Sub
+
+Friend Sub ConfigureZipArchive( _
+    ByVal archivePath As String, _
+    ByVal entryObjects As Collection _
+)
+    mRole = ROLE_ZIP_ARCHIVE
+    mName = archivePath
+    Set mZipEntries = entryObjects
+End Sub
+
+Friend Sub ConfigureZipEntry( _
+    ByVal archivePath As String, _
+    ByVal entryName As String, _
+    ByVal method As Long, _
+    ByVal crcValue As Double, _
+    ByVal compressedSize As Long, _
+    ByVal size As Long, _
+    ByVal localOffset As Long, _
+    ByVal isDirectory As Boolean _
+)
+    mRole = ROLE_ZIP_ENTRY
+    mZipArchivePath = archivePath
+    mName = entryName
+    mZipEntryMethod = method
+    mZipEntryCrc = crcValue
+    mZipEntryCompressedSize = compressedSize
+    mZipEntrySize = size
+    mZipEntryOffset = localOffset
+    mZipEntryIsDirectory = isDirectory
+End Sub
 
 Friend Sub ConfigureWebUtilityFactory()
     mRole = ROLE_WEB_UTILITY_FACTORY
@@ -13625,6 +13892,27 @@ Private Sub RequireFileWatcher(ByVal memberName As String)
     If mRole <> ROLE_FILE_WATCHER Then
         RaiseContractError ERROR_INVALID_OPERATION, memberName, _
             memberName & " requires a FileWatcher."
+    End If
+End Sub
+
+Private Sub RequireZipFileFactory(ByVal memberName As String)
+    If mRole <> ROLE_ZIPFILE_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires the ZipFile surface."
+    End If
+End Sub
+
+Private Sub RequireZipArchive(ByVal memberName As String)
+    If mRole <> ROLE_ZIP_ARCHIVE Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires an open zip archive."
+    End If
+End Sub
+
+Private Sub RequireZipEntry(ByVal memberName As String)
+    If mRole <> ROLE_ZIP_ENTRY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires a zip entry."
     End If
 End Sub
 
@@ -22465,6 +22753,815 @@ Private Function HexByteText(ByVal value As Byte) As String
 End Function
 
 ' ---------------------------------------------------------------------------
+' Zip core: a pure-VBA engine. Reading parses the central directory and
+' inflates RFC 1951 streams (stored, fixed, and dynamic Huffman blocks)
+' with CRC-32 verification; writing emits store-only archives that every
+' unzipper reads. No COM component exists for this work: the in-box Shell
+' folder trick has no completion or error channel, so the arithmetic lives
+' here, validated offline against python-generated fixtures.
+' ---------------------------------------------------------------------------
+
+Private Sub RaiseZipError(ByVal message As String)
+    Err.Raise ERROR_ZIP, "ROneCOne.ZipException", message
+End Sub
+
+Private Function ZipWord16(ByVal at As Long) As Long
+    ZipWord16 = CLng(mZipWork(at)) + CLng(mZipWork(at + 1)) * 256&
+End Function
+
+Private Function ZipWord32(ByVal at As Long) As Double
+    ZipWord32 = CDbl(mZipWork(at)) + CDbl(mZipWork(at + 1)) * 256# + _
+        CDbl(mZipWork(at + 2)) * 65536# + CDbl(mZipWork(at + 3)) * 16777216#
+End Function
+
+Private Function ZipSizeValue(ByVal at As Long) As Long
+    Dim raw As Double
+
+    raw = ZipWord32(at)
+    If raw = 4294967295# Then
+        RaiseZipError "Zip64 archives (4 GB or larger) are not supported."
+    End If
+    If raw > 2147483646# Then
+        RaiseZipError "The archive holds an entry too large to read."
+    End If
+    ZipSizeValue = CLng(raw)
+End Function
+
+Private Function ZipReadDirectoryCore() As Collection
+    Dim at As Long
+    Dim commentLength As Long
+    Dim entries As Collection
+    Dim entryCount As Long
+    Dim entryIndex As Long
+    Dim entryName As String
+    Dim extraLength As Long
+    Dim flags As Long
+    Dim method As Long
+    Dim nameLength As Long
+
+    ZipEnsureTables
+    at = ZipFindDirectoryEnd()
+    If ZipWord16(at + 4) <> 0 Or ZipWord16(at + 6) <> 0 Then
+        RaiseZipError "Multi-disk archives are not supported."
+    End If
+    entryCount = ZipWord16(at + 10)
+    If entryCount = 65535 Then
+        RaiseZipError "Zip64 archives (4 GB or larger) are not supported."
+    End If
+    Set entries = New Collection
+    at = ZipSizeValue(at + 16)
+    For entryIndex = 1 To entryCount
+        If at + 45 > UBound(mZipWork) Then
+            RaiseZipError "The central directory is truncated."
+        End If
+        If ZipWord32(at) <> 33639248# Then
+            RaiseZipError "The central directory is not where the " & _
+                "archive says."
+        End If
+        flags = ZipWord16(at + 8)
+        If (flags And 1) <> 0 Then
+            RaiseZipError "Encrypted archives are not supported."
+        End If
+        method = ZipWord16(at + 10)
+        If method <> 0 And method <> 8 Then
+            RaiseZipError "Only stored and deflated entries are supported."
+        End If
+        nameLength = ZipWord16(at + 28)
+        extraLength = ZipWord16(at + 30)
+        commentLength = ZipWord16(at + 32)
+        entryName = ZipEntryNameText(at + 46, nameLength, flags)
+        entries.Add Array(entryName, method, flags, ZipWord32(at + 16), _
+            ZipSizeValue(at + 20), ZipSizeValue(at + 24), _
+            ZipSizeValue(at + 42), Right$(entryName, 1) = "/")
+        at = at + 46 + nameLength + extraLength + commentLength
+    Next entryIndex
+    Set ZipReadDirectoryCore = entries
+End Function
+
+Private Function ZipFindDirectoryEnd() As Long
+    Dim at As Long
+    Dim lowest As Long
+    Dim size As Long
+
+    size = ByteArrayLength(mZipWork)
+    If size < 22 Then
+        RaiseZipError "The file is too small to be a zip archive."
+    End If
+    lowest = size - 22 - 65535
+    If lowest < 0 Then lowest = 0
+    For at = size - 22 To lowest Step -1
+        If mZipWork(at) = 80 Then
+            If mZipWork(at + 1) = 75 And mZipWork(at + 2) = 5 And _
+                mZipWork(at + 3) = 6 Then
+                ZipFindDirectoryEnd = at
+                Exit Function
+            End If
+        End If
+    Next at
+    RaiseZipError "The end-of-directory record was not found; this is " & _
+        "not a zip archive."
+End Function
+
+Private Function ZipEntryNameText( _
+    ByVal at As Long, _
+    ByVal nameLength As Long, _
+    ByVal flags As Long _
+) As String
+    Dim index As Long
+    Dim nameBytes() As Byte
+
+    If nameLength = 0 Then RaiseZipError "An entry has an empty name."
+    ReDim nameBytes(0 To nameLength - 1)
+    For index = 0 To nameLength - 1
+        nameBytes(index) = mZipWork(at + index)
+    Next index
+    If (flags And 2048) <> 0 Then
+        ZipEntryNameText = IoDecodeText(nameBytes, "utf-8")
+    Else
+        ZipEntryNameText = IoDecodeText(nameBytes, "windows-1252")
+    End If
+End Function
+
+Private Function ZipExtractEntryCore( _
+    ByVal entryName As String, _
+    ByVal method As Long, _
+    ByVal crcValue As Double, _
+    ByVal compressedSize As Long, _
+    ByVal size As Long, _
+    ByVal localOffset As Long, _
+    ByVal isDirectory As Boolean _
+) As Byte()
+    Dim dataStart As Long
+    Dim index As Long
+    Dim result() As Byte
+
+    ' Each entry is its own instance, so a reader that never parsed a
+    ' directory still needs the inflate and CRC tables ensured here.
+    ZipEnsureTables
+    If isDirectory Or size = 0 Then
+        ZipExtractEntryCore = ZipEmptyBytes()
+        Exit Function
+    End If
+    dataStart = ZipEntryDataStart(localOffset)
+    If CDbl(dataStart) + compressedSize - 1 > UBound(mZipWork) Then
+        RaiseZipError "The entry data runs past the end of the archive."
+    End If
+    If method = 0 Then
+        If compressedSize <> size Then
+            RaiseZipError "A stored entry's sizes disagree."
+        End If
+        ReDim result(0 To size - 1)
+        For index = 0 To size - 1
+            result(index) = mZipWork(dataStart + index)
+        Next index
+    Else
+        result = ZipInflate(dataStart, compressedSize, size)
+    End If
+    If ZipCrc32(result) <> crcValue Then
+        RaiseZipError "The entry '" & entryName & _
+            "' failed its CRC-32 check."
+    End If
+    ZipExtractEntryCore = result
+End Function
+
+Private Function ZipEntryDataStart(ByVal localOffset As Long) As Long
+    If localOffset + 29 > UBound(mZipWork) Then
+        RaiseZipError "A local header runs past the end of the archive."
+    End If
+    If ZipWord32(localOffset) <> 67324752# Then
+        RaiseZipError "A local header is not where the directory says."
+    End If
+    ZipEntryDataStart = localOffset + 30 + ZipWord16(localOffset + 26) + _
+        ZipWord16(localOffset + 28)
+End Function
+
+Private Function ZipEntryBytes(ByVal memberName As String) As Byte()
+    mZipWork = IoReadAllBytesCore(mZipArchivePath, memberName)
+    ZipEntryBytes = ZipExtractEntryCore(mName, mZipEntryMethod, _
+        mZipEntryCrc, mZipEntryCompressedSize, mZipEntrySize, _
+        mZipEntryOffset, mZipEntryIsDirectory)
+    Erase mZipWork
+End Function
+
+Private Function ZipEntryText( _
+    ByRef dataBytes() As Byte, _
+    ByVal requestedCharset As String _
+) As String
+    Dim byteCount As Long
+    Dim charset As String
+    Dim index As Long
+    Dim skipCount As Long
+    Dim sliced() As Byte
+
+    byteCount = ByteArrayLength(dataBytes)
+    If byteCount = 0 Then Exit Function
+    charset = requestedCharset
+    If byteCount >= 3 Then
+        If dataBytes(0) = 239 And dataBytes(1) = 187 And _
+            dataBytes(2) = 191 Then
+            charset = "utf-8"
+            skipCount = 3
+        End If
+    End If
+    If skipCount = 0 And byteCount >= 2 Then
+        If dataBytes(0) = 255 And dataBytes(1) = 254 Then
+            charset = "unicode"
+            skipCount = 2
+        ElseIf dataBytes(0) = 254 And dataBytes(1) = 255 Then
+            charset = "bigendianunicode"
+            skipCount = 2
+        End If
+    End If
+    If skipCount >= byteCount Then Exit Function
+    If skipCount = 0 Then
+        ZipEntryText = IoDecodeText(dataBytes, charset)
+    Else
+        ReDim sliced(0 To byteCount - skipCount - 1)
+        For index = 0 To byteCount - skipCount - 1
+            sliced(index) = dataBytes(skipCount + index)
+        Next index
+        ZipEntryText = IoDecodeText(sliced, charset)
+    End If
+End Function
+
+Private Function SafeRelativeEntryPath(ByVal entryName As String) As String
+    Dim part As Variant
+    Dim parts As Variant
+    Dim result As String
+
+    If InStr(1, entryName, ":") > 0 Or InStr(1, entryName, "\") > 0 Or _
+        Left$(entryName, 1) = "/" Then
+        RaiseZipError "The entry '" & entryName & _
+            "' would escape the target folder."
+    End If
+    parts = VBA.Split(entryName, "/")
+    For Each part In parts
+        If part = ".." Or part = "." Then
+            RaiseZipError "The entry '" & entryName & _
+                "' would escape the target folder."
+        End If
+        If Len(part) > 0 Then
+            If Len(result) > 0 Then result = result & "\"
+            result = result & part
+        End If
+    Next part
+    If Len(result) = 0 Then RaiseZipError "An entry has an empty name."
+    SafeRelativeEntryPath = result
+End Function
+
+Private Function ZipInflate( _
+    ByVal startAt As Long, _
+    ByVal compressedLength As Long, _
+    ByVal outputSize As Long _
+) As Byte()
+    Dim blockType As Long
+    Dim finalBlock As Long
+    Dim state As InflateState
+
+    state.position = startAt
+    state.limit = startAt + compressedLength
+    ReDim state.output(0 To outputSize - 1)
+    Do
+        finalBlock = InflateBits(state, 1)
+        blockType = InflateBits(state, 2)
+        Select Case blockType
+            Case 0
+                InflateStored state
+            Case 1
+                InflateCodes state, mFixedLitCounts, mFixedLitSymbols, _
+                    mFixedDistCounts, mFixedDistSymbols
+            Case 2
+                InflateDynamicBlock state
+            Case Else
+                RaiseZipError "The deflate stream holds an invalid " & _
+                    "block type."
+        End Select
+    Loop While finalBlock = 0
+    If state.outPosition <> outputSize Then
+        RaiseZipError "The deflate stream ended before the entry was " & _
+            "complete."
+    End If
+    ZipInflate = state.output
+End Function
+
+Private Function InflateBits( _
+    ByRef state As InflateState, _
+    ByVal needed As Long _
+) As Long
+    Do While state.bitCount < needed
+        If state.position >= state.limit Then
+            RaiseZipError "The deflate stream ended early."
+        End If
+        state.bitBuffer = state.bitBuffer + _
+            CLng(mZipWork(state.position)) * mPow2(state.bitCount)
+        state.position = state.position + 1
+        state.bitCount = state.bitCount + 8
+    Loop
+    InflateBits = state.bitBuffer And (mPow2(needed) - 1)
+    state.bitBuffer = state.bitBuffer \ mPow2(needed)
+    state.bitCount = state.bitCount - needed
+End Function
+
+Private Sub InflateStored(ByRef state As InflateState)
+    Dim index As Long
+    Dim storedLength As Long
+
+    state.bitBuffer = 0
+    state.bitCount = 0
+    If state.position + 3 >= state.limit Then
+        RaiseZipError "The deflate stream ended early."
+    End If
+    storedLength = CLng(mZipWork(state.position)) + _
+        CLng(mZipWork(state.position + 1)) * 256&
+    If (storedLength Xor (CLng(mZipWork(state.position + 2)) + _
+        CLng(mZipWork(state.position + 3)) * 256&)) <> 65535 Then
+        RaiseZipError "A stored deflate block fails its length check."
+    End If
+    state.position = state.position + 4
+    If state.position + storedLength > state.limit Then
+        RaiseZipError "The deflate stream ended early."
+    End If
+    If storedLength > 0 Then
+        If state.outPosition + storedLength - 1 > UBound(state.output) Then
+            RaiseZipError "The deflate output exceeds the entry size."
+        End If
+        For index = 1 To storedLength
+            state.output(state.outPosition) = mZipWork(state.position)
+            state.outPosition = state.outPosition + 1
+            state.position = state.position + 1
+        Next index
+    End If
+End Sub
+
+Private Sub InflateCodes( _
+    ByRef state As InflateState, _
+    ByRef litCounts() As Long, _
+    ByRef litSymbols() As Long, _
+    ByRef distCounts() As Long, _
+    ByRef distSymbols() As Long _
+)
+    Dim copyFrom As Long
+    Dim distance As Long
+    Dim runLength As Long
+    Dim symbol As Long
+
+    Do
+        symbol = InflateDecode(state, litCounts, litSymbols)
+        If symbol < 256 Then
+            If state.outPosition > UBound(state.output) Then
+                RaiseZipError "The deflate output exceeds the entry size."
+            End If
+            state.output(state.outPosition) = symbol
+            state.outPosition = state.outPosition + 1
+        ElseIf symbol > 256 Then
+            If symbol > 285 Then
+                RaiseZipError "The deflate stream holds an invalid " & _
+                    "length code."
+            End If
+            runLength = mZipLengthBase(symbol - 257) + _
+                InflateBits(state, mZipLengthExtra(symbol - 257))
+            symbol = InflateDecode(state, distCounts, distSymbols)
+            If symbol > 29 Then
+                RaiseZipError "The deflate stream holds an invalid " & _
+                    "distance code."
+            End If
+            distance = mZipDistBase(symbol) + _
+                InflateBits(state, mZipDistExtra(symbol))
+            If distance > state.outPosition Then
+                RaiseZipError "The deflate stream reaches before the start."
+            End If
+            If state.outPosition + runLength - 1 > UBound(state.output) Then
+                RaiseZipError "The deflate output exceeds the entry size."
+            End If
+            copyFrom = state.outPosition - distance
+            Do While runLength > 0
+                state.output(state.outPosition) = state.output(copyFrom)
+                state.outPosition = state.outPosition + 1
+                copyFrom = copyFrom + 1
+                runLength = runLength - 1
+            Loop
+        End If
+    Loop While symbol <> 256
+End Sub
+
+Private Function InflateDecode( _
+    ByRef state As InflateState, _
+    ByRef lengthCounts() As Long, _
+    ByRef symbols() As Long _
+) As Long
+    Dim code As Long
+    Dim count As Long
+    Dim first As Long
+    Dim size As Long
+    Dim tableIndex As Long
+
+    For size = 1 To 15
+        code = code + InflateBits(state, 1)
+        count = lengthCounts(size)
+        If code - first < count Then
+            InflateDecode = symbols(tableIndex + code - first)
+            Exit Function
+        End If
+        tableIndex = tableIndex + count
+        first = (first + count) * 2
+        code = code * 2
+    Next size
+    RaiseZipError "The deflate stream holds an invalid Huffman code."
+End Function
+
+Private Sub InflateConstruct( _
+    ByRef lengths() As Long, _
+    ByVal startAt As Long, _
+    ByVal symbolCount As Long, _
+    ByRef lengthCounts() As Long, _
+    ByRef symbols() As Long _
+)
+    Dim index As Long
+    Dim leftover As Long
+    Dim offsets(0 To 15) As Long
+    Dim size As Long
+
+    ReDim lengthCounts(0 To 15)
+    ReDim symbols(0 To symbolCount)
+    For index = 0 To symbolCount - 1
+        lengthCounts(lengths(startAt + index)) = _
+            lengthCounts(lengths(startAt + index)) + 1
+    Next index
+    If lengthCounts(0) = symbolCount Then Exit Sub
+    leftover = 1
+    For size = 1 To 15
+        leftover = leftover * 2 - lengthCounts(size)
+        If leftover < 0 Then
+            RaiseZipError "The deflate code lengths are oversubscribed."
+        End If
+    Next size
+    offsets(1) = 0
+    For size = 1 To 14
+        offsets(size + 1) = offsets(size) + lengthCounts(size)
+    Next size
+    For index = 0 To symbolCount - 1
+        If lengths(startAt + index) <> 0 Then
+            symbols(offsets(lengths(startAt + index))) = index
+            offsets(lengths(startAt + index)) = _
+                offsets(lengths(startAt + index)) + 1
+        End If
+    Next index
+End Sub
+
+Private Sub InflateDynamicBlock(ByRef state As InflateState)
+    Dim codeCounts() As Long
+    Dim codeSymbols() As Long
+    Dim distCounts() As Long
+    Dim distSymbols() As Long
+    Dim hclen As Long
+    Dim hdist As Long
+    Dim hlit As Long
+    Dim index As Long
+    Dim lengths(0 To 318) As Long
+    Dim litCounts() As Long
+    Dim litSymbols() As Long
+    Dim orderValues As Variant
+    Dim previous As Long
+    Dim repeatCount As Long
+    Dim symbol As Long
+
+    hlit = InflateBits(state, 5) + 257
+    hdist = InflateBits(state, 5) + 1
+    hclen = InflateBits(state, 4) + 4
+    If hlit > 286 Or hdist > 30 Then
+        RaiseZipError "The deflate stream declares too many codes."
+    End If
+    orderValues = Array(16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, _
+        13, 2, 14, 1, 15)
+    For index = 0 To 18
+        lengths(index) = 0
+    Next index
+    For index = 0 To hclen - 1
+        lengths(CLng(orderValues(index))) = InflateBits(state, 3)
+    Next index
+    InflateConstruct lengths, 0, 19, codeCounts, codeSymbols
+    index = 0
+    Do While index < hlit + hdist
+        symbol = InflateDecode(state, codeCounts, codeSymbols)
+        If symbol < 16 Then
+            lengths(index) = symbol
+            index = index + 1
+        Else
+            Select Case symbol
+                Case 16
+                    If index = 0 Then
+                        RaiseZipError "The deflate stream repeats nothing."
+                    End If
+                    previous = lengths(index - 1)
+                    repeatCount = 3 + InflateBits(state, 2)
+                Case 17
+                    previous = 0
+                    repeatCount = 3 + InflateBits(state, 3)
+                Case Else
+                    previous = 0
+                    repeatCount = 11 + InflateBits(state, 7)
+            End Select
+            If index + repeatCount > hlit + hdist Then
+                RaiseZipError "The deflate stream repeats too many lengths."
+            End If
+            Do While repeatCount > 0
+                lengths(index) = previous
+                index = index + 1
+                repeatCount = repeatCount - 1
+            Loop
+        End If
+    Loop
+    If lengths(256) = 0 Then
+        RaiseZipError "The deflate stream is missing its end-of-block code."
+    End If
+    InflateConstruct lengths, 0, hlit, litCounts, litSymbols
+    InflateConstruct lengths, hlit, hdist, distCounts, distSymbols
+    InflateCodes state, litCounts, litSymbols, distCounts, distSymbols
+End Sub
+
+Private Function ZipCrc32(ByRef dataBytes() As Byte) As Double
+    Dim crc As LongLong
+    Dim index As Long
+    Dim tableIndex As Long
+
+    ZipEnsureTables
+    crc = 4294967295^
+    If ByteArrayLength(dataBytes) > 0 Then
+        For index = LBound(dataBytes) To UBound(dataBytes)
+            tableIndex = CLng((crc Xor dataBytes(index)) And 255^)
+            crc = ((crc \ 256^) And 16777215^) Xor mCrcTable(tableIndex)
+        Next index
+    End If
+    ZipCrc32 = CDbl(crc Xor 4294967295^)
+End Function
+
+Private Sub ZipEnsureTables()
+    Dim bit As Long
+    Dim entry As LongLong
+    Dim index As Long
+    Dim lengths(0 To 287) As Long
+    Dim values As Variant
+
+    If mZipTablesReady Then Exit Sub
+    ReDim mPow2(0 To 24)
+    ReDim mCrcTable(0 To 255)
+    ReDim mZipLengthBase(0 To 28)
+    ReDim mZipLengthExtra(0 To 28)
+    ReDim mZipDistBase(0 To 29)
+    ReDim mZipDistExtra(0 To 29)
+    mPow2(0) = 1
+    For index = 1 To 24
+        mPow2(index) = mPow2(index - 1) * 2
+    Next index
+    For index = 0 To 255
+        entry = index
+        For bit = 1 To 8
+            If (entry And 1^) <> 0 Then
+                entry = 3988292384^ Xor ((entry \ 2^) And 2147483647^)
+            Else
+                entry = (entry \ 2^) And 2147483647^
+            End If
+        Next bit
+        mCrcTable(index) = entry
+    Next index
+    values = Array(3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, _
+        31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258)
+    For index = 0 To 28
+        mZipLengthBase(index) = values(index)
+    Next index
+    values = Array(0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, _
+        3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0)
+    For index = 0 To 28
+        mZipLengthExtra(index) = values(index)
+    Next index
+    values = Array(1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, _
+        193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, _
+        8193, 12289, 16385, 24577)
+    For index = 0 To 29
+        mZipDistBase(index) = values(index)
+    Next index
+    values = Array(0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, _
+        8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13)
+    For index = 0 To 29
+        mZipDistExtra(index) = values(index)
+    Next index
+    For index = 0 To 143
+        lengths(index) = 8
+    Next index
+    For index = 144 To 255
+        lengths(index) = 9
+    Next index
+    For index = 256 To 279
+        lengths(index) = 7
+    Next index
+    For index = 280 To 287
+        lengths(index) = 8
+    Next index
+    InflateConstruct lengths, 0, 288, mFixedLitCounts, mFixedLitSymbols
+    For index = 0 To 29
+        lengths(index) = 5
+    Next index
+    InflateConstruct lengths, 0, 30, mFixedDistCounts, mFixedDistSymbols
+    mZipTablesReady = True
+End Sub
+
+Private Sub ZipWriteArchiveFromDirectory( _
+    ByVal sourceDirectory As String, _
+    ByVal destinationArchive As String _
+)
+    Dim centralRecords As Collection
+    Dim stream As Object
+
+    ZipEnsureTables
+    Set centralRecords = New Collection
+    Set stream = CreateStreamObject(STREAM_TYPE_BINARY)
+    ZipWriteFolderEntries stream, centralRecords, sourceDirectory, _
+        vbNullString
+    ZipWriteCentralDirectory stream, centralRecords
+    On Error GoTo SaveFailed
+    stream.SaveToFile destinationArchive, STREAM_SAVE_OVERWRITE
+    On Error GoTo 0
+    stream.Close
+    Exit Sub
+
+SaveFailed:
+    RaiseIoError "The archive '" & destinationArchive & _
+        "' could not be written: " & Err.Description
+End Sub
+
+Private Sub ZipWriteFolderEntries( _
+    ByVal stream As Object, _
+    ByVal centralRecords As Collection, _
+    ByVal folderPath As String, _
+    ByVal relativePrefix As String _
+)
+    Dim dataBytes() As Byte
+    Dim fileItem As Object
+    Dim folder As Object
+    Dim subFolder As Object
+
+    Set folder = CreateFileSystemObject().GetFolder(folderPath)
+    For Each fileItem In folder.Files
+        dataBytes = IoReadAllBytesCore(fileItem.Path, "CreateFromDirectory")
+        ZipAppendEntry stream, centralRecords, _
+            relativePrefix & fileItem.Name, dataBytes, _
+            fileItem.DateLastModified
+    Next fileItem
+    For Each subFolder In folder.SubFolders
+        If subFolder.Files.Count = 0 And subFolder.SubFolders.Count = 0 Then
+            ZipAppendEntry stream, centralRecords, relativePrefix & _
+                subFolder.Name & "/", ZipEmptyBytes(), _
+                subFolder.DateLastModified
+        Else
+            ZipWriteFolderEntries stream, centralRecords, subFolder.Path, _
+                relativePrefix & subFolder.Name & "/"
+        End If
+    Next subFolder
+End Sub
+
+Private Sub ZipAppendEntry( _
+    ByVal stream As Object, _
+    ByVal centralRecords As Collection, _
+    ByVal entryName As String, _
+    ByRef dataBytes() As Byte, _
+    ByVal modifiedAt As Date _
+)
+    Dim crcValue As Double
+    Dim dosDate As Long
+    Dim dosTime As Long
+    Dim flags As Long
+    Dim nameBytes() As Byte
+    Dim offset As Long
+    Dim size As Long
+
+    nameBytes = IoEncodeText(entryName, "utf-8", 3)
+    flags = ZipNameFlags(entryName)
+    size = ByteArrayLength(dataBytes)
+    crcValue = ZipCrc32(dataBytes)
+    dosDate = ZipDosDate(modifiedAt)
+    dosTime = ZipDosTime(modifiedAt)
+    offset = CLng(stream.Position)
+    ZipWriteWord32 stream, 67324752#
+    ZipWriteWord16 stream, 20
+    ZipWriteWord16 stream, flags
+    ZipWriteWord16 stream, 0
+    ZipWriteWord16 stream, dosTime
+    ZipWriteWord16 stream, dosDate
+    ZipWriteWord32 stream, crcValue
+    ZipWriteWord32 stream, CDbl(size)
+    ZipWriteWord32 stream, CDbl(size)
+    ZipWriteWord16 stream, ByteArrayLength(nameBytes)
+    ZipWriteWord16 stream, 0
+    stream.Write nameBytes
+    If size > 0 Then stream.Write dataBytes
+    centralRecords.Add Array(nameBytes, flags, crcValue, size, offset, _
+        dosTime, dosDate)
+End Sub
+
+Private Sub ZipWriteCentralDirectory( _
+    ByVal stream As Object, _
+    ByVal centralRecords As Collection _
+)
+    Dim directorySize As Long
+    Dim directoryStart As Long
+    Dim nameBytes() As Byte
+    Dim record As Variant
+
+    directoryStart = CLng(stream.Position)
+    For Each record In centralRecords
+        nameBytes = record(0)
+        ZipWriteWord32 stream, 33639248#
+        ZipWriteWord16 stream, 20
+        ZipWriteWord16 stream, 20
+        ZipWriteWord16 stream, CLng(record(1))
+        ZipWriteWord16 stream, 0
+        ZipWriteWord16 stream, CLng(record(5))
+        ZipWriteWord16 stream, CLng(record(6))
+        ZipWriteWord32 stream, CDbl(record(2))
+        ZipWriteWord32 stream, CDbl(record(3))
+        ZipWriteWord32 stream, CDbl(record(3))
+        ZipWriteWord16 stream, ByteArrayLength(nameBytes)
+        ZipWriteWord16 stream, 0
+        ZipWriteWord16 stream, 0
+        ZipWriteWord16 stream, 0
+        ZipWriteWord16 stream, 0
+        ZipWriteWord32 stream, 0
+        ZipWriteWord32 stream, CDbl(record(4))
+        stream.Write nameBytes
+    Next record
+    directorySize = CLng(stream.Position) - directoryStart
+    ZipWriteWord32 stream, 101010256#
+    ZipWriteWord16 stream, 0
+    ZipWriteWord16 stream, 0
+    ZipWriteWord16 stream, centralRecords.Count
+    ZipWriteWord16 stream, centralRecords.Count
+    ZipWriteWord32 stream, CDbl(directorySize)
+    ZipWriteWord32 stream, CDbl(directoryStart)
+    ZipWriteWord16 stream, 0
+End Sub
+
+Private Sub ZipWriteWord16(ByVal stream As Object, ByVal value As Long)
+    Dim pair(0 To 1) As Byte
+
+    pair(0) = value And 255&
+    pair(1) = (value \ 256&) And 255&
+    stream.Write pair
+End Sub
+
+Private Sub ZipWriteWord32(ByVal stream As Object, ByVal value As Double)
+    Dim index As Long
+    Dim quad(0 To 3) As Byte
+    Dim work As Double
+
+    work = value
+    For index = 0 To 3
+        quad(index) = CByte(work - Int(work / 256#) * 256#)
+        work = Int(work / 256#)
+    Next index
+    stream.Write quad
+End Sub
+
+Private Function ZipNameFlags(ByVal entryName As String) As Long
+    Dim index As Long
+
+    For index = 1 To Len(entryName)
+        If AscW(Mid$(entryName, index, 1)) > 127 Or _
+            AscW(Mid$(entryName, index, 1)) < 0 Then
+            ZipNameFlags = 2048
+            Exit Function
+        End If
+    Next index
+End Function
+
+Private Function ZipDosDate(ByVal value As Date) As Long
+    Dim yearPart As Long
+
+    yearPart = VBA.Year(value)
+    If yearPart < 1980 Then yearPart = 1980
+    ZipDosDate = (yearPart - 1980) * 512 + VBA.Month(value) * 32 + _
+        VBA.Day(value)
+End Function
+
+Private Function ZipDosTime(ByVal value As Date) As Long
+    ZipDosTime = VBA.Hour(value) * 2048 + VBA.Minute(value) * 32 + _
+        VBA.Second(value) \ 2
+End Function
+
+Private Function ZipEmptyBytes() As Byte()
+    Dim result() As Byte
+
+    result = vbNullString
+    ZipEmptyBytes = result
+End Function
+
+Private Function ByteArrayLength(ByRef dataBytes() As Byte) As Long
+    On Error GoTo Unallocated
+    ByteArrayLength = UBound(dataBytes) - LBound(dataBytes) + 1
+    Exit Function
+Unallocated:
+End Function
+
+' ---------------------------------------------------------------------------
 ' File watcher core: a watch task holds a name-size-time snapshot of one
 ' folder and rescans it, throttled, while awaited. The first difference
 ' found resolves the task as a Created, Changed, or Deleted value.
@@ -23168,6 +24265,8 @@ Private Sub Class_Terminate()
     Set mObjectValue = Nothing
     Set mParameters = Nothing
     Set mWatcherSnapshot = Nothing
+    Set mZipEntries = Nothing
+    Erase mZipWork
     Set mTarget = Nothing
     Set mInvocationList = Nothing
     Set mTryBody = Nothing
