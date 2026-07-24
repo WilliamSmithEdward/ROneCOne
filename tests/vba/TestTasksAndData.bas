@@ -68,6 +68,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestHashSurface
     mCurrentTest = "TestDateTimeSurface"
     TestDateTimeSurface
+    mCurrentTest = "TestStringsSurface"
+    TestStringsSurface
     mCurrentTest = "TestHttpSurface"
     TestHttpSurface
     mCurrentTest = vbNullString
@@ -1857,6 +1859,119 @@ Private Sub TestDateTimeSurface()
     On Error GoTo 0
     AssertEqual "add requires timespan", _
         ROneCOne.TypeMismatchError, missError
+End Sub
+
+Private Sub TestStringsSurface()
+    Dim builder As ROneCOne
+    Dim firstGuid As String
+    Dim maxSeen As Long
+    Dim minSeen As Long
+    Dim missError As Long
+    Dim outOfRange As Long
+    Dim randomBytes As Variant
+    Dim rolled As Long
+    Dim sample As Long
+    Dim secondGuid As String
+
+    ' Composite formatting mirrors String.Format with invariant text output:
+    ' a period decimal separator and comma grouping on every machine.
+    mCurrentTest = "TestStringsSurface.Format"
+    AssertEqual "format basic", "Ada scored 95.5 points", _
+        ROneCOne.Strings.Format("{0} scored {1} points", "Ada", 95.5)
+    AssertEqual "format grouped number", "1,234,567.89", _
+        ROneCOne.Strings.Format("{0:N2}", 1234567.891)
+    AssertEqual "format fixed", "3.14", _
+        ROneCOne.Strings.Format("{0:F2}", 3.14159)
+    AssertEqual "format zero pad", "0042", _
+        ROneCOne.Strings.Format("{0:D4}", 42)
+    AssertEqual "format hex upper", "FF", _
+        ROneCOne.Strings.Format("{0:X}", 255)
+    AssertEqual "format hex padded", "00ff", _
+        ROneCOne.Strings.Format("{0:x4}", 255)
+    AssertEqual "format percent", "12.30%", _
+        ROneCOne.Strings.Format("{0:P}", 0.123)
+    AssertEqual "format alignment right", "   7", _
+        ROneCOne.Strings.Format("{0,4}", 7)
+    AssertEqual "format alignment left", "7   |", _
+        ROneCOne.Strings.Format("{0,-4}|", 7)
+    AssertEqual "format braces escape", "{7}", _
+        ROneCOne.Strings.Format("{{{0}}}", 7)
+    AssertEqual "format date tokens", "2026-07-24", ROneCOne.Strings.Format( _
+        "{0:yyyy-MM-dd}", DateSerial(2026, 7, 24))
+    AssertEqual "format date default", "2026-07-24T09:30:00", _
+        ROneCOne.Strings.Format("{0}", _
+        DateSerial(2026, 7, 24) + TimeSerial(9, 30, 0))
+    AssertEqual "format datetime argument", "2026-07-24T16:30:05Z", _
+        ROneCOne.Strings.Format("{0}", _
+        ROneCOne.DateTime.Parse("2026-07-24T16:30:05Z"))
+    AssertEqual "format timespan argument", "01:30:00", _
+        ROneCOne.Strings.Format("{0}", ROneCOne.TimeSpan.FromMinutes(90))
+    AssertEqual "format boolean", "True", _
+        ROneCOne.Strings.Format("{0}", True)
+    AssertEqual "format negative number", "-1,234.50", _
+        ROneCOne.Strings.Format("{0:N2}", -1234.5)
+    missError = 0
+    On Error Resume Next
+    ROneCOne.Strings.Format "{1}", "only one"
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "format missing argument raises", _
+        ROneCOne.FormatError, missError
+    missError = 0
+    On Error Resume Next
+    ROneCOne.Strings.Format "{0:Q9}", 5
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "format unknown spec raises", ROneCOne.FormatError, missError
+
+    mCurrentTest = "TestStringsSurface.StringBuilder"
+    Set builder = ROneCOne.StringBuilder()
+    builder.Append("Hello").Append(", ").Append "world"
+    AssertEqual "builder text", "Hello, world", builder.ToString
+    AssertEqual "builder length", 12&, builder.Length
+    builder.AppendLine "!"
+    builder.AppendFormat "{0:D3}", 7
+    AssertEqual "builder composed", "Hello, world!" & vbCrLf & "007", _
+        builder.ToString
+    builder.Clear
+    AssertEqual "builder cleared", 0&, builder.Length
+    builder.Append 12.5
+    AssertEqual "builder invariant number", "12.5", builder.ToString
+
+    mCurrentTest = "TestStringsSurface.Guid"
+    firstGuid = ROneCOne.Guid.NewGuid
+    secondGuid = ROneCOne.Guid.NewGuid
+    AssertTrue "guid shape", ROneCOne.Regex("^[0-9a-f]{8}-[0-9a-f]{4}-" & _
+        "4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$").IsMatch(firstGuid)
+    AssertTrue "guid unique", firstGuid <> secondGuid
+    AssertEqual "guid empty", "00000000-0000-0000-0000-000000000000", _
+        ROneCOne.Guid.EmptyGuid
+
+    mCurrentTest = "TestStringsSurface.Random"
+    randomBytes = ROneCOne.RandomNumberGenerator.GetBytes(16)
+    AssertEqual "random bytes bound", 15&, CLng(UBound(randomBytes))
+    AssertTrue "random bytes differ", _
+        ROneCOne.Convert.ToHexString(randomBytes) <> _
+        ROneCOne.Convert.ToHexString( _
+        ROneCOne.RandomNumberGenerator.GetBytes(16))
+    minSeen = 99
+    maxSeen = -99
+    outOfRange = 0
+    For sample = 1 To 200
+        rolled = ROneCOne.RandomNumberGenerator.GetInt32(1, 7)
+        If rolled < minSeen Then minSeen = rolled
+        If rolled > maxSeen Then maxSeen = rolled
+        If rolled < 1 Or rolled > 6 Then outOfRange = outOfRange + 1
+    Next sample
+    AssertEqual "random int32 in range", 0&, outOfRange
+    AssertTrue "random int32 spreads", maxSeen > minSeen
+    missError = 0
+    On Error Resume Next
+    ROneCOne.RandomNumberGenerator.GetInt32 5, 5
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "random empty range raises", _
+        ROneCOne.InvalidArgumentError, missError
 End Sub
 
 Private Function ElapsedSecondsSince(ByVal started As Double) As Double

@@ -56,6 +56,13 @@ Private Declare PtrSafe Function BCryptGetProperty Lib "bcrypt.dll" ( _
     ByVal objectHandle As LongPtr, ByVal propertyName As LongPtr, _
     ByRef output As Long, ByVal outputLength As Long, _
     ByRef resultLength As Long, ByVal flags As Long) As Long
+Private Declare PtrSafe Function BCryptGenRandom Lib "bcrypt.dll" ( _
+    ByVal algorithmHandle As LongPtr, ByRef buffer As Byte, _
+    ByVal bufferLength As Long, ByVal flags As Long) As Long
+
+' The COM runtime's generator backs Guid.NewGuid with version 4 values.
+Private Declare PtrSafe Function CoCreateGuid Lib "ole32" ( _
+    ByRef guidBytes As Byte) As Long
 
 Private Declare PtrSafe Sub Sleep Lib "kernel32" ( _
     ByVal milliseconds As Long _
@@ -168,6 +175,10 @@ Private Const ROLE_DATETIME_FACTORY As Long = 58
 Private Const ROLE_DATETIME As Long = 59
 Private Const ROLE_TIMESPAN_FACTORY As Long = 60
 Private Const ROLE_TIMESPAN As Long = 61
+Private Const ROLE_STRINGS_FACTORY As Long = 62
+Private Const ROLE_STRING_BUILDER As Long = 63
+Private Const ROLE_GUID_FACTORY As Long = 64
+Private Const ROLE_RANDOM_FACTORY As Long = 65
 
 Private Const TASK_WORK As Long = 1
 Private Const TASK_COMPLETED As Long = 2
@@ -343,6 +354,9 @@ Private Const REGEX_PROG_ID As String = "VBScript.RegExp"
 ' Windows CNG option flag: the algorithm provider operates in HMAC mode.
 Private Const BCRYPT_HMAC_FLAG As Long = 8
 
+' Windows CNG option flag: draw from the system-preferred random provider.
+Private Const BCRYPT_USE_SYSTEM_RNG As Long = 2
+
 ' The DateTime surface stores instants as milliseconds since the Unix epoch
 ' 1970-01-01T00:00:00Z; the bounds pin the supported clock years 0100-9999.
 Private Const MS_PER_DAY As Double = 86400000#
@@ -498,6 +512,7 @@ Private mRegexLength As Long
 Private mDateTimeMs As Double
 Private mDateTimeOffsetMinutes As Long
 Private mTimeSpanMs As Double
+Private mStringBuilder As JsonTextBuilder
 Private mHttpBaseAddress As String
 Private mHttpTimeoutMs As Long
 Private mHttpHeaderNames As Collection
@@ -3069,9 +3084,16 @@ Attribute FirstIndex.VB_Description = "Gets a match's zero-based position in the
 End Property
 
 Public Property Get Length() As Long
-Attribute Length.VB_Description = "Gets the character length of a regular expression match."
-    RequireRegexMatch "Length"
-    Length = mRegexLength
+Attribute Length.VB_Description = "Gets a match's character length or a builder's text length."
+    Select Case mRole
+        Case ROLE_REGEX_MATCH
+            Length = mRegexLength
+        Case ROLE_STRING_BUILDER
+            Length = mStringBuilder.used
+        Case Else
+            RaiseContractError ERROR_INVALID_OPERATION, "Length", _
+                "Length requires a match or a StringBuilder."
+    End Select
 End Property
 
 Public Property Get Groups() As ROneCOne
@@ -3195,6 +3217,151 @@ Attribute FromHexString.VB_Description = "Decodes hexadecimal text into a Byte a
         bytes(index) = code
     Next index
     FromHexString = bytes
+End Function
+
+Public Property Get Strings() As ROneCOne
+Attribute Strings.VB_Description = "Gets the String.Format-style text formatting surface."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigureStringsFactory
+    Set Strings = factory
+End Property
+
+Public Function Format( _
+    ByVal template As String, _
+    ParamArray values() As Variant _
+) As String
+Attribute Format.VB_Description = "Formats a template with {index,alignment:format} items."
+    Dim argumentValues() As Variant
+
+    RequireStringsFactory "Format"
+    ' A ParamArray cannot be forwarded directly; copying it into a plain
+    ' dynamic array keeps the composite core callable from AppendFormat too.
+    argumentValues = values
+    Format = FormatCompositeCore(template, argumentValues)
+End Function
+
+Public Function StringBuilder() As ROneCOne
+Attribute StringBuilder.VB_Description = "Creates a growable text buffer like StringBuilder."
+    Dim builder As ROneCOne
+
+    Set builder = New ROneCOne
+    builder.ConfigureStringBuilder
+    Set StringBuilder = builder
+End Function
+
+Public Function AppendLine(Optional ByVal element As Variant) As ROneCOne
+Attribute AppendLine.VB_Description = "Appends text and a CRLF line break to the builder."
+    RequireStringBuilder "AppendLine"
+    If Not IsMissing(element) Then
+        JsonBuilderAppend mStringBuilder, FormatArgText(element, vbNullString)
+    End If
+    JsonBuilderAppend mStringBuilder, vbCrLf
+    Set AppendLine = Me
+End Function
+
+Public Function AppendFormat( _
+    ByVal template As String, _
+    ParamArray values() As Variant _
+) As ROneCOne
+Attribute AppendFormat.VB_Description = "Appends a formatted template to the builder."
+    Dim argumentValues() As Variant
+
+    RequireStringBuilder "AppendFormat"
+    argumentValues = values
+    JsonBuilderAppend mStringBuilder, _
+        FormatCompositeCore(template, argumentValues)
+    Set AppendFormat = Me
+End Function
+
+Public Property Get Guid() As ROneCOne
+Attribute Guid.VB_Description = "Gets the System.Guid-style identifier surface."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigureGuidFactory
+    Set Guid = factory
+End Property
+
+Public Function NewGuid() As String
+Attribute NewGuid.VB_Description = "Creates a random version 4 GUID in canonical text form."
+    Dim guidBytes(0 To 15) As Byte
+    Dim state As Long
+
+    RequireGuidFactory "NewGuid"
+    state = CoCreateGuid(guidBytes(0))
+    If state <> 0 Then
+        RaiseContractError ERROR_INVALID_OPERATION, "NewGuid", _
+            "Windows could not create a GUID, status " & CStr(state) & "."
+    End If
+    NewGuid = GuidBytesText(guidBytes)
+End Function
+
+Public Property Get EmptyGuid() As String
+Attribute EmptyGuid.VB_Description = "Gets the all-zero GUID in canonical text form."
+    RequireGuidFactory "EmptyGuid"
+    EmptyGuid = "00000000-0000-0000-0000-000000000000"
+End Property
+
+Public Property Get RandomNumberGenerator() As ROneCOne
+Attribute RandomNumberGenerator.VB_Description = "Gets the crypto-grade random number surface."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigureRandomFactory
+    Set RandomNumberGenerator = factory
+End Property
+
+Public Function GetBytes(ByVal byteCount As Long) As Variant
+Attribute GetBytes.VB_Description = "Fills a new Byte array with crypto-grade random bytes."
+    Dim buffer() As Byte
+    Dim state As Long
+
+    RequireRandomFactory "GetBytes"
+    If byteCount < 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "GetBytes", _
+            "The byte count cannot be negative."
+    End If
+    If byteCount = 0 Then
+        GetBytes = EmptyByteArray()
+        Exit Function
+    End If
+    ReDim buffer(0 To byteCount - 1)
+    state = BCryptGenRandom(0, buffer(0), byteCount, BCRYPT_USE_SYSTEM_RNG)
+    If state <> 0 Then
+        RaiseContractError ERROR_INVALID_OPERATION, "GetBytes", _
+            "Windows could not produce random bytes, status &H" & _
+            Hex$(state) & "."
+    End If
+    GetBytes = buffer
+End Function
+
+Public Function GetInt32( _
+    ByVal fromInclusive As Long, _
+    ByVal toExclusive As Long _
+) As Long
+Attribute GetInt32.VB_Description = "Gets a uniform random integer at or above fromInclusive."
+    Dim drawn As Double
+    Dim randomBytes As Variant
+    Dim rangeSize As Double
+    Dim rejectionLimit As Double
+
+    RequireRandomFactory "GetInt32"
+    If toExclusive <= fromInclusive Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "GetInt32", _
+            "toExclusive must be greater than fromInclusive."
+    End If
+    ' Rejection sampling keeps the distribution uniform: draws at or beyond
+    ' the largest whole multiple of the range are thrown away and redrawn.
+    rangeSize = CDbl(toExclusive) - CDbl(fromInclusive)
+    rejectionLimit = Int(4294967296# / rangeSize) * rangeSize
+    Do
+        randomBytes = GetBytes(4)
+        drawn = CDbl(randomBytes(0)) + CDbl(randomBytes(1)) * 256# + _
+            CDbl(randomBytes(2)) * 65536# + CDbl(randomBytes(3)) * 16777216#
+    Loop While drawn >= rejectionLimit
+    GetInt32 = CLng(fromInclusive + (drawn - Int(drawn / rangeSize) * rangeSize))
 End Function
 
 Public Property Get DateTime() As ROneCOne
@@ -3522,9 +3689,15 @@ Attribute ToString.VB_Description = "Formats a DateTime with a token pattern, or
                     "TimeSpan.ToString accepts no format pattern."
             End If
             ToString = TimeSpanText()
+        Case ROLE_STRING_BUILDER
+            If Len(pattern) > 0 Then
+                RaiseContractError ERROR_INVALID_ARGUMENT, "ToString", _
+                    "StringBuilder.ToString accepts no format pattern."
+            End If
+            ToString = JsonBuilderText(mStringBuilder)
         Case Else
             RaiseContractError ERROR_INVALID_OPERATION, "ToString", _
-                "ToString requires a DateTime or TimeSpan value."
+                "ToString requires a DateTime, TimeSpan, or StringBuilder."
     End Select
 End Function
 
@@ -5793,7 +5966,11 @@ Attribute AddRange.VB_Description = "Atomically appends a sequence, array, or Co
 End Sub
 
 Public Sub Clear()
-Attribute Clear.VB_Description = "Removes every item from this typed list."
+Attribute Clear.VB_Description = "Empties a typed collection or a StringBuilder."
+    If mRole = ROLE_STRING_BUILDER Then
+        mStringBuilder.used = 0
+        Exit Sub
+    End If
     If IsGenericCollectionRole(mRole) Then
         RequireMutableCollection "Clear"
         ArrReset mItems, mItemsCount
@@ -7474,9 +7651,14 @@ Attribute ThenByDescending.VB_Description = "Adds a stable descending key to an 
 End Function
 
 Public Function Append(ByVal element As Variant) As ROneCOne
-Attribute Append.VB_Description = "Defers appending one typed element to a sequence."
+Attribute Append.VB_Description = "Appends builder text or defers appending to a sequence."
     Dim wrapped As ROneCOne
 
+    If mRole = ROLE_STRING_BUILDER Then
+        JsonBuilderAppend mStringBuilder, FormatArgText(element, vbNullString)
+        Set Append = Me
+        Exit Function
+    End If
     RequireSequence Me, "Append"
     Set wrapped = WrapElement(element, "Append")
     Set Append = CreateQuery(QUERY_APPEND, Nothing, wrapped, 0, _
@@ -9476,6 +9658,23 @@ Friend Sub ConfigureTimeSpan(ByVal msValue As Double)
     mTimeSpanMs = msValue
 End Sub
 
+Friend Sub ConfigureStringsFactory()
+    mRole = ROLE_STRINGS_FACTORY
+End Sub
+
+Friend Sub ConfigureStringBuilder()
+    mRole = ROLE_STRING_BUILDER
+    JsonBuilderInit mStringBuilder, 256
+End Sub
+
+Friend Sub ConfigureGuidFactory()
+    mRole = ROLE_GUID_FACTORY
+End Sub
+
+Friend Sub ConfigureRandomFactory()
+    mRole = ROLE_RANDOM_FACTORY
+End Sub
+
 Friend Sub ConfigureProcessResult( _
     ByVal execObject As Object, _
     ByVal outputPath As String, _
@@ -11417,7 +11616,7 @@ Private Sub JsonWriteValue(ByRef builder As JsonTextBuilder, ByVal value As Vari
         Case vbDate
             ' Dates travel as ISO 8601 text, matching System.Text.Json.
             JsonBuilderAppend builder, """" & _
-                Format$(value, "yyyy-mm-dd\Thh:nn:ss") & """"
+                VBA.Format$(value, "yyyy-mm-dd\Thh:nn:ss") & """"
         Case vbNull, vbEmpty
             JsonBuilderAppend builder, "null"
         Case vbObject, vbDataObject
@@ -12806,6 +13005,34 @@ Private Sub RequireTimeSpan(ByVal memberName As String)
     End If
 End Sub
 
+Private Sub RequireStringsFactory(ByVal memberName As String)
+    If mRole <> ROLE_STRINGS_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires the Strings surface."
+    End If
+End Sub
+
+Private Sub RequireStringBuilder(ByVal memberName As String)
+    If mRole <> ROLE_STRING_BUILDER Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires a StringBuilder."
+    End If
+End Sub
+
+Private Sub RequireGuidFactory(ByVal memberName As String)
+    If mRole <> ROLE_GUID_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires the Guid surface."
+    End If
+End Sub
+
+Private Sub RequireRandomFactory(ByVal memberName As String)
+    If mRole <> ROLE_RANDOM_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires the Random surface."
+    End If
+End Sub
+
 Private Function BuildRegexMatch(ByVal rawMatch As Object) As ROneCOne
     Dim groupIndex As Long
     Dim groups As ROneCOne
@@ -13187,7 +13414,7 @@ Private Sub CsvWriteCell( _
         Case vbSingle, vbDouble, vbCurrency, vbDecimal
             JsonBuilderAppend builder, JsonNumberText(CDbl(value))
         Case vbDate
-            JsonBuilderAppend builder, Format$(value, "yyyy-mm-dd\Thh:nn:ss")
+            JsonBuilderAppend builder, VBA.Format$(value, "yyyy-mm-dd\Thh:nn:ss")
         Case vbNull, vbEmpty
             ' An absent value writes an empty unquoted field.
         Case Else
@@ -20895,16 +21122,23 @@ Private Function DateTimeIsoText() As String
     Dim result As String
 
     MsToClockParts DateTimeClockMs(), clockDate, msOfDay
-    result = PadNumber(VBA.Year(clockDate), 4) & "-" & _
+    result = ClockStampText(clockDate, msOfDay)
+    If (msOfDay Mod 1000) <> 0 Then
+        result = result & "." & PadNumber(msOfDay Mod 1000, 3)
+    End If
+    DateTimeIsoText = result & OffsetSuffixText(mDateTimeOffsetMinutes)
+End Function
+
+Private Function ClockStampText( _
+    ByVal clockDate As Date, _
+    ByVal msOfDay As Long _
+) As String
+    ClockStampText = PadNumber(VBA.Year(clockDate), 4) & "-" & _
         PadNumber(VBA.Month(clockDate), 2) & "-" & _
         PadNumber(VBA.Day(clockDate), 2) & "T" & _
         PadNumber(msOfDay \ 3600000, 2) & ":" & _
         PadNumber((msOfDay \ 60000) Mod 60, 2) & ":" & _
         PadNumber((msOfDay \ 1000) Mod 60, 2)
-    If (msOfDay Mod 1000) <> 0 Then
-        result = result & "." & PadNumber(msOfDay Mod 1000, 3)
-    End If
-    DateTimeIsoText = result & OffsetSuffixText(mDateTimeOffsetMinutes)
 End Function
 
 Private Function OffsetSuffixText(ByVal offsetMinutes As Long) As String
@@ -20924,13 +21158,22 @@ End Function
 
 Private Function FormatDateTimeTokens(ByVal pattern As String) As String
     Dim clockDate As Date
-    Dim index As Long
     Dim msOfDay As Long
+
+    MsToClockParts DateTimeClockMs(), clockDate, msOfDay
+    FormatDateTimeTokens = FormatClockPattern(pattern, clockDate, msOfDay)
+End Function
+
+Private Function FormatClockPattern( _
+    ByVal pattern As String, _
+    ByVal clockDate As Date, _
+    ByVal msOfDay As Long _
+) As String
+    Dim index As Long
     Dim probe As String
     Dim result As String
     Dim runLength As Long
 
-    MsToClockParts DateTimeClockMs(), clockDate, msOfDay
     index = 1
     Do While index <= Len(pattern)
         probe = Mid$(pattern, index, 1)
@@ -20945,7 +21188,7 @@ Private Function FormatDateTimeTokens(ByVal pattern As String) As String
         End If
         index = index + runLength
     Loop
-    FormatDateTimeTokens = result
+    FormatClockPattern = result
 End Function
 
 Private Function DateTimeTokenText( _
@@ -21252,6 +21495,360 @@ End Function
 Private Sub RaiseFormatError(ByVal message As String)
     Err.Raise ERROR_FORMAT, "ROneCOne.FormatException", message
 End Sub
+
+' ---------------------------------------------------------------------------
+' Composite formatting core: String.Format's {index,alignment:format} grammar
+' with invariant text output, shared by Strings.Format and AppendFormat.
+' ---------------------------------------------------------------------------
+
+Private Function FormatCompositeCore( _
+    ByVal template As String, _
+    ByRef values() As Variant _
+) As String
+    Dim alignment As Long
+    Dim argIndex As Long
+    Dim builder As JsonTextBuilder
+    Dim closeAt As Long
+    Dim formatText As String
+    Dim hasAlignment As Boolean
+    Dim index As Long
+    Dim item As String
+    Dim piece As String
+    Dim probe As String
+    Dim templateLength As Long
+
+    JsonBuilderInit builder, Len(template) + 32
+    templateLength = Len(template)
+    index = 1
+    Do While index <= templateLength
+        probe = Mid$(template, index, 1)
+        If probe = "{" Then
+            If Mid$(template, index + 1, 1) = "{" Then
+                JsonBuilderAppend builder, "{"
+                index = index + 2
+            Else
+                closeAt = InStr(index + 1, template, "}")
+                If closeAt = 0 Then
+                    RaiseFormatError _
+                        "The format template has an unclosed '{' item."
+                End If
+                item = Mid$(template, index + 1, closeAt - index - 1)
+                ParseFormatItem item, argIndex, hasAlignment, alignment, _
+                    formatText
+                If argIndex < LBound(values) Or argIndex > UBound(values) Then
+                    RaiseFormatError "The format item {" & CStr(argIndex) & _
+                        "} has no matching argument."
+                End If
+                piece = FormatArgText(values(argIndex), formatText)
+                If hasAlignment Then piece = AlignFormatPiece(piece, alignment)
+                JsonBuilderAppend builder, piece
+                index = closeAt + 1
+            End If
+        ElseIf probe = "}" Then
+            If Mid$(template, index + 1, 1) = "}" Then
+                JsonBuilderAppend builder, "}"
+                index = index + 2
+            Else
+                RaiseFormatError "The format template has a stray '}'."
+            End If
+        Else
+            JsonBuilderAppend builder, probe
+            index = index + 1
+        End If
+    Loop
+    FormatCompositeCore = JsonBuilderText(builder)
+End Function
+
+Private Sub ParseFormatItem( _
+    ByVal item As String, _
+    ByRef argIndex As Long, _
+    ByRef hasAlignment As Boolean, _
+    ByRef alignment As Long, _
+    ByRef formatText As String _
+)
+    Dim colonAt As Long
+    Dim commaAt As Long
+    Dim head As String
+
+    hasAlignment = False
+    alignment = 0
+    formatText = vbNullString
+    colonAt = InStr(1, item, ":")
+    If colonAt > 0 Then
+        formatText = Mid$(item, colonAt + 1)
+        head = Left$(item, colonAt - 1)
+    Else
+        head = item
+    End If
+    commaAt = InStr(1, head, ",")
+    If commaAt > 0 Then
+        hasAlignment = True
+        alignment = RequireFormatNumber(Mid$(head, commaAt + 1), True)
+        head = Left$(head, commaAt - 1)
+    End If
+    argIndex = RequireFormatNumber(head, False)
+End Sub
+
+Private Function RequireFormatNumber( _
+    ByVal text As String, _
+    ByVal allowSign As Boolean _
+) As Long
+    Dim index As Long
+    Dim probe As String
+    Dim startAt As Long
+
+    text = Trim$(text)
+    startAt = 1
+    If allowSign And Left$(text, 1) = "-" Then startAt = 2
+    If Len(text) < startAt Then
+        RaiseFormatError "A format item needs a numeric index and alignment."
+    End If
+    For index = startAt To Len(text)
+        probe = Mid$(text, index, 1)
+        If probe < "0" Or probe > "9" Then
+            RaiseFormatError "The format item part '" & text & _
+                "' is not a number."
+        End If
+    Next index
+    RequireFormatNumber = CLng(text)
+End Function
+
+Private Function AlignFormatPiece( _
+    ByVal piece As String, _
+    ByVal alignment As Long _
+) As String
+    Dim padCount As Long
+
+    padCount = Abs(alignment) - Len(piece)
+    If padCount <= 0 Then
+        AlignFormatPiece = piece
+    ElseIf alignment > 0 Then
+        AlignFormatPiece = Space$(padCount) & piece
+    Else
+        AlignFormatPiece = piece & Space$(padCount)
+    End If
+End Function
+
+Private Function FormatArgText( _
+    ByVal value As Variant, _
+    ByVal formatText As String _
+) As String
+    Dim clockDate As Date
+    Dim msOfDay As Long
+    Dim runtimeValue As ROneCOne
+
+    If IsObject(value) Then
+        If value Is Nothing Then Exit Function
+        If TypeOf value Is ROneCOne Then
+            Set runtimeValue = value
+            Select Case runtimeValue.InternalRole
+                Case ROLE_DATETIME
+                    FormatArgText = runtimeValue.ToString(formatText)
+                Case ROLE_TIMESPAN
+                    If Len(formatText) > 0 Then
+                        RaiseFormatError _
+                            "A TimeSpan argument accepts no format."
+                    End If
+                    FormatArgText = runtimeValue.ToString()
+                Case Else
+                    RaiseContractError ERROR_TYPE_MISMATCH, "Format", _
+                        "This ROneCOne role cannot be formatted as text."
+            End Select
+            Exit Function
+        End If
+        RaiseContractError ERROR_TYPE_MISMATCH, "Format", _
+            "Objects other than ROneCOne values cannot be formatted."
+    End If
+    If IsEmpty(value) Or IsNull(value) Then Exit Function
+    If VarType(value) = vbDate Then
+        MsToClockParts DateToMs(CDate(value)), clockDate, msOfDay
+        If Len(formatText) = 0 Then
+            FormatArgText = ClockStampText(clockDate, msOfDay)
+        Else
+            FormatArgText = FormatClockPattern(formatText, clockDate, msOfDay)
+        End If
+        Exit Function
+    End If
+    If VarType(value) = vbBoolean Then
+        If value Then
+            FormatArgText = "True"
+        Else
+            FormatArgText = "False"
+        End If
+        Exit Function
+    End If
+    If VarType(value) = vbString Then
+        ' Strings pass through untouched, exactly as String.Format treats
+        ' arguments that do not implement IFormattable.
+        FormatArgText = value
+        Exit Function
+    End If
+    If IsNumeric(value) Then
+        FormatArgText = NumericFormatText(CDbl(value), formatText)
+        Exit Function
+    End If
+    RaiseContractError ERROR_TYPE_MISMATCH, "Format", _
+        "The argument type " & TypeName(value) & " cannot be formatted."
+End Function
+
+Private Function NumericFormatText( _
+    ByVal value As Double, _
+    ByVal formatText As String _
+) As String
+    Dim digitCount As Long
+    Dim hasDigits As Boolean
+    Dim index As Long
+    Dim letter As String
+    Dim probe As String
+
+    If Len(formatText) = 0 Then
+        NumericFormatText = JsonNumberText(value)
+        Exit Function
+    End If
+    letter = Left$(formatText, 1)
+    For index = 2 To Len(formatText)
+        probe = Mid$(formatText, index, 1)
+        If probe < "0" Or probe > "9" Then
+            RaiseFormatError "The number format '" & formatText & _
+                "' is not supported; use G, N, F, D, X, or P."
+        End If
+        hasDigits = True
+    Next index
+    If hasDigits Then digitCount = CLng(Mid$(formatText, 2))
+    Select Case letter
+        Case "G", "g"
+            If hasDigits Then
+                RaiseFormatError "The G format accepts no digit count."
+            End If
+            NumericFormatText = JsonNumberText(value)
+        Case "N", "n"
+            If Not hasDigits Then digitCount = 2
+            NumericFormatText = FixedPointText(value, digitCount, True)
+        Case "F", "f"
+            If Not hasDigits Then digitCount = 2
+            NumericFormatText = FixedPointText(value, digitCount, False)
+        Case "P", "p"
+            If Not hasDigits Then digitCount = 2
+            NumericFormatText = FixedPointText(value * 100#, digitCount, _
+                True) & "%"
+        Case "D", "d"
+            If value <> Fix(value) Then
+                RaiseFormatError "The D format requires a whole number."
+            End If
+            If Not hasDigits Then digitCount = 1
+            NumericFormatText = SignedPaddedInteger(value, digitCount)
+        Case "X", "x"
+            If value <> Fix(value) Then
+                RaiseFormatError "The X format requires a whole number."
+            End If
+            NumericFormatText = HexIntegerText(value, digitCount, _
+                letter = "X")
+        Case Else
+            RaiseFormatError "The number format '" & formatText & _
+                "' is not supported; use G, N, F, D, X, or P."
+    End Select
+End Function
+
+Private Function FixedPointText( _
+    ByVal value As Double, _
+    ByVal decimalCount As Long, _
+    ByVal grouped As Boolean _
+) As String
+    Dim fracText As String
+    Dim intText As String
+    Dim magnitude As Double
+    Dim scaled As Double
+    Dim scaleFactor As Double
+    Dim text As String
+
+    If decimalCount < 0 Or decimalCount > 15 Then
+        RaiseFormatError "Decimal counts run 0 through 15."
+    End If
+    magnitude = Abs(value)
+    scaleFactor = 10# ^ decimalCount
+    scaled = Int(magnitude * scaleFactor + 0.5)
+    If scaled >= 1E+15 Then
+        RaiseFormatError "The value is too large for fixed-point text."
+    End If
+    text = CStr(scaled)
+    If Len(text) < decimalCount + 1 Then
+        text = String$(decimalCount + 1 - Len(text), "0") & text
+    End If
+    If decimalCount > 0 Then
+        fracText = "." & Right$(text, decimalCount)
+        intText = Left$(text, Len(text) - decimalCount)
+    Else
+        intText = text
+    End If
+    If grouped Then intText = GroupThousands(intText)
+    FixedPointText = intText & fracText
+    If value < 0 And scaled > 0 Then FixedPointText = "-" & FixedPointText
+End Function
+
+Private Function GroupThousands(ByVal digits As String) As String
+    Dim cursor As Long
+
+    GroupThousands = digits
+    cursor = Len(digits) - 3
+    Do While cursor >= 1
+        GroupThousands = Left$(GroupThousands, cursor) & "," & _
+            Mid$(GroupThousands, cursor + 1)
+        cursor = cursor - 3
+    Loop
+End Function
+
+Private Function SignedPaddedInteger( _
+    ByVal value As Double, _
+    ByVal width As Long _
+) As String
+    Dim text As String
+
+    If Abs(value) >= 1E+15 Then
+        RaiseFormatError "The value is too large for integer text."
+    End If
+    text = CStr(Abs(value))
+    If Len(text) < width Then
+        text = String$(width - Len(text), "0") & text
+    End If
+    If value < 0 Then text = "-" & text
+    SignedPaddedInteger = text
+End Function
+
+Private Function HexIntegerText( _
+    ByVal value As Double, _
+    ByVal width As Long, _
+    ByVal upperCase As Boolean _
+) As String
+    Dim text As String
+
+    If Abs(value) > 9.2E+18 Then
+        RaiseFormatError "The value is too large for hexadecimal text."
+    End If
+    text = Hex$(CLngLng(value))
+    If Not upperCase Then text = LCase$(text)
+    If Len(text) < width Then
+        text = String$(width - Len(text), "0") & text
+    End If
+    HexIntegerText = text
+End Function
+
+Private Function GuidBytesText(ByRef guidBytes() As Byte) As String
+    ' A GUID's first three groups are little-endian on the wire, so the text
+    ' form reads their bytes back to front, exactly like Guid.ToString.
+    GuidBytesText = LCase$( _
+        HexByteText(guidBytes(3)) & HexByteText(guidBytes(2)) & _
+        HexByteText(guidBytes(1)) & HexByteText(guidBytes(0)) & "-" & _
+        HexByteText(guidBytes(5)) & HexByteText(guidBytes(4)) & "-" & _
+        HexByteText(guidBytes(7)) & HexByteText(guidBytes(6)) & "-" & _
+        HexByteText(guidBytes(8)) & HexByteText(guidBytes(9)) & "-" & _
+        HexByteText(guidBytes(10)) & HexByteText(guidBytes(11)) & _
+        HexByteText(guidBytes(12)) & HexByteText(guidBytes(13)) & _
+        HexByteText(guidBytes(14)) & HexByteText(guidBytes(15)))
+End Function
+
+Private Function HexByteText(ByVal value As Byte) As String
+    HexByteText = Right$("0" & Hex$(value), 2)
+End Function
 
 Private Function IsDateTimeInstance(ByVal value As Variant) As Boolean
     Dim runtimeValue As ROneCOne

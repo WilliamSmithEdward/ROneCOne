@@ -694,6 +694,30 @@ class SourceContractTests(unittest.TestCase):
         # hard-codes an offset or daylight saving rule of its own.
         self.assertNotIn("GetTimeZoneInformation", self.source)
 
+    def test_strings_guid_and_random_surfaces_are_present(self) -> None:
+        for member in (
+            "Public Property Get Strings()",
+            "Public Function Format(",
+            "Public Function StringBuilder()",
+            "Public Function AppendLine(",
+            "Public Function AppendFormat(",
+            "Public Property Get Guid()",
+            "Public Function NewGuid()",
+            "Public Property Get EmptyGuid()",
+            "Public Property Get RandomNumberGenerator()",
+            "Public Function GetBytes(",
+            "Public Function GetInt32(",
+            'Lib "ole32"',
+            "BCryptGenRandom",
+        ):
+            self.assertIn(member, self.source)
+        # The formatter's numeric text is invariant by construction, so the
+        # locale-sensitive Format$ intrinsic must always appear qualified.
+        self.assertNotRegex(
+            self.source,
+            re.compile(r"(?<![.\w])Format\$\(", re.IGNORECASE),
+        )
+
     def test_json_surface_is_present_and_runtime_native(self) -> None:
         for member in (
             "Public Property Get Json()",
