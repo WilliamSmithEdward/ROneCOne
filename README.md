@@ -57,7 +57,7 @@ Tasks, typed events, and structured Try, Catch, and Finally flows.
 | Format and build text | String.Format-style invariant formatting, StringBuilder, GUIDs, crypto randomness |
 | Build responsive workbook logic | Typed events with predictable subscription and delivery |
 | Handle failure deliberately | Structured Try, Catch, and Finally flows |
-| Deploy without a platform project | One importable class module with no outside dependency |
+| Deploy without a project | One importable class module, no dependency |
 
 The design follows familiar C# and .NET names and behavior wherever VBA permits it, and
 IntelliSense descriptions keep the surface discoverable inside the editor.
