@@ -203,6 +203,12 @@ powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Exceptions_Demo.xlsm `
     -MacroName RunROneCOneExceptionsDemo
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Tasks_Demo.xlsm `
+    -MacroName RunROneCOneTasksDemo
+powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Data_Demo.xlsm `
+    -MacroName RunROneCOneDataDemo
+powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Http_Demo.xlsm `
     -MacroName RunROneCOneHttpDemo
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
@@ -233,6 +239,12 @@ powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Exceptions_Demo.xlsm `
     -OutputPrefix exceptions
+powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Tasks_Demo.xlsm `
+    -OutputPrefix tasks
+powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Data_Demo.xlsm `
+    -OutputPrefix data
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Http_Demo.xlsm `
     -OutputPrefix http
