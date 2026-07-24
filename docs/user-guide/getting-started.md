@@ -19,6 +19,13 @@ installation is one class import.
 | Structured exceptions | `RunROneCOneExceptionsDemo` |
 | Tasks and async | `RunROneCOneTasksDemo` |
 | Data and providers | `RunROneCOneDataDemo` |
+| HTTP and web data | `RunROneCOneHttpDemo` |
+| JSON | `RunROneCOneJsonDemo` |
+| Files and CSV | `RunROneCOneFilesDemo` |
+| Processes | `RunROneCOneProcessDemo` |
+| Text and hashing | `RunROneCOneTextDemo` |
+| Dates and times | `RunROneCOneDateTimeDemo` |
+| XML | `RunROneCOneXmlDemo` |
 
 Each workbook writes its results into visible worksheets. Start with Collections and LINQ if you
 want the broadest tour of everyday features.

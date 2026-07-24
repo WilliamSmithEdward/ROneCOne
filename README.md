@@ -7,12 +7,10 @@
 [![Microsoft 365 Excel on Windows x64](https://img.shields.io/badge/Excel-Microsoft_365_Windows_x64-217346)](docs/user-guide/getting-started.md)
 [![Single class module runtime](https://img.shields.io/badge/runtime-one_class_module-0078D4)](src/ROneCOne.cls)
 
-ROneCOne is a modern programming layer for Excel VBA. Import one class module, `ROneCOne.cls`,
-and ordinary workbook code gains typed collections, LINQ-style queries, await-style tasks,
-typed events, structured error handling, an in-memory data layer with local database access,
-an awaitable HTTP client for calling web APIs, JSON serialization in the spirit of
-System.Text.Json, UTF-8 file access in the spirit of System.IO, and regular expressions,
-hashing, and encoding helpers.
+ROneCOne is the standard library Excel VBA never had, shaped after C# and .NET. Import one
+class module, `ROneCOne.cls`, and ordinary workbook code can query typed collections with
+LINQ, await tasks and web requests, handle failure with structured Try and Catch, model data
+in tables, and exchange JSON, CSV, and XML.
 
 Everything you already built keeps working. There is no installer, no add-in, no external
 reference, and no separate runtime to manage: the entire library is one file that travels inside
