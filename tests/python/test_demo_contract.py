@@ -14,6 +14,8 @@ TASKS_DEMO = DEMO_VBA / "TasksDemoUsage.bas"
 DATA_DEMO = DEMO_VBA / "DataDemoUsage.bas"
 HTTP_DEMO = DEMO_VBA / "HttpDemoUsage.bas"
 JSON_DEMO = DEMO_VBA / "JsonDemoUsage.bas"
+FILES_DEMO = DEMO_VBA / "FilesDemoUsage.bas"
+PROCESS_DEMO = DEMO_VBA / "ProcessDemoUsage.bas"
 CUSTOMER = DEMO_VBA / "DemoCustomer.cls"
 COLLECTIONS_BUILDER = ROOT / "tools" / "build_collections_demo_workbook.cjs"
 CAPABILITY_BUILDER = ROOT / "tools" / "build_capability_demo_workbooks.cjs"
@@ -218,6 +220,50 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("ROneCOne_Json_Demo.xlsx", builder)
         self.assertIn("RunROneCOneJsonDemo", builder)
 
+    def test_files_demo_round_trips_offline(self) -> None:
+        source = FILES_DEMO.read_text(encoding="utf-8")
+        builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")
+
+        self.assertIn("ROneCOne.File.WriteAllText", source)
+        self.assertIn("ROneCOne.File.ReadAllText", source)
+        self.assertIn('"utf-16"', source)
+        self.assertIn("ROneCOne.File.WriteAllLines", source)
+        self.assertIn("ROneCOne.File.ReadAllLines", source)
+        self.assertIn("ROneCOne.Directory.CreateDirectory", source)
+        self.assertIn('ROneCOne.Directory.GetFiles(', source)
+        self.assertIn('ROneCOne.Path.Combine("C:\\data", "in", "file.txt")', source)
+        self.assertIn("orders.ToCsv", source)
+        self.assertIn("ROneCOne.Csv.DeserializeTable(", source)
+        self.assertIn("ROneCOne.Directory.Delete demoRoot, True", source)
+        # The demo is self-contained and cleans up after itself.
+        self.assertNotIn("ROneCOne.HttpClient()", source)
+        self.assertNotIn("GetAsync", source)
+        self.assertNotIn("http://", source)
+        self.assertNotIn("https://", source)
+        self.assertIn('"files"', builder)
+        self.assertIn("ROneCOne_Files_Demo.xlsx", builder)
+        self.assertIn("RunROneCOneFilesDemo", builder)
+
+    def test_process_demo_runs_shell_builtins_offline(self) -> None:
+        source = PROCESS_DEMO.read_text(encoding="utf-8")
+        builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")
+
+        self.assertIn('ROneCOne.Process.RunAsync("echo hello from ROneCOne")', source)
+        self.assertIn('.Await.ExitCode', source)
+        self.assertIn("StandardOutput", source)
+        self.assertIn("StandardError", source)
+        self.assertIn('ROneCOne.Process.RunAsync("cd", ThisWorkbook.Path)', source)
+        self.assertIn("ROneCOne.Task.WhenAll(", source)
+        self.assertIn("ROneCOne.InvalidArgumentError", source)
+        # Only cmd.exe built-ins run; nothing is downloaded or installed.
+        self.assertNotIn("ROneCOne.HttpClient()", source)
+        self.assertNotIn("GetAsync", source)
+        self.assertNotIn("http://", source)
+        self.assertNotIn("https://", source)
+        self.assertIn('"process"', builder)
+        self.assertIn("ROneCOne_Process_Demo.xlsx", builder)
+        self.assertIn("RunROneCOneProcessDemo", builder)
+
     def test_data_demo_leads_with_typed_data_and_provider_sugar(self) -> None:
         source = DATA_DEMO.read_text(encoding="utf-8")
 
@@ -240,6 +286,8 @@ class DemoContractTests(unittest.TestCase):
             "ROneCOne_Tasks_Demo",
             "ROneCOne_Data_Demo",
             "ROneCOne_Json_Demo",
+            "ROneCOne_Files_Demo",
+            "ROneCOne_Process_Demo",
         ):
             self.assertIn(name, builder)
             self.assertIn(name, packager)
@@ -283,6 +331,8 @@ class DemoContractTests(unittest.TestCase):
             DATA_DEMO,
             HTTP_DEMO,
             JSON_DEMO,
+            FILES_DEMO,
+            PROCESS_DEMO,
             CUSTOMER,
         ):
             with self.subTest(path=path.name):

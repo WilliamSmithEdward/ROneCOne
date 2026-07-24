@@ -10,6 +10,13 @@ checksums for each version are on the
 
 ### Added
 
+- Ninth and tenth demo workbooks. `ROneCOne_Files_Demo.xlsm` walks the file and CSV surface
+  offline under one self-cleaning folder: UTF-8 and byte-order-mark round trips, lines as
+  collections, path helpers, recursive wildcard enumeration, a typed CSV file round trip with
+  null preservation, and a gated benchmark round-tripping 1,000 rows through a CSV file.
+  `ROneCOne_Process_Demo.xlsm` runs cmd.exe built-ins only: awaited echo with captured
+  output, exit-code passthrough, separated standard error, per-command working directories,
+  WhenAll overlap, honest failure shapes, and a gated benchmark overlapping three commands.
 - Awaitable shell commands: `ROneCOne.Process.RunAsync(command, [workingDirectory],
   [cancellationToken])` starts the command immediately through the Windows Script Host and
   returns a Task whose result carries `ExitCode`, `StandardOutput`, and `StandardError`.

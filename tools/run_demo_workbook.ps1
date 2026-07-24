@@ -9,6 +9,10 @@ param(
     [double]$MaxTaskBenchmarkSeconds = 1.5,
     [ValidateRange(0.01, 60)]
     [double]$MaxJsonBenchmarkSeconds = 2.5,
+    [ValidateRange(0.01, 60)]
+    [double]$MaxFilesBenchmarkSeconds = 2.5,
+    [ValidateRange(0.01, 60)]
+    [double]$MaxProcessBenchmarkSeconds = 5,
     [switch]$Worker,
     [string]$ProcessInfoPath = "demo\.working\demo-processes.json"
 )
@@ -174,6 +178,16 @@ public static class ROneCOneDemoProcess
                 $benchmarkSeconds -gt $MaxJsonBenchmarkSeconds)) {
             throw "JSON benchmark exceeded the $MaxJsonBenchmarkSeconds-second gate."
         }
+        if ($featureName -eq "Files + CSV" -and `
+            ($benchmarkSeconds -le 0 -or `
+                $benchmarkSeconds -gt $MaxFilesBenchmarkSeconds)) {
+            throw "Files benchmark exceeded the $MaxFilesBenchmarkSeconds-second gate."
+        }
+        if ($featureName -eq "Processes" -and `
+            ($benchmarkSeconds -le 0 -or `
+                $benchmarkSeconds -gt $MaxProcessBenchmarkSeconds)) {
+            throw "Process benchmark exceeded the $MaxProcessBenchmarkSeconds-second gate."
+        }
         [pscustomobject]@{
             workbook = $resolvedWorkbook
             feature = $featureName
@@ -182,6 +196,8 @@ public static class ROneCOneDemoProcess
             benchmark_seconds = $benchmarkSeconds
             task_gate_seconds = $MaxTaskBenchmarkSeconds
             json_gate_seconds = $MaxJsonBenchmarkSeconds
+            files_gate_seconds = $MaxFilesBenchmarkSeconds
+            process_gate_seconds = $MaxProcessBenchmarkSeconds
             member_dispatch_seconds = $memberDispatchSeconds
             ordering_seconds = $orderingSeconds
             ordering_gate_seconds = $MaxOrderingBenchmarkSeconds
@@ -224,6 +240,8 @@ $arguments = @(
     "-MaxOrderingBenchmarkSeconds", $MaxOrderingBenchmarkSeconds,
     "-MaxTaskBenchmarkSeconds", $MaxTaskBenchmarkSeconds,
     "-MaxJsonBenchmarkSeconds", $MaxJsonBenchmarkSeconds,
+    "-MaxFilesBenchmarkSeconds", $MaxFilesBenchmarkSeconds,
+    "-MaxProcessBenchmarkSeconds", $MaxProcessBenchmarkSeconds,
     "-Worker"
 )
 $process = Start-Process `

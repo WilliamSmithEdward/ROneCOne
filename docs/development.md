@@ -176,6 +176,12 @@ powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
 powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
     -InputPath demo\.working\ROneCOne_Json_Demo.xlsx `
     -OutputPath demo\ROneCOne_Json_Demo.xlsm
+powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
+    -InputPath demo\.working\ROneCOne_Files_Demo.xlsx `
+    -OutputPath demo\ROneCOne_Files_Demo.xlsm
+powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
+    -InputPath demo\.working\ROneCOne_Process_Demo.xlsx `
+    -OutputPath demo\ROneCOne_Process_Demo.xlsm
 .venv\Scripts\python.exe tools\package_demo_workbook.py
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
@@ -193,6 +199,12 @@ powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Json_Demo.xlsm `
     -MacroName RunROneCOneJsonDemo
+powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Files_Demo.xlsm `
+    -MacroName RunROneCOneFilesDemo
+powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Process_Demo.xlsm `
+    -MacroName RunROneCOneProcessDemo
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Collections_Demo.xlsm `
@@ -209,11 +221,20 @@ powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Json_Demo.xlsm `
     -OutputPrefix json
+powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Files_Demo.xlsm `
+    -OutputPrefix files
+powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Process_Demo.xlsm `
+    -OutputPrefix process
 ```
 
 Development-only VBIDE trust is used once during each conversion to seed an otherwise empty
 `vbaProject.bin`. pyOpenVBA replaces that seed. Neither final workbook nor the runtime uses VBIDE
-automation. Every core capability gets a separate workbook with its own macro, examples,
+automation. The render pass re-evaluates the status formulas in the artifact-tool spreadsheet
+engine, which coerces `0 = ""` to true the way JavaScript does; Excel itself computes PASS and
+the run gate is authoritative, but demo examples avoid a raw `0` as an expected value so the
+review renders stay truthful. Every core capability gets a separate workbook with its own macro, examples,
 benchmark, live execution gate, and all-sheet render pass. Renders accumulate in the ignored
 `demo\.working` directory across runs; pass `-Clean` to the first render call of a batch to drop
 every stale PNG set first.
