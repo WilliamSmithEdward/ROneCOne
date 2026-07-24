@@ -19,6 +19,7 @@ HTTP_WORKBOOK = ROOT / "demo" / "ROneCOne_Http_Demo.xlsm"
 JSON_WORKBOOK = ROOT / "demo" / "ROneCOne_Json_Demo.xlsm"
 FILES_WORKBOOK = ROOT / "demo" / "ROneCOne_Files_Demo.xlsm"
 PROCESS_WORKBOOK = ROOT / "demo" / "ROneCOne_Process_Demo.xlsm"
+TEXT_WORKBOOK = ROOT / "demo" / "ROneCOne_Text_Demo.xlsm"
 
 
 def package_delegates(workbook_path: Path = DELEGATES_WORKBOOK) -> None:
@@ -148,6 +149,7 @@ def parse_args() -> argparse.Namespace:
             "json",
             "files",
             "process",
+            "text",
             "all",
         ),
         default="all",
@@ -162,6 +164,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--json-workbook", type=Path, default=JSON_WORKBOOK)
     parser.add_argument("--files-workbook", type=Path, default=FILES_WORKBOOK)
     parser.add_argument("--process-workbook", type=Path, default=PROCESS_WORKBOOK)
+    parser.add_argument("--text-workbook", type=Path, default=TEXT_WORKBOOK)
     return parser.parse_args()
 
 
@@ -230,3 +233,10 @@ if __name__ == "__main__":
             ROOT / "demo" / "vba" / "ProcessDemoUsage.bas",
         )
         print(arguments.process_workbook)
+    if arguments.kind in ("text", "all"):
+        package_capability(
+            arguments.text_workbook,
+            "TextDemoUsage",
+            ROOT / "demo" / "vba" / "TextDemoUsage.bas",
+        )
+        print(arguments.text_workbook)

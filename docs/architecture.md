@@ -144,6 +144,16 @@ column inference, and both writers emit invariant-culture values from one buffer
 system layer feeds them through `ADODB.Stream` with byte-order-mark discipline and
 `System.IO`-shaped failure semantics, keeping every prog-id on the source-contract whitelist.
 
+## Text and cryptography slice
+
+Regular expressions wrap the in-box script engine (`VBScript.RegExp`) behind the
+`System.Text.RegularExpressions` verbs, returning typed match values whose `Matches` results
+flow into the LINQ surface. Hashing calls Windows CNG (`bcrypt.dll`) directly through
+`Declare`, so `Sha256`, `Sha512`, `Sha1`, `Md5`, and `HmacSha256` need no registration and
+compute at native speed; `Convert` supplies base64 and hex in pure VBA. Text hashes as its
+UTF-8 bytes so digests match every other platform. The .NET Framework crypto COM classes were
+rejected after a probe found them unregistered on the target machine.
+
 ## Event slice
 
 An event is a mutable typed publisher with an owned handler list. `EventOf` builds its parameter
@@ -188,6 +198,7 @@ contexts are keyed to one workbook, and process-global mutable state never coupl
 | Available | Native provider async over polled ADODB state |
 | Available | File, Directory, and Path surfaces with RFC 4180 CSV exchange |
 | Available | Awaitable shell commands over polled WScript Exec |
+| Available | Regular expressions, CNG hashing, and base64 or hex encoding |
 | Constrained by host | Arbitrary VBA, COM, and workbook state remain on Excel's thread |
 
 Each capability must pass its full behavioral, live-host, and performance gates before it enters

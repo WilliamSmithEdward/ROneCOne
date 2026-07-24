@@ -13,6 +13,8 @@ param(
     [double]$MaxFilesBenchmarkSeconds = 2.5,
     [ValidateRange(0.01, 60)]
     [double]$MaxProcessBenchmarkSeconds = 5,
+    [ValidateRange(0.01, 60)]
+    [double]$MaxTextBenchmarkSeconds = 2.5,
     [switch]$Worker,
     [string]$ProcessInfoPath = "demo\.working\demo-processes.json"
 )
@@ -188,6 +190,11 @@ public static class ROneCOneDemoProcess
                 $benchmarkSeconds -gt $MaxProcessBenchmarkSeconds)) {
             throw "Process benchmark exceeded the $MaxProcessBenchmarkSeconds-second gate."
         }
+        if ($featureName -eq "Text + hashing" -and `
+            ($benchmarkSeconds -le 0 -or `
+                $benchmarkSeconds -gt $MaxTextBenchmarkSeconds)) {
+            throw "Text benchmark exceeded the $MaxTextBenchmarkSeconds-second gate."
+        }
         [pscustomobject]@{
             workbook = $resolvedWorkbook
             feature = $featureName
@@ -198,6 +205,7 @@ public static class ROneCOneDemoProcess
             json_gate_seconds = $MaxJsonBenchmarkSeconds
             files_gate_seconds = $MaxFilesBenchmarkSeconds
             process_gate_seconds = $MaxProcessBenchmarkSeconds
+            text_gate_seconds = $MaxTextBenchmarkSeconds
             member_dispatch_seconds = $memberDispatchSeconds
             ordering_seconds = $orderingSeconds
             ordering_gate_seconds = $MaxOrderingBenchmarkSeconds
@@ -242,6 +250,7 @@ $arguments = @(
     "-MaxJsonBenchmarkSeconds", $MaxJsonBenchmarkSeconds,
     "-MaxFilesBenchmarkSeconds", $MaxFilesBenchmarkSeconds,
     "-MaxProcessBenchmarkSeconds", $MaxProcessBenchmarkSeconds,
+    "-MaxTextBenchmarkSeconds", $MaxTextBenchmarkSeconds,
     "-Worker"
 )
 $process = Start-Process `

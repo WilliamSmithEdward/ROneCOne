@@ -10,6 +10,22 @@ checksums for each version are on the
 
 ### Added
 
+- Regular expressions in the spirit of System.Text.RegularExpressions:
+  `ROneCOne.Regex(pattern, [ignoreCase], [multiLine])` over the in-box script engine, with
+  `IsMatch`, `Match` (a typed match carrying `Success`, `Value`, `FirstIndex`, `Length`, and a
+  `Groups` list), `Matches` (a queryable list), `Replace` with `$1` group substitution, and
+  `Split` that ignores zero-length matches. Invalid patterns raise the typed
+  `ROneCOne.RegexError` at creation. See
+  [ADR 0018](docs/decisions/0018-regex-over-vbscript-regexp.md).
+- Hashing and encoding in the spirit of System.Security.Cryptography and System.Convert:
+  `ROneCOne.Hash` computes `Sha256`, `Sha512`, `Sha1`, `Md5`, and `HmacSha256` through Windows
+  CNG (no reference, no registration), over text (as UTF-8) or bytes; `ROneCOne.Convert` adds
+  `ToBase64String`, `FromBase64String`, `ToHexString`, and `FromHexString`. Digests match the
+  FIPS 180 and RFC 4231 vectors. See
+  [ADR 0019](docs/decisions/0019-hashing-over-windows-cng.md).
+- `HttpClient.DownloadFileAsync(url, filePath)` saves a response body straight to disk,
+  composing the byte-array transfer with the file layer and faulting on non-success like the
+  other body-consuming verbs.
 - Ninth and tenth demo workbooks. `ROneCOne_Files_Demo.xlsm` walks the file and CSV surface
   offline under one self-cleaning folder: UTF-8 and byte-order-mark round trips, lines as
   collections, path helpers, recursive wildcard enumeration, a typed CSV file round trip with

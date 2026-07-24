@@ -18,6 +18,7 @@ class module, and copy the smallest example that solves your problem.
 | [JSON and typed objects](json-and-objects.md) | Parse, serialize, and bind JSON | 10 minutes |
 | [Files and folders](files-and-folders.md) | Read and write files with real encodings | 10 minutes |
 | [Processes and commands](processes-and-commands.md) | Await command lines with captured output | 5 minutes |
+| [Text, hashing, and encoding](text-and-hashing.md) | Regex, digests, base64, and hex | 10 minutes |
 | [Practical reference](reference.md) | Find names, defaults, and limits | As needed |
 
 ## Fastest route to the first result

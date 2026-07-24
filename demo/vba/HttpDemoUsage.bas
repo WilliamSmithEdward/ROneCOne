@@ -54,6 +54,8 @@ Private Sub WriteHttpExamples()
     Dim berry As ROneCOne
     Dim canceledError As Long
     Dim client As ROneCOne
+    Dim downloadPath As String
+    Dim downloadWorked As Boolean
     Dim json As String
     Dim missError As Long
     Dim pikachuJson As String
@@ -130,6 +132,15 @@ Private Sub WriteHttpExamples()
     Set abilities = ROneCOne.Json.DeserializeTable( _
         pikachuJson, "Abilities", "$.abilities")
 
+    ' A response body can go straight to disk. DownloadFileAsync composes the
+    ' byte-array download with the file layer, so the file is on disk once the
+    ' task completes; the demo saves next to this workbook and deletes after.
+    downloadPath = ThisWorkbook.Path & "\ROneCOne_Http_Download.json"
+    client.DownloadFileAsync("pokemon/pikachu", downloadPath).Await
+    downloadWorked = ROneCOne.File.Exists(downloadPath) And InStr(1, _
+        ROneCOne.File.ReadAllText(downloadPath), """pikachu""") > 0
+    ROneCOne.File.Delete downloadPath
+
     ' Every example writes its answer next to what the sheet expects.
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
         .Range("E6").Value2 = CStr(response.StatusCode) & " " & _
@@ -146,6 +157,7 @@ Private Sub WriteHttpExamples()
         .Range("E14").Value2 = (berry.StatusCode = 200)
         .Range("E15").Value2 = CStr(tree.Item("name"))
         .Range("E16").Value2 = (abilities.Rows.Count > 0)
+        .Range("E17").Value2 = downloadWorked
     End With
 End Sub
 

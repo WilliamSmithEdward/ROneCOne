@@ -16,6 +16,7 @@ HTTP_DEMO = DEMO_VBA / "HttpDemoUsage.bas"
 JSON_DEMO = DEMO_VBA / "JsonDemoUsage.bas"
 FILES_DEMO = DEMO_VBA / "FilesDemoUsage.bas"
 PROCESS_DEMO = DEMO_VBA / "ProcessDemoUsage.bas"
+TEXT_DEMO = DEMO_VBA / "TextDemoUsage.bas"
 CUSTOMER = DEMO_VBA / "DemoCustomer.cls"
 COLLECTIONS_BUILDER = ROOT / "tools" / "build_collections_demo_workbook.cjs"
 CAPABILITY_BUILDER = ROOT / "tools" / "build_capability_demo_workbooks.cjs"
@@ -183,6 +184,7 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("source.Token", source)
         self.assertIn("ROneCOne.Json.Deserialize(pikachuJson)", source)
         self.assertIn("ROneCOne.Json.DeserializeTable(", source)
+        self.assertIn("client.DownloadFileAsync(", source)
         # The failure example catches at the await site, mirroring C#'s
         # try / await / catch; a named-procedure raise cannot cross the
         # Application.Run boundary.
@@ -264,6 +266,30 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("ROneCOne_Process_Demo.xlsx", builder)
         self.assertIn("RunROneCOneProcessDemo", builder)
 
+    def test_text_demo_runs_regex_and_hashing_offline(self) -> None:
+        source = TEXT_DEMO.read_text(encoding="utf-8")
+        builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")
+
+        self.assertIn("ROneCOne.Regex(", source)
+        self.assertIn(".IsMatch(", source)
+        self.assertIn(".Groups.Item(1)", source)
+        self.assertIn(".Matches(", source)
+        self.assertIn(".Replace(", source)
+        self.assertIn(".Split(", source)
+        self.assertIn("ROneCOne.Hash.Sha256(", source)
+        self.assertIn("ROneCOne.Hash.HmacSha256(", source)
+        self.assertIn("ROneCOne.Convert.ToHexString(", source)
+        self.assertIn("ROneCOne.Convert.ToBase64String(", source)
+        self.assertIn("ROneCOne.Convert.FromHexString(", source)
+        # The demo is self-contained: no network and no installs.
+        self.assertNotIn("ROneCOne.HttpClient()", source)
+        self.assertNotIn("GetAsync", source)
+        self.assertNotIn("http://", source)
+        self.assertNotIn("https://", source)
+        self.assertIn('"text"', builder)
+        self.assertIn("ROneCOne_Text_Demo.xlsx", builder)
+        self.assertIn("RunROneCOneTextDemo", builder)
+
     def test_data_demo_leads_with_typed_data_and_provider_sugar(self) -> None:
         source = DATA_DEMO.read_text(encoding="utf-8")
 
@@ -288,6 +314,7 @@ class DemoContractTests(unittest.TestCase):
             "ROneCOne_Json_Demo",
             "ROneCOne_Files_Demo",
             "ROneCOne_Process_Demo",
+            "ROneCOne_Text_Demo",
         ):
             self.assertIn(name, builder)
             self.assertIn(name, packager)
@@ -333,6 +360,7 @@ class DemoContractTests(unittest.TestCase):
             JSON_DEMO,
             FILES_DEMO,
             PROCESS_DEMO,
+            TEXT_DEMO,
             CUSTOMER,
         ):
             with self.subTest(path=path.name):

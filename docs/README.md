@@ -3,7 +3,8 @@
 Everything here describes one product: a single importable class module,
 [`src/ROneCOne.cls`](../src/ROneCOne.cls), that gives Excel VBA generic collections, LINQ,
 delegates, tasks, typed events, structured exceptions, an in-memory data layer, an awaitable
-HTTP client, a System.Text.Json-style JSON serializer, and a System.IO-style file layer.
+HTTP client, a System.Text.Json-style JSON serializer, a System.IO-style file layer, and
+regex, hashing, and encoding helpers.
 
 Choose the path that matches what you are trying to do.
 
@@ -24,6 +25,7 @@ Start here if you write workbook code and want results quickly. The
 | [JSON and typed objects](user-guide/json-and-objects.md) | Parse, serialize, and bind JSON |
 | [Files and folders](user-guide/files-and-folders.md) | Read and write files with real encodings |
 | [Processes and commands](user-guide/processes-and-commands.md) | Await command lines with captured output |
+| [Text, hashing, and encoding](user-guide/text-and-hashing.md) | Regex, digests, base64, and hex |
 | [Practical reference](user-guide/reference.md) | Find names, defaults, and limits fast |
 
 ## Exact contracts
@@ -44,6 +46,8 @@ syntax. Each technical document links back to its user guide.
 | [Files](files.md) | Encodings, byte-order marks, failure contract, enumeration order |
 | [CSV](csv.md) | RFC 4180 writing and parsing, type inference, null and quoting rules |
 | [Processes](process.md) | Transport, output decoding, exit-code and failure contract |
+| [Regular expressions](regex.md) | Dialect, match model, split and replace semantics |
+| [Hashing and encoding](hashing.md) | Digests, vectors, base64 and hex rules |
 
 ## Understand the design
 

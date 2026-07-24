@@ -112,6 +112,10 @@ Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 | Folders | `Directory.CreateDirectory`, `Exists`, `Delete`, `GetFiles`, `GetDirectories` |
 | Path text | `Path.Combine`, `GetFileName`, `GetDirectoryName`, `GetExtension`, `ChangeExtension`, `GetFullPath`, `GetTempPath` |
 | Shell commands | `Process.RunAsync`, `ExitCode`, `StandardOutput`, `StandardError` |
+| Regular expressions | `Regex`, `IsMatch`, `Match`, `Matches`, `Replace`, `Split` |
+| Hashing | `Hash.Sha256`, `Sha512`, `Sha1`, `Md5`, `HmacSha256` |
+| Byte encoding | `Convert.ToBase64String`, `FromBase64String`, `ToHexString`, `FromHexString` |
+| Download a file | `HttpClient.DownloadFileAsync` |
 
 ## Type tokens
 
