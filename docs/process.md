@@ -5,10 +5,10 @@ Exact semantics for the awaitable process surface. For the workflow-first introd
 
 ## Surface
 
-`ROneCOne.Process.RunAsync(command, [workingDirectory], [cancellationToken])` starts a shell
-command immediately and returns a Task. The result is a process-result value with `ExitCode`,
-`StandardOutput`, and `StandardError`. A command that cannot start raises error number
-`ROneCOne.ProcessError` from source `ROneCOne.ProcessException`; a command that runs and
+`ROneCOne.Process.RunAsync(command, [workingDirectory], [cancellationToken], [standardInput])`
+starts a shell command immediately and returns a Task. The result is a process-result value
+with `ExitCode`, `StandardOutput`, and `StandardError`. A command that cannot start raises error
+number `ROneCOne.ProcessError` from source `ROneCOne.ProcessException`; a command that runs and
 fails does not fault the task, exactly like `System.Diagnostics.Process`: inspect `ExitCode`.
 
 ## Mechanics
@@ -24,6 +24,10 @@ removes the scratch files.
 
 `workingDirectory` is applied inside the command line as `cd /d "..." &&`, so nothing mutates
 Excel's own current directory. An empty command raises `InvalidArgumentError`.
+
+`standardInput`, when supplied, is written to the process at start; the input stream is always
+closed afterward, so a filter such as `sort` or `findstr` sees end-of-file and completes rather
+than waiting forever. A command given no input still has its input closed.
 
 ## Composition
 

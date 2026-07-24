@@ -57,4 +57,24 @@ operations accepting both separators; `ChangeExtension` with empty text removes 
 separator. Path helpers never touch the disk; only `GetFullPath` and `GetTempPath` consult the
 environment.
 
+## Watching a folder for changes
+
+`ROneCOne.FileWatcher(folder, [filter])` mirrors `FileSystemWatcher` on the task scheduler.
+`WaitForChangeAsync([cancellationToken])` returns a Task that resolves on the next change to a
+value with `ChangeType` (`Created`, `Changed`, or `Deleted`) and `Name`. The baseline snapshot
+is taken when `WaitForChangeAsync` is called, so a change that lands before the await is still
+seen; the filter uses the same `*` and `?` matching as `Directory.GetFiles`. A missing folder
+raises `IOError`.
+
+This is a poll, not an event subscription: while the Task is awaited the folder is rescanned at
+most four times a second, and a file both created and deleted between two scans is not observed.
+Cancellation and `WaitAsync` timeouts compose like every other task.
+
+## Reading and writing zip archives
+
+The zip surface pairs naturally with the file layer; see [zip archives](compression.md).
+`ROneCOne.ZipFile.OpenRead(path)` lists and reads entries without extracting,
+`ExtractToDirectory` unpacks with a directory-traversal guard, and `CreateFromDirectory` writes
+a stored archive. Reading inflates deflated entries produced by any standard tool.
+
 [Back to the documentation index](README.md)

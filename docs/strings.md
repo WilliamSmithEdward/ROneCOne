@@ -64,4 +64,19 @@ fromInclusive, toExclusive)` returns a uniform integer in the half-open range, u
 sampling so no value is favored; an empty range is refused with `InvalidArgumentError`. There
 is no seed: this is the cryptographic source, not a repeatable sequence.
 
+## Escaping text
+
+`ROneCOne.Uri` and `ROneCOne.WebUtility` mirror `System.Uri` and `System.Net.WebUtility`.
+
+| Member | Behavior |
+|---|---|
+| `Uri.EscapeDataString(text)` | Percent-encodes over UTF-8 bytes, preserving the RFC 3986 unreserved set (`A-Z a-z 0-9 - . _ ~`) |
+| `Uri.UnescapeDataString(text)` | Decodes valid `%XX` escapes through UTF-8, leaving malformed escapes untouched |
+| `WebUtility.HtmlEncode(text)` | Encodes `&`, `<`, `>`, `"`, `'`, and every non-ASCII character as a numeric reference |
+| `WebUtility.HtmlDecode(text)` | Decodes the five named entities and numeric decimal or hex references, passing unknown entities through unchanged |
+
+`EscapeDataString` builds safe query-string and path pieces for the HTTP client;
+`HtmlEncode` decodes and encodes through surrogate pairs, so characters beyond the basic plane
+round-trip.
+
 [Back to the documentation index](README.md)

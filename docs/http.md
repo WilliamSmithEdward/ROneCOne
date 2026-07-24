@@ -68,4 +68,11 @@ rather than letting them unwind out of a by-name procedure.
 The client contacts only the URLs you request. The runtime never initiates network traffic on
 its own, and nothing about your workbook is transmitted beyond the requests you write.
 
+## Building safe URLs
+
+When a query value can contain spaces, ampersands, or non-ASCII text, encode it with
+`ROneCOne.Uri.EscapeDataString` before composing the URL, so a value never breaks the query
+grammar. See [escaping text](strings.md#escaping-text). `HttpClient.DownloadFileAsync(url, path)`
+saves a response body straight to disk through the file layer.
+
 [Back to the documentation index](README.md)

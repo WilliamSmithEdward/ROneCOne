@@ -47,6 +47,8 @@ Tasks, typed events, and structured Try, Catch, and Finally flows.
 | Call web APIs | An HttpClient with awaitable verbs, overlapped downloads, and typed failures |
 | Exchange JSON | Serialize and deserialize trees, tables, and your own classes, System.Text.Json style |
 | Read and write files | File, Directory, and Path surfaces with real UTF-8, System.IO style |
+| Open and make zips | Read any zip and write archives, pure VBA, with a directory-traversal guard |
+| React to dropped files | Await folder changes, and log runs to a file, the way a service would |
 | Exchange CSV | RFC 4180 round trips between DataTables and CSV text with typed columns |
 | Exchange XML | XPath queries over secured MSXML6 and typed DataTable bridges both ways |
 | Run command lines | Awaitable processes with exit codes and captured output, never a frozen Excel |

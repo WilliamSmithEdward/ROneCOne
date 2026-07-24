@@ -111,7 +111,12 @@ Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 | Binary files and management | `ReadAllBytes`, `WriteAllBytes`, `Exists`, `Copy`, `Move`, `Delete` |
 | Folders | `Directory.CreateDirectory`, `Exists`, `Delete`, `GetFiles`, `GetDirectories` |
 | Path text | `Path.Combine`, `GetFileName`, `GetDirectoryName`, `GetExtension`, `ChangeExtension`, `GetFullPath`, `GetTempPath` |
-| Shell commands | `Process.RunAsync`, `ExitCode`, `StandardOutput`, `StandardError` |
+| Shell commands | `Process.RunAsync(command, [dir], [token], [stdin])`, `ExitCode`, `StandardOutput`, `StandardError` |
+| Zip archives | `ZipFile.OpenRead`, `CreateFromDirectory`, `ExtractToDirectory`, `Entries`, `GetEntry` |
+| Zip entries | `FullName`, `Name`, `Length`, `CompressedLength`, `ReadAllText`, `ReadAllBytes`, `ExtractToFile` |
+| Watch a folder | `FileWatcher(folder, [filter]).WaitForChangeAsync`, `ChangeType`, `Name` |
+| Log to a file | `Logger(path, [level])`, `LogInformation`, `LogWarning`, `LogError`, `IsEnabled`, `MinimumLevel` |
+| Escape for URLs and HTML | `Uri.EscapeDataString`, `UnescapeDataString`, `WebUtility.HtmlEncode`, `HtmlDecode` |
 | Regular expressions | `Regex`, `IsMatch`, `Match`, `Matches`, `Replace`, `Split` |
 | Hashing | `Hash.Sha256`, `Sha512`, `Sha1`, `Md5`, `HmacSha256` |
 | Byte encoding | `Convert.ToBase64String`, `FromBase64String`, `ToHexString`, `FromHexString` |

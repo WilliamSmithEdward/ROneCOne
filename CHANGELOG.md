@@ -6,6 +6,34 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
+## Unreleased
+
+### Added
+
+- Zip archives over a pure-VBA engine, in the spirit of System.IO.Compression:
+  `ROneCOne.ZipFile.OpenRead` lists and reads entries (`Entries`, `GetEntry`, and per-entry
+  `FullName`, `Name`, `Length`, `CompressedLength`, `ReadAllText`, `ReadAllBytes`,
+  `ExtractToFile`), inflating stored and deflated data with CRC-32 verification;
+  `CreateFromDirectory` writes a store-only archive and `ExtractToDirectory` unpacks with a
+  directory-traversal guard and no overwrite. Zip64 and encrypted archives are refused with the
+  typed `ROneCOne.ZipError`. The engine was built against generated fixtures covering every
+  deflate block flavor and verified live against PowerShell Compress-Archive and Expand-Archive
+  both directions. See [ADR 0023](docs/decisions/0023-zip-over-a-pure-vba-engine.md).
+- A file logger in the spirit of Microsoft.Extensions.Logging: `ROneCOne.Logger(path,
+  [minimumLevel])` writes UTC millisecond-stamped, level-coded, composite-formatted lines with
+  `LogTrace` through `LogCritical`, `IsEnabled`, and `MinimumLevel`; sub-minimum calls never
+  touch the disk and each written line is appended and flushed to survive a crash. See
+  [ADR 0024](docs/decisions/0024-file-logger.md).
+- Awaitable folder watching: `ROneCOne.FileWatcher(folder, [filter]).WaitForChangeAsync` returns
+  a Task that resolves on the next Created, Changed, or Deleted file, snapshotting at call time
+  and rescanning on a throttle while awaited; cancellation and timeouts compose like every task.
+  See [ADR 0025](docs/decisions/0025-awaitable-file-watching.md).
+- URL and HTML escaping, and process input: `ROneCOne.Uri.EscapeDataString` /
+  `UnescapeDataString` (RFC 3986 over UTF-8) and `ROneCOne.WebUtility.HtmlEncode` / `HtmlDecode`
+  (the five entities plus numeric references, through surrogate pairs); `Process.RunAsync` gains
+  an optional `standardInput` that is written and closed at start so filters like `sort` see
+  end-of-file. See [ADR 0026](docs/decisions/0026-escaping-helpers-and-process-input.md).
+
 ## 1.6.0 - 2026-07-24
 
 ### Added

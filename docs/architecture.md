@@ -132,11 +132,14 @@ Deterministic scopes centralize cleanup and dual-failure aggregation.
 
 ## Transport and exchange slice
 
-Three transports share one shape: start the operation on an in-process COM component, hold a
+Four transports share one shape: start the operation on an in-process COM component, hold a
 pollable handle, and let the Task scheduler poll it cooperatively. WinHTTP carries web requests
-(`WaitForResponse(0)`), ADO carries native async database work (the `State` bitmask), and the
-Windows Script Host carries shell commands (`Exec.Status` with scratch-file capture). VBA never
-gains a second thread; the overlap lives inside the components.
+(`WaitForResponse(0)`), ADO carries native async database work (the `State` bitmask), the
+Windows Script Host carries shell commands (`Exec.Status` with scratch-file capture), and a
+`FileWatcher` polls a folder snapshot on a throttle. VBA never gains a second thread; the
+overlap lives inside the components, or, for the watcher, in the passage of wall-clock time
+between polls. A shell command also accepts standard input, written and closed at start so a
+filter reads to end-of-file.
 
 Exchange is text in and out of the data layer: the JSON reader scans a one-time byte snapshot
 under RFC 8259 strictness, the CSV parser applies RFC 4180 quote discipline with deterministic
@@ -144,7 +147,11 @@ column inference, and the XML surface queries a secured MSXML6 document (DTDs pr
 externals unresolved) whose table bridges reuse the CSV inference so all three formats agree on
 every value shape. All writers emit invariant-culture values from one buffer. The file system
 layer feeds them through `ADODB.Stream` with byte-order-mark discipline and `System.IO`-shaped
-failure semantics, keeping every prog-id on the source-contract whitelist.
+failure semantics, keeping every prog-id on the source-contract whitelist. The zip surface adds
+no prog-id at all: a pure-VBA engine parses the central directory, inflates RFC 1951 streams,
+and verifies CRC-32, with an extraction guard that rejects directory-traversal names. A file
+logger composes the formatter, the clock, and the append path into durable, level-filtered
+lines.
 
 ## Text and cryptography slice
 
@@ -215,6 +222,8 @@ contexts are keyed to one workbook, and process-global mutable state never coupl
 | Available | DateTimeOffset-style instants and durations over kernel32 zone conversion |
 | Available | Invariant composite formatting, StringBuilder, GUIDs, and crypto randomness |
 | Available | XML over secured MSXML6 with DataTable bridges both ways |
+| Available | Zip archives over a pure-VBA inflate engine, a file logger, and folder watching |
+| Available | URL and HTML escaping helpers, and shell standard input |
 | Constrained by host | Arbitrary VBA, COM, and workbook state remain on Excel's thread |
 
 Each capability must pass its full behavioral, live-host, and performance gates before it enters

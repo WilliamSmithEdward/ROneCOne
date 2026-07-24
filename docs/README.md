@@ -3,8 +3,9 @@
 Everything here describes one product: a single importable class module,
 [`src/ROneCOne.cls`](../src/ROneCOne.cls), that gives Excel VBA generic collections, LINQ,
 delegates, tasks, typed events, structured exceptions, an in-memory data layer, an awaitable
-HTTP client, JSON, CSV, and XML exchange, a System.IO-style file layer, DateTimeOffset-style
-dates and durations, invariant text formatting, and regex, hashing, and encoding helpers.
+HTTP client, JSON, CSV, and XML exchange, a System.IO-style file layer with zip archives and
+folder watching, DateTimeOffset-style dates and durations, invariant text formatting, a file
+logger, and regex, hashing, and encoding helpers.
 
 Choose the path that matches what you are trying to do.
 
@@ -51,8 +52,10 @@ syntax. Each technical document links back to its user guide.
 | [Regular expressions](regex.md) | Dialect, match model, split and replace semantics |
 | [Hashing and encoding](hashing.md) | Digests, vectors, base64 and hex rules |
 | [Dates, times, and durations](datetime.md) | Instant model, parsing, precision, zone behavior |
-| [Formatting, building, and identity](strings.md) | Format grammar, builder, GUID, random semantics |
+| [Formatting, building, and identity](strings.md) | Format grammar, builder, GUID, random, URL and HTML escaping |
 | [XML](xml.md) | Parser posture, XPath, namespaces, DataTable bridges |
+| [Zip archives](compression.md) | Read and write, the inflate engine, the traversal guard, limits |
+| [Logging](logging.md) | Levels, line format, filtering, durability |
 
 ## Understand the design
 
