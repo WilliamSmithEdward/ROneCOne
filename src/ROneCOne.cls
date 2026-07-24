@@ -31,6 +31,32 @@ Private Declare PtrSafe Sub CopyMemory Lib "kernel32" Alias "RtlMoveMemory" ( _
 
 Private Declare PtrSafe Function GetTickCount64 Lib "kernel32" () As LongLong
 
+' Windows CNG primitives back the Hash surface: every algorithm ships inside
+' bcrypt.dll on every supported Windows, needs no registration, and computes
+' at native speed. Passing null object buffers lets CNG manage its own state.
+Private Declare PtrSafe Function BCryptOpenAlgorithmProvider Lib "bcrypt.dll" ( _
+    ByRef algorithmHandle As LongPtr, ByVal algorithmId As LongPtr, _
+    ByVal implementation As LongPtr, ByVal flags As Long) As Long
+Private Declare PtrSafe Function BCryptCloseAlgorithmProvider Lib "bcrypt.dll" ( _
+    ByVal algorithmHandle As LongPtr, ByVal flags As Long) As Long
+Private Declare PtrSafe Function BCryptCreateHash Lib "bcrypt.dll" ( _
+    ByVal algorithmHandle As LongPtr, ByRef hashHandle As LongPtr, _
+    ByVal hashObjectBuffer As LongPtr, ByVal hashObjectLength As Long, _
+    ByVal secretPointer As LongPtr, ByVal secretLength As Long, _
+    ByVal flags As Long) As Long
+Private Declare PtrSafe Function BCryptHashData Lib "bcrypt.dll" ( _
+    ByVal hashHandle As LongPtr, ByVal dataPointer As LongPtr, _
+    ByVal dataLength As Long, ByVal flags As Long) As Long
+Private Declare PtrSafe Function BCryptFinishHash Lib "bcrypt.dll" ( _
+    ByVal hashHandle As LongPtr, ByVal outputPointer As LongPtr, _
+    ByVal outputLength As Long, ByVal flags As Long) As Long
+Private Declare PtrSafe Function BCryptDestroyHash Lib "bcrypt.dll" ( _
+    ByVal hashHandle As LongPtr) As Long
+Private Declare PtrSafe Function BCryptGetProperty Lib "bcrypt.dll" ( _
+    ByVal objectHandle As LongPtr, ByVal propertyName As LongPtr, _
+    ByRef output As Long, ByVal outputLength As Long, _
+    ByRef resultLength As Long, ByVal flags As Long) As Long
+
 Private Declare PtrSafe Sub Sleep Lib "kernel32" ( _
     ByVal milliseconds As Long _
 )
@@ -111,6 +137,10 @@ Private Const ROLE_PATH_FACTORY As Long = 50
 Private Const ROLE_CSV_FACTORY As Long = 51
 Private Const ROLE_PROCESS_FACTORY As Long = 52
 Private Const ROLE_PROCESS_RESULT As Long = 53
+Private Const ROLE_REGEX As Long = 54
+Private Const ROLE_REGEX_MATCH As Long = 55
+Private Const ROLE_HASH_FACTORY As Long = 56
+Private Const ROLE_CONVERT_FACTORY As Long = 57
 
 Private Const TASK_WORK As Long = 1
 Private Const TASK_COMPLETED As Long = 2
@@ -254,6 +284,7 @@ Private Const ERROR_JSON_PARSE As Long = vbObjectError + 4112
 Private Const ERROR_IO As Long = vbObjectError + 4113
 Private Const ERROR_CSV_PARSE As Long = vbObjectError + 4114
 Private Const ERROR_PROCESS As Long = vbObjectError + 4115
+Private Const ERROR_REGEX As Long = vbObjectError + 4116
 
 Private Const HTTP_PROG_ID As String = "WinHttp.WinHttpRequest.5.1"
 Private Const HTTP_DEFAULT_TIMEOUT_MS As Long = 30000
@@ -277,6 +308,12 @@ Private Const STREAM_SAVE_OVERWRITE As Long = 2
 ' The Windows Script Host shell launches processes for the Process surface;
 ' Exec exposes a pollable Status so the Task scheduler never blocks on it.
 Private Const WSHELL_PROG_ID As String = "WScript.Shell"
+
+' The in-box script engine's expression object backs the Regex surface.
+Private Const REGEX_PROG_ID As String = "VBScript.RegExp"
+
+' Windows CNG option flag: the algorithm provider operates in HMAC mode.
+Private Const BCRYPT_HMAC_FLAG As Long = 8
 
 ' Reader state for the JSON parser: a 1-based cursor over the input plus a
 ' byte snapshot of the same text as UTF-16 code units, so scanning loops read
@@ -418,6 +455,9 @@ Private mProcessOutput As String
 Private mProcessError As String
 Private mProcessOutputPath As String
 Private mProcessErrorPath As String
+Private mRegexSuccess As Boolean
+Private mRegexIndex As Long
+Private mRegexLength As Long
 Private mHttpBaseAddress As String
 Private mHttpTimeoutMs As Long
 Private mHttpHeaderNames As Collection
@@ -489,10 +529,18 @@ Attribute VarLike.VB_Description = "Creates a concise parameter typed like an ex
 End Function
 
 Public Function Value(Optional ByVal capturedValue As Variant) As Variant
-Attribute Value.VB_Description = "Captures a scalar or object as an expression value."
+Attribute Value.VB_Description = "Captures an expression value, or reads a node, entry, or match."
     Dim node As ROneCOne
     Dim capturedObject As Object
 
+    If mRole = ROLE_REGEX_MATCH Then
+        If Not IsMissing(capturedValue) Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "Value", _
+                "This value does not accept an argument."
+        End If
+        Value = mName
+        Exit Function
+    End If
     If mRole = ROLE_NODE Or mRole = ROLE_ENTRY Then
         If Not IsMissing(capturedValue) Then
             RaiseContractError ERROR_INVALID_ARGUMENT, "Value", _
@@ -2646,15 +2694,15 @@ Attribute ReadAllLines.VB_Description = "Reads a text file into a List of String
         Set ReadAllLines = lines
         Exit Function
     End If
-    normalized = Replace$(normalized, vbCrLf, vbLf)
-    normalized = Replace$(normalized, vbCr, vbLf)
+    normalized = VBA.Replace$(normalized, vbCrLf, vbLf)
+    normalized = VBA.Replace$(normalized, vbCr, vbLf)
     If Right$(normalized, 1) = vbLf Then
         normalized = Left$(normalized, Len(normalized) - 1)
     End If
     If Len(normalized) = 0 Then
         lines.Add vbNullString
     Else
-        For Each line In Split(normalized, vbLf)
+        For Each line In VBA.Split(normalized, vbLf)
             lines.Add CStr(line)
         Next line
     End If
@@ -2896,6 +2944,219 @@ Attribute StandardError.VB_Description = "Gets a completed process's captured st
     StandardError = mProcessError
 End Property
 
+Public Function Regex( _
+    ByVal pattern As String, _
+    Optional ByVal ignoreCase As Boolean = False, _
+    Optional ByVal multiLine As Boolean = False _
+) As ROneCOne
+Attribute Regex.VB_Description = "Compiles a regular expression with optional case and line modes."
+    Dim expression As ROneCOne
+
+    Set expression = New ROneCOne
+    expression.ConfigureRegex pattern, ignoreCase, multiLine
+    Set Regex = expression
+End Function
+
+Public Property Get Pattern() As String
+Attribute Pattern.VB_Description = "Gets the source pattern of a regular expression."
+    RequireRegex "Pattern"
+    Pattern = mName
+End Property
+
+Public Function IsMatch(ByVal inputText As String) As Boolean
+Attribute IsMatch.VB_Description = "Tests whether the pattern matches anywhere in the input."
+    RequireRegex "IsMatch"
+    IsMatch = mProviderObject.Test(inputText)
+End Function
+
+Public Function Matches(ByVal inputText As String) As ROneCOne
+Attribute Matches.VB_Description = "Finds every match as a queryable typed list."
+    Dim rawMatch As Object
+    Dim results As ROneCOne
+
+    RequireRegex "Matches"
+    Set results = ROneCOne.ListOf(Me)
+    mProviderObject.Global = True
+    For Each rawMatch In mProviderObject.Execute(inputText)
+        results.Add BuildRegexMatch(rawMatch)
+    Next rawMatch
+    Set Matches = results
+End Function
+
+Public Function Replace( _
+    ByVal inputText As String, _
+    ByVal replacement As String _
+) As String
+Attribute Replace.VB_Description = "Replaces every match, expanding $1-style group references."
+    RequireRegex "Replace"
+    mProviderObject.Global = True
+    Replace = mProviderObject.Replace(inputText, replacement)
+End Function
+
+Public Function Split(ByVal inputText As String) As ROneCOne
+Attribute Split.VB_Description = "Splits the input at every non-empty pattern match."
+    Dim cursor As Long
+    Dim pieces As ROneCOne
+    Dim rawMatch As Object
+
+    RequireRegex "Split"
+    Set pieces = ROneCOne.ListOf(vbString)
+    cursor = 1
+    mProviderObject.Global = True
+    For Each rawMatch In mProviderObject.Execute(inputText)
+        ' A zero-length match separates nothing; splitting there would
+        ' manufacture empty pieces between every character.
+        If rawMatch.Length > 0 Then
+            pieces.Add Mid$(inputText, cursor, _
+                rawMatch.FirstIndex + 1 - cursor)
+            cursor = rawMatch.FirstIndex + rawMatch.Length + 1
+        End If
+    Next rawMatch
+    pieces.Add Mid$(inputText, cursor)
+    Set Split = pieces
+End Function
+
+Public Property Get Success() As Boolean
+Attribute Success.VB_Description = "Reports whether a regular expression match succeeded."
+    RequireRegexMatch "Success"
+    Success = mRegexSuccess
+End Property
+
+Public Property Get FirstIndex() As Long
+Attribute FirstIndex.VB_Description = "Gets a match's zero-based position in the input."
+    RequireRegexMatch "FirstIndex"
+    FirstIndex = mRegexIndex
+End Property
+
+Public Property Get Length() As Long
+Attribute Length.VB_Description = "Gets the character length of a regular expression match."
+    RequireRegexMatch "Length"
+    Length = mRegexLength
+End Property
+
+Public Property Get Groups() As ROneCOne
+Attribute Groups.VB_Description = "Gets the match text and captured groups as a String list."
+    RequireRegexMatch "Groups"
+    Set Groups = mSource
+End Property
+
+Public Property Get Hash() As ROneCOne
+Attribute Hash.VB_Description = "Gets the Windows CNG hashing surface."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigureHashFactory
+    Set Hash = factory
+End Property
+
+Public Function Sha256(ByVal value As Variant) As Variant
+Attribute Sha256.VB_Description = "Computes the SHA-256 digest of text or bytes."
+    RequireHashFactory "Sha256"
+    Sha256 = HashValueCore("SHA256", value, "Sha256")
+End Function
+
+Public Function Sha512(ByVal value As Variant) As Variant
+Attribute Sha512.VB_Description = "Computes the SHA-512 digest of text or bytes."
+    RequireHashFactory "Sha512"
+    Sha512 = HashValueCore("SHA512", value, "Sha512")
+End Function
+
+Public Function Sha1(ByVal value As Variant) As Variant
+Attribute Sha1.VB_Description = "Computes the SHA-1 digest of text or bytes."
+    RequireHashFactory "Sha1"
+    Sha1 = HashValueCore("SHA1", value, "Sha1")
+End Function
+
+Public Function Md5(ByVal value As Variant) As Variant
+Attribute Md5.VB_Description = "Computes the MD5 digest of text or bytes."
+    RequireHashFactory "Md5"
+    Md5 = HashValueCore("MD5", value, "Md5")
+End Function
+
+Public Function HmacSha256( _
+    ByVal key As Variant, _
+    ByVal value As Variant _
+) As Variant
+Attribute HmacSha256.VB_Description = "Computes an HMAC-SHA256 signature of text or bytes."
+    Dim dataBytes() As Byte
+    Dim dataLength As Long
+    Dim keyBytes() As Byte
+    Dim keyLength As Long
+
+    RequireHashFactory "HmacSha256"
+    CoerceHashInput key, keyBytes, keyLength, "HmacSha256"
+    CoerceHashInput value, dataBytes, dataLength, "HmacSha256"
+    HmacSha256 = BcryptHashBytes("SHA256", True, keyBytes, keyLength, _
+        dataBytes, dataLength, "HmacSha256")
+End Function
+
+Public Property Get Convert() As ROneCOne
+Attribute Convert.VB_Description = "Gets the System.Convert-style encoding helper surface."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigureConvertFactory
+    Set Convert = factory
+End Property
+
+Public Function ToBase64String(ByVal bytes As Variant) As String
+Attribute ToBase64String.VB_Description = "Encodes a Byte array as base64 text."
+    RequireConvertFactory "ToBase64String"
+    If VarType(bytes) <> (vbArray Or vbByte) Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "ToBase64String", _
+            "ToBase64String requires a Byte array."
+    End If
+    ToBase64String = Base64EncodeBytes(bytes)
+End Function
+
+Public Function FromBase64String(ByVal text As String) As Variant
+Attribute FromBase64String.VB_Description = "Decodes base64 text into a Byte array."
+    RequireConvertFactory "FromBase64String"
+    FromBase64String = Base64DecodeText(text)
+End Function
+
+Public Function ToHexString(ByVal bytes As Variant) As String
+Attribute ToHexString.VB_Description = "Encodes a Byte array as uppercase hexadecimal text."
+    Dim index As Long
+    Dim parts() As String
+
+    RequireConvertFactory "ToHexString"
+    If VarType(bytes) <> (vbArray Or vbByte) Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "ToHexString", _
+            "ToHexString requires a Byte array."
+    End If
+    If UBound(bytes) < LBound(bytes) Then Exit Function
+    ReDim parts(LBound(bytes) To UBound(bytes))
+    For index = LBound(bytes) To UBound(bytes)
+        parts(index) = Right$("0" & Hex$(bytes(index)), 2)
+    Next index
+    ToHexString = VBA.Join(parts, vbNullString)
+End Function
+
+Public Function FromHexString(ByVal text As String) As Variant
+Attribute FromHexString.VB_Description = "Decodes hexadecimal text into a Byte array."
+    Dim bytes() As Byte
+    Dim code As Long
+    Dim index As Long
+
+    RequireConvertFactory "FromHexString"
+    If (Len(text) Mod 2) <> 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "FromHexString", _
+            "Hexadecimal text must have an even number of digits."
+    End If
+    If Len(text) = 0 Then
+        FromHexString = EmptyByteArray()
+        Exit Function
+    End If
+    ReDim bytes(0 To Len(text) \ 2 - 1)
+    For index = 0 To UBound(bytes)
+        code = HexDigitValue(Mid$(text, index * 2 + 1, 1)) * 16 + _
+            HexDigitValue(Mid$(text, index * 2 + 2, 1))
+        bytes(index) = code
+    Next index
+    FromHexString = bytes
+End Function
+
 Public Function HttpClient() As ROneCOne
 Attribute HttpClient.VB_Description = "Creates an HttpClient for awaitable web requests."
     Dim client As ROneCOne
@@ -2974,6 +3235,25 @@ Attribute GetByteArrayAsync.VB_Description = "Starts a GET and returns a Task of
     RequireHttpClient "GetByteArrayAsync"
     Set GetByteArrayAsync = StartHttpSend("GET", url, Empty, False, _
         vbNullString, "Bytes", "GetByteArrayAsync", cancellationToken)
+End Function
+
+Public Function DownloadFileAsync( _
+    ByVal url As String, _
+    ByVal filePath As String, _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute DownloadFileAsync.VB_Description = "Starts a GET whose Task saves the body to a file."
+    Dim taskValue As ROneCOne
+
+    RequireHttpClient "DownloadFileAsync"
+    If Len(Trim$(filePath)) = 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "DownloadFileAsync", _
+            "The target file path cannot be empty."
+    End If
+    Set taskValue = StartHttpSend("GET", url, Empty, False, _
+        vbNullString, "File", "DownloadFileAsync", cancellationToken)
+    taskValue.ConfigureDataName filePath
+    Set DownloadFileAsync = taskValue
 End Function
 
 Public Function PostAsync( _
@@ -3088,7 +3368,7 @@ Attribute Header.VB_Description = "Gets one response header value, or an empty s
     Dim line As Variant
 
     RequireHttpResponse "Header"
-    For Each line In Split(mHttpRawHeaders, vbCrLf)
+    For Each line In VBA.Split(mHttpRawHeaders, vbCrLf)
         colonAt = InStr(1, CStr(line), ":")
         If colonAt > 1 Then
             If StrComp(Trim$(Left$(CStr(line), colonAt - 1)), _
@@ -6162,9 +6442,29 @@ End Function
 
 Public Function Match( _
     ByVal memberPath As String, _
-    ByVal value As Variant _
+    Optional ByVal value As Variant _
 ) As ROneCOne
-Attribute Match.VB_Description = "Creates a reusable member-equality predicate expression."
+Attribute Match.VB_Description = "Builds an equality predicate, or finds the first regex match."
+    Dim firstMatches As Object
+
+    If mRole = ROLE_REGEX Then
+        If Not IsMissing(value) Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "Match", _
+                "A regular expression Match takes only the input text."
+        End If
+        mProviderObject.Global = False
+        Set firstMatches = mProviderObject.Execute(memberPath)
+        If firstMatches.Count = 0 Then
+            Set Match = BuildFailedRegexMatch()
+        Else
+            Set Match = BuildRegexMatch(firstMatches.Item(0))
+        End If
+        Exit Function
+    End If
+    If IsMissing(value) Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "Match", _
+            "Match requires a comparison value."
+    End If
     Set Match = Condition(memberPath).EqualTo(value)
 End Function
 
@@ -7677,6 +7977,11 @@ Attribute ProcessError.VB_Description = "Gets the ROneCOne process start error n
     ProcessError = ERROR_PROCESS
 End Property
 
+Public Property Get RegexError() As Long
+Attribute RegexError.VB_Description = "Gets the ROneCOne regular expression error number."
+    RegexError = ERROR_REGEX
+End Property
+
 Public Property Get UnboundParameterError() As Long
 Attribute UnboundParameterError.VB_Description = "Gets the unbound-parameter error number."
     UnboundParameterError = ERROR_UNBOUND_PARAMETER
@@ -8547,6 +8852,53 @@ End Sub
 
 Friend Sub ConfigureProcessFactory()
     mRole = ROLE_PROCESS_FACTORY
+End Sub
+
+Friend Sub ConfigureRegex( _
+    ByVal pattern As String, _
+    ByVal ignoreCase As Boolean, _
+    ByVal multiLine As Boolean _
+)
+    mRole = ROLE_REGEX
+    mName = pattern
+    Set mProviderObject = CreateObject(REGEX_PROG_ID)
+    mProviderObject.Pattern = pattern
+    mProviderObject.IgnoreCase = ignoreCase
+    mProviderObject.MultiLine = multiLine
+    ' The script engine compiles lazily, so a throwaway test surfaces an
+    ' invalid pattern here, at creation, instead of at first use.
+    On Error GoTo BadPattern
+    mProviderObject.Test vbNullString
+    On Error GoTo 0
+    Exit Sub
+
+BadPattern:
+    Set mProviderObject = Nothing
+    Err.Raise ERROR_REGEX, "ROneCOne.RegexException", _
+        "The regular expression pattern '" & pattern & "' is not valid."
+End Sub
+
+Friend Sub ConfigureRegexMatch( _
+    ByVal succeeded As Boolean, _
+    ByVal valueText As String, _
+    ByVal matchIndex As Long, _
+    ByVal matchLength As Long, _
+    ByVal groups As ROneCOne _
+)
+    mRole = ROLE_REGEX_MATCH
+    mRegexSuccess = succeeded
+    mName = valueText
+    mRegexIndex = matchIndex
+    mRegexLength = matchLength
+    Set mSource = groups
+End Sub
+
+Friend Sub ConfigureHashFactory()
+    mRole = ROLE_HASH_FACTORY
+End Sub
+
+Friend Sub ConfigureConvertFactory()
+    mRole = ROLE_CONVERT_FACTORY
 End Sub
 
 Friend Sub ConfigureProcessResult( _
@@ -10735,7 +11087,7 @@ Private Function JsonNumberText(ByVal value As Double) As String
         mJsonSeparatorKnown = True
     End If
     If mJsonDecimalSeparator <> "." Then
-        result = Replace$(result, mJsonDecimalSeparator, ".")
+        result = VBA.Replace$(result, mJsonDecimalSeparator, ".")
     End If
     JsonNumberText = result
 End Function
@@ -11450,6 +11802,13 @@ Private Function IoEncodeText( _
     Dim encoded As Variant
     Dim textStream As Object
 
+    ' An empty document has no bytes to encode in any charset, and passing
+    ' VBA's null BSTR (vbNullString) to WriteText makes ADODB.Stream raise
+    ' error 3001, so an empty write is skipped rather than attempted.
+    If Len(contents) = 0 Then
+        IoEncodeText = EmptyByteArray()
+        Exit Function
+    End If
     Set textStream = CreateStreamObject(STREAM_TYPE_TEXT)
     textStream.Charset = charset
     textStream.WriteText contents
@@ -11666,8 +12025,8 @@ Private Function DirectoryEntriesCore( _
     If Not fso.FolderExists(directoryPath) Then
         RaiseIoError "The folder '" & directoryPath & "' was not found."
     End If
-    patternLower = LCase$(Replace$(searchPattern, "[", "[[]"))
-    patternLower = Replace$(patternLower, "#", "[#]")
+    patternLower = LCase$(VBA.Replace$(searchPattern, "[", "[[]"))
+    patternLower = VBA.Replace$(patternLower, "#", "[#]")
     Set results = New Collection
     CollectFolderEntries fso.GetFolder(directoryPath), patternLower, _
         allDirectories, wantFiles, results
@@ -11816,6 +12175,302 @@ Private Sub RequireProcessFactory(ByVal memberName As String)
     End If
 End Sub
 
+Private Sub RequireRegex(ByVal memberName As String)
+    If mRole <> ROLE_REGEX Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires a regular expression."
+    End If
+End Sub
+
+Private Sub RequireRegexMatch(ByVal memberName As String)
+    If mRole <> ROLE_REGEX_MATCH Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires a regular expression match."
+    End If
+End Sub
+
+Private Sub RequireHashFactory(ByVal memberName As String)
+    If mRole <> ROLE_HASH_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires the Hash surface."
+    End If
+End Sub
+
+Private Sub RequireConvertFactory(ByVal memberName As String)
+    If mRole <> ROLE_CONVERT_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires the Convert surface."
+    End If
+End Sub
+
+Private Function BuildRegexMatch(ByVal rawMatch As Object) As ROneCOne
+    Dim groupIndex As Long
+    Dim groups As ROneCOne
+    Dim matchValue As ROneCOne
+    Dim subValue As Variant
+
+    ' Group 0 is the whole match, then each capture in order, matching the
+    ' Groups shape C# programmers expect; an unmatched group is empty text.
+    Set groups = ROneCOne.ListOf(vbString)
+    groups.Add CStr(rawMatch.Value)
+    For groupIndex = 0 To rawMatch.SubMatches.Count - 1
+        subValue = rawMatch.SubMatches(groupIndex)
+        If IsEmpty(subValue) Then
+            groups.Add vbNullString
+        Else
+            groups.Add CStr(subValue)
+        End If
+    Next groupIndex
+    Set matchValue = New ROneCOne
+    matchValue.ConfigureRegexMatch True, CStr(rawMatch.Value), _
+        CLng(rawMatch.FirstIndex), CLng(rawMatch.Length), groups
+    Set BuildRegexMatch = matchValue
+End Function
+
+Private Function BuildFailedRegexMatch() As ROneCOne
+    Dim matchValue As ROneCOne
+
+    Set matchValue = New ROneCOne
+    matchValue.ConfigureRegexMatch False, vbNullString, -1, 0, _
+        ROneCOne.ListOf(vbString)
+    Set BuildFailedRegexMatch = matchValue
+End Function
+
+Private Function HashValueCore( _
+    ByVal algorithmId As String, _
+    ByVal value As Variant, _
+    ByVal memberName As String _
+) As Variant
+    Dim dataBytes() As Byte
+    Dim dataLength As Long
+    Dim keyBytes() As Byte
+
+    CoerceHashInput value, dataBytes, dataLength, memberName
+    HashValueCore = BcryptHashBytes(algorithmId, False, keyBytes, 0, _
+        dataBytes, dataLength, memberName)
+End Function
+
+Private Sub CoerceHashInput( _
+    ByVal value As Variant, _
+    ByRef bytes() As Byte, _
+    ByRef byteLength As Long, _
+    ByVal memberName As String _
+)
+    ' Text hashes as its UTF-8 bytes, matching what every other platform
+    ' produces for the same string; byte arrays pass through untouched.
+    If VarType(value) = vbString Then
+        bytes = IoEncodeText(CStr(value), "utf-8", 3)
+    ElseIf VarType(value) = (vbArray Or vbByte) Then
+        bytes = value
+    Else
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            memberName & " requires a String or Byte array."
+    End If
+    If UBound(bytes) < LBound(bytes) Then
+        byteLength = 0
+    Else
+        byteLength = UBound(bytes) - LBound(bytes) + 1
+    End If
+End Sub
+
+Private Function BcryptHashBytes( _
+    ByVal algorithmId As String, _
+    ByVal useHmac As Boolean, _
+    ByRef keyBytes() As Byte, _
+    ByVal keyLength As Long, _
+    ByRef dataBytes() As Byte, _
+    ByVal dataLength As Long, _
+    ByVal memberName As String _
+) As Variant
+    Dim algorithmHandle As LongPtr
+    Dim digest() As Byte
+    Dim digestLength As Long
+    Dim flags As Long
+    Dim hashHandle As LongPtr
+    Dim keyPointer As LongPtr
+    Dim resultLength As Long
+    Dim status As Long
+
+    If useHmac Then flags = BCRYPT_HMAC_FLAG
+    status = BCryptOpenAlgorithmProvider(algorithmHandle, _
+        StrPtr(algorithmId), 0, flags)
+    If status = 0 Then
+        status = BCryptGetProperty(algorithmHandle, _
+            StrPtr("HashDigestLength"), digestLength, 4, resultLength, 0)
+    End If
+    If status = 0 Then
+        If useHmac And keyLength > 0 Then
+            keyPointer = VarPtr(keyBytes(LBound(keyBytes)))
+        End If
+        status = BCryptCreateHash(algorithmHandle, hashHandle, 0, 0, _
+            keyPointer, keyLength, 0)
+    End If
+    If status = 0 Then
+        If dataLength > 0 Then
+            status = BCryptHashData(hashHandle, _
+                VarPtr(dataBytes(LBound(dataBytes))), dataLength, 0)
+        Else
+            status = BCryptHashData(hashHandle, 0, 0, 0)
+        End If
+    End If
+    If status = 0 Then
+        ReDim digest(0 To digestLength - 1)
+        status = BCryptFinishHash(hashHandle, VarPtr(digest(0)), _
+            digestLength, 0)
+    End If
+    If hashHandle <> 0 Then BCryptDestroyHash hashHandle
+    If algorithmHandle <> 0 Then
+        BCryptCloseAlgorithmProvider algorithmHandle, 0
+    End If
+    If status <> 0 Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            "The Windows cryptography provider failed (status &H" & _
+            Hex$(status) & ")."
+    End If
+    BcryptHashBytes = digest
+End Function
+
+Private Function Base64EncodeBytes(ByVal bytes As Variant) As String
+    Dim alphabet As String
+    Dim block As Long
+    Dim blockLength As Long
+    Dim byteLength As Long
+    Dim chunkIndex As Long
+    Dim cursor As Long
+    Dim lowerBound As Long
+    Dim parts() As String
+
+    alphabet = _
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    lowerBound = LBound(bytes)
+    If UBound(bytes) < lowerBound Then Exit Function
+    byteLength = UBound(bytes) - lowerBound + 1
+    ReDim parts(0 To (byteLength + 2) \ 3 - 1)
+    For cursor = 0 To byteLength - 1 Step 3
+        blockLength = byteLength - cursor
+        If blockLength > 3 Then blockLength = 3
+        block = CLng(bytes(lowerBound + cursor)) * 65536
+        If blockLength >= 2 Then
+            block = block + CLng(bytes(lowerBound + cursor + 1)) * 256
+        End If
+        If blockLength = 3 Then
+            block = block + CLng(bytes(lowerBound + cursor + 2))
+        End If
+        parts(chunkIndex) = _
+            Mid$(alphabet, (block \ 262144) + 1, 1) & _
+            Mid$(alphabet, ((block \ 4096) And 63) + 1, 1) & _
+            IIf(blockLength >= 2, _
+                Mid$(alphabet, ((block \ 64) And 63) + 1, 1), "=") & _
+            IIf(blockLength = 3, _
+                Mid$(alphabet, (block And 63) + 1, 1), "=")
+        chunkIndex = chunkIndex + 1
+    Next cursor
+    Base64EncodeBytes = VBA.Join(parts, vbNullString)
+End Function
+
+Private Function Base64DecodeText(ByVal text As String) As Variant
+    Dim accumulated As Long
+    Dim bytes() As Byte
+    Dim character As String
+    Dim charIndex As Long
+    Dim cleaned As String
+    Dim digit As Long
+    Dim padCount As Long
+    Dim pendingBits As Long
+    Dim scaleValue As Long
+    Dim writeIndex As Long
+
+    ' Whitespace is tolerated the way System.Convert tolerates it; anything
+    ' else outside the alphabet, or misplaced padding, is an error.
+    For charIndex = 1 To Len(text)
+        character = Mid$(text, charIndex, 1)
+        Select Case character
+            Case " ", vbTab, vbCr, vbLf
+                ' Skip formatting whitespace.
+            Case Else
+                cleaned = cleaned & character
+        End Select
+    Next charIndex
+    If Len(cleaned) = 0 Then
+        Base64DecodeText = EmptyByteArray()
+        Exit Function
+    End If
+    If (Len(cleaned) Mod 4) <> 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "FromBase64String", _
+            "Base64 text length must be a multiple of four."
+    End If
+    ReDim bytes(0 To (Len(cleaned) \ 4) * 3 - 1)
+    For charIndex = 1 To Len(cleaned)
+        character = Mid$(cleaned, charIndex, 1)
+        If character = "=" Then
+            If charIndex <= Len(cleaned) - 2 Then
+                RaiseContractError ERROR_INVALID_ARGUMENT, _
+                    "FromBase64String", "Base64 padding is misplaced."
+            End If
+            padCount = padCount + 1
+        Else
+            If padCount > 0 Then
+                RaiseContractError ERROR_INVALID_ARGUMENT, _
+                    "FromBase64String", "Base64 padding is misplaced."
+            End If
+            digit = Base64DigitValue(character)
+            accumulated = accumulated * 64 + digit
+            pendingBits = pendingBits + 6
+            If pendingBits >= 8 Then
+                pendingBits = pendingBits - 8
+                scaleValue = CLng(2 ^ pendingBits)
+                bytes(writeIndex) = accumulated \ scaleValue
+                accumulated = accumulated Mod scaleValue
+                writeIndex = writeIndex + 1
+            End If
+        End If
+    Next charIndex
+    If writeIndex = 0 Then
+        Base64DecodeText = EmptyByteArray()
+        Exit Function
+    End If
+    ReDim Preserve bytes(0 To writeIndex - 1)
+    Base64DecodeText = bytes
+End Function
+
+Private Function Base64DigitValue(ByVal character As String) As Long
+    Dim code As Long
+
+    code = AscW(character)
+    Select Case code
+        Case 65 To 90
+            Base64DigitValue = code - 65
+        Case 97 To 122
+            Base64DigitValue = code - 71
+        Case 48 To 57
+            Base64DigitValue = code + 4
+        Case 43
+            Base64DigitValue = 62
+        Case 47
+            Base64DigitValue = 63
+        Case Else
+            RaiseContractError ERROR_INVALID_ARGUMENT, "FromBase64String", _
+                "The character '" & character & "' is not base64."
+    End Select
+End Function
+
+Private Function HexDigitValue(ByVal character As String) As Long
+    Dim code As Long
+
+    code = AscW(character)
+    Select Case code
+        Case 48 To 57
+            HexDigitValue = code - 48
+        Case 65 To 70
+            HexDigitValue = code - 55
+        Case 97 To 102
+            HexDigitValue = code - 87
+        Case Else
+            RaiseContractError ERROR_INVALID_ARGUMENT, "FromHexString", _
+                "The character '" & character & "' is not hexadecimal."
+    End Select
+End Function
+
 Private Sub RequireProcessResult(ByVal memberName As String)
     If mRole <> ROLE_PROCESS_RESULT Then
         RaiseContractError ERROR_INVALID_OPERATION, memberName, _
@@ -11956,7 +12611,7 @@ Private Function CsvEscapedField(ByVal fieldText As String) As String
     End If
     If needsQuotes Then
         CsvEscapedField = """" & _
-            Replace$(fieldText, """", """""") & """"
+            VBA.Replace$(fieldText, """", """""") & """"
     Else
         CsvEscapedField = fieldText
     End If
@@ -12140,7 +12795,7 @@ Private Function CsvReadQuotedField( _
             Exit Do
         End If
     Loop
-    CsvReadQuotedField = Replace$( _
+    CsvReadQuotedField = VBA.Replace$( _
         Mid$(text, contentStart, closeAt - contentStart), """""", """")
     position = closeAt + 1
     If position <= textLength Then
@@ -12452,6 +13107,14 @@ Private Function HttpStatusFailureMessage( _
 ) As String
     HttpStatusFailureMessage = "The HTTP request failed with status " & _
         CStr(response.StatusCode) & " (" & response.ReasonPhrase & ")."
+End Function
+
+Private Function NormalizeHttpBodyBytes(ByVal value As Variant) As Variant
+    If VarType(value) = (vbArray Or vbByte) Then
+        NormalizeHttpBodyBytes = value
+    Else
+        NormalizeHttpBodyBytes = EmptyByteArray()
+    End If
 End Function
 
 Private Function CreateHttpStatusException( _
@@ -13857,13 +14520,15 @@ Private Sub AdvanceTaskCore()
             AdvanceDelayTask
             Exit Sub
         Case TASK_HTTP_SEND
-            If Not mSource.InternalHttpPoll(mMethodName = "Bytes") Then
+            If Not mSource.InternalHttpPoll( _
+                mMethodName = "Bytes" Or mMethodName = "File") Then
                 Exit Sub
             End If
-            If mMethodName = "String" Or mMethodName = "Bytes" Then
-                ' GetStringAsync and GetByteArrayAsync fault on non-success,
-                ' mirroring System.Net.Http; GetAsync hands back the response
-                ' for the caller to inspect.
+            If mMethodName = "String" Or mMethodName = "Bytes" Or _
+                mMethodName = "File" Then
+                ' The body-consuming verbs fault on non-success, mirroring
+                ' System.Net.Http; GetAsync hands back the response for the
+                ' caller to inspect.
                 If Not mSource.IsSuccessStatusCode Then
                     Set mTaskException = CreateHttpStatusException(mSource)
                     mTaskStatus = TASK_STATUS_FAULTED
@@ -13876,6 +14541,10 @@ Private Sub AdvanceTaskCore()
                 Case "Bytes"
                     Set mTaskResult = CreateScalarResult( _
                         mSource.InternalHttpBytes)
+                Case "File"
+                    IoWriteAllBytesCore mName, NormalizeHttpBodyBytes( _
+                        mSource.InternalHttpBytes), "DownloadFileAsync"
+                    Set mTaskResult = CreateScalarResult(mName)
                 Case Else
                     Set mTaskResult = CreateObjectResult(mSource)
             End Select
@@ -17672,7 +18341,7 @@ Private Function NormalizeMemberPath( _
     Dim parts As Variant
     Dim segment As String
 
-    memberPath = Replace(memberPath, "?.", ".?")
+    memberPath = VBA.Replace(memberPath, "?.", ".?")
     memberPath = Trim$(memberPath)
     If Len(memberPath) = 0 Then
         RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
@@ -18570,7 +19239,7 @@ Private Function ResolveProcedureName(ByVal procedureName As String) As String
     If InStr(1, procedureName, "!", vbBinaryCompare) > 0 Then
         ResolveProcedureName = procedureName
     Else
-        ResolveProcedureName = "'" & Replace(ThisWorkbook.Name, "'", "''") & _
+        ResolveProcedureName = "'" & VBA.Replace(ThisWorkbook.Name, "'", "''") & _
             "'!" & procedureName
     End If
 End Function

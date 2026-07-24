@@ -62,6 +62,10 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestCsvSurface
     mCurrentTest = "TestProcessSurface"
     TestProcessSurface
+    mCurrentTest = "TestRegexSurface"
+    TestRegexSurface
+    mCurrentTest = "TestHashSurface"
+    TestHashSurface
     mCurrentTest = "TestHttpSurface"
     TestHttpSurface
     mCurrentTest = vbNullString
@@ -89,6 +93,7 @@ Private Sub TestHttpSurface()
     Dim bytes As Variant
     Dim canceledError As Long
     Dim client As ROneCOne
+    Dim downloadPath As String
     Dim ensureError As Long
     Dim notFound As ROneCOne
     Dim response As ROneCOne
@@ -123,6 +128,15 @@ Private Sub TestHttpSurface()
     mCurrentTest = "TestHttpSurface:bytes"
     bytes = client.GetByteArrayAsync("pokemon/meowth").Await
     AssertTrue "http byte array", UBound(bytes) > 100
+
+    mCurrentTest = "TestHttpSurface:downloadFile"
+    downloadPath = ThisWorkbook.Path & "\ROneCOne_Download.json"
+    AssertEqual "http download returns path", downloadPath, _
+        client.DownloadFileAsync("pokemon/pikachu", downloadPath).Await
+    AssertTrue "http download exists", ROneCOne.File.Exists(downloadPath)
+    AssertTrue "http download content", InStr(1, _
+        ROneCOne.File.ReadAllText(downloadPath), """pikachu""") > 0
+    ROneCOne.File.Delete downloadPath
 
     mCurrentTest = "TestHttpSurface:whenAll"
     Set statuses = ROneCOne.Task.WhenAll( _
@@ -1548,6 +1562,119 @@ Private Sub TestProcessSurface()
     On Error GoTo 0
     AssertEqual "process result role guarded", _
         ROneCOne.InvalidOperationError, capturedError
+End Sub
+
+Private Sub TestRegexSurface()
+    Dim expression As ROneCOne
+    Dim firstMatch As ROneCOne
+    Dim matches As ROneCOne
+    Dim patternError As Long
+    Dim pieces As ROneCOne
+
+    ' The Regex surface wraps the in-box script engine expression object
+    ' with the System.Text.RegularExpressions verbs; matches are typed
+    ' values, so the whole LINQ surface applies to Matches results.
+    mCurrentTest = "TestRegexSurface.Match"
+    Set expression = ROneCOne.Regex("(\w+)@(\w+)\.com")
+    AssertEqual "regex pattern", "(\w+)@(\w+)\.com", expression.Pattern
+    AssertTrue "regex ismatch", expression.IsMatch("write ada@x.com today")
+    AssertFalse "regex ismatch negative", expression.IsMatch("no emails")
+    Set firstMatch = expression.Match("write ada@x.com today")
+    AssertTrue "regex match success", firstMatch.Success
+    AssertEqual "regex match value", "ada@x.com", firstMatch.Value
+    AssertEqual "regex match index", 6&, firstMatch.FirstIndex
+    AssertEqual "regex match length", 9&, firstMatch.Length
+    AssertEqual "regex groups count", 3&, firstMatch.Groups.Count
+    AssertEqual "regex group zero", "ada@x.com", _
+        CStr(firstMatch.Groups.Item(0))
+    AssertEqual "regex group one", "ada", CStr(firstMatch.Groups.Item(1))
+    AssertEqual "regex group two", "x", CStr(firstMatch.Groups.Item(2))
+    Set firstMatch = expression.Match("nothing here")
+    AssertFalse "regex failed match", firstMatch.Success
+    AssertEqual "regex failed value", vbNullString, firstMatch.Value
+
+    mCurrentTest = "TestRegexSurface.MatchesReplaceSplit"
+    Set matches = expression.Matches("ada@x.com and grace@y.com")
+    AssertEqual "regex matches count", 2&, matches.Count
+    AssertEqual "regex matches second", "grace@y.com", _
+        matches.Item(1).Value
+    AssertEqual "regex replace", "x:ada and y:grace", _
+        expression.Replace("ada@x.com and grace@y.com", "$2:$1")
+    Set pieces = ROneCOne.Regex("\s*,\s*").Split("a, b ,c,,d")
+    AssertEqual "regex split count", 5&, pieces.Count
+    AssertEqual "regex split piece", "c", CStr(pieces.Item(2))
+    AssertEqual "regex split empty piece", vbNullString, _
+        CStr(pieces.Item(3))
+    Set pieces = ROneCOne.Regex("a*").Split("bab")
+    AssertEqual "regex split skips empty matches", 2&, pieces.Count
+
+    mCurrentTest = "TestRegexSurface.Flags"
+    AssertEqual "regex flags", 2&, ROneCOne.Regex("^ada$", True, True) _
+        .Matches("ADA" & vbLf & "ada").Count
+    patternError = 0
+    On Error Resume Next
+    ROneCOne.Regex "(unclosed"
+    patternError = Err.Number
+    On Error GoTo 0
+    AssertEqual "regex bad pattern raises", ROneCOne.RegexError, patternError
+End Sub
+
+Private Sub TestHashSurface()
+    Dim conversionError As Long
+    Dim decoded As Variant
+    Dim digestHex As String
+    Dim inputBytes As Variant
+
+    ' Digests run through Windows CNG and are asserted against published
+    ' vectors: FIPS 180 for the SHA family and MD5, RFC 4231 for HMAC.
+    mCurrentTest = "TestHashSurface.KnownVectors"
+    digestHex = ROneCOne.Convert.ToHexString(ROneCOne.Hash.Sha256("abc"))
+    AssertEqual "sha256 abc", _
+        "BA7816BF8F01CFEA414140DE5DAE2223" & _
+        "B00361A396177A9CB410FF61F20015AD", digestHex
+    AssertEqual "sha256 empty", _
+        "E3B0C44298FC1C149AFBF4C8996FB924" & _
+        "27AE41E4649B934CA495991B7852B855", _
+        ROneCOne.Convert.ToHexString(ROneCOne.Hash.Sha256(vbNullString))
+    AssertEqual "sha1 abc", "A9993E364706816ABA3E25717850C26C9CD0D89D", _
+        ROneCOne.Convert.ToHexString(ROneCOne.Hash.Sha1("abc"))
+    AssertEqual "md5 abc", "900150983CD24FB0D6963F7D28E17F72", _
+        ROneCOne.Convert.ToHexString(ROneCOne.Hash.Md5("abc"))
+    AssertEqual "sha512 abc length", 128&, _
+        Len(ROneCOne.Convert.ToHexString(ROneCOne.Hash.Sha512("abc")))
+    inputBytes = ROneCOne.Convert.FromHexString("616263")
+    AssertEqual "sha256 bytes equal text", digestHex, _
+        ROneCOne.Convert.ToHexString(ROneCOne.Hash.Sha256(inputBytes))
+
+    mCurrentTest = "TestHashSurface.Hmac"
+    AssertEqual "hmac sha256 rfc4231 case 2", _
+        "5BDCC146BF60754E6A042426089575C7" & _
+        "5A003F089D2739839DEC58B964EC3843", _
+        ROneCOne.Convert.ToHexString(ROneCOne.Hash.HmacSha256( _
+        "Jefe", "what do ya want for nothing?"))
+
+    mCurrentTest = "TestHashSurface.Convert"
+    AssertEqual "base64 encode", "TWFu", ROneCOne.Convert.ToBase64String( _
+        ROneCOne.Convert.FromHexString("4D616E"))
+    decoded = ROneCOne.Convert.FromBase64String("TWFuTQ==")
+    AssertEqual "base64 decode bound", 3&, CLng(UBound(decoded))
+    AssertEqual "base64 decode value", 77&, CLng(decoded(3))
+    AssertEqual "hex round trip", "4D616E", ROneCOne.Convert.ToHexString( _
+        ROneCOne.Convert.FromHexString("4d616e"))
+    conversionError = 0
+    On Error Resume Next
+    ROneCOne.Convert.FromBase64String "not base64!!"
+    conversionError = Err.Number
+    On Error GoTo 0
+    AssertEqual "base64 rejects junk", _
+        ROneCOne.InvalidArgumentError, conversionError
+    conversionError = 0
+    On Error Resume Next
+    ROneCOne.Convert.FromHexString "ABC"
+    conversionError = Err.Number
+    On Error GoTo 0
+    AssertEqual "hex rejects odd length", _
+        ROneCOne.InvalidArgumentError, conversionError
 End Sub
 
 Private Function ElapsedSecondsSince(ByVal started As Double) As Double

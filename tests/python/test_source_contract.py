@@ -566,11 +566,15 @@ class SourceContractTests(unittest.TestCase):
             'Private Const WSHELL_PROG_ID As String = "WScript.Shell"',
             self.source,
         )
+        self.assertIn(
+            'Private Const REGEX_PROG_ID As String = "VBScript.RegExp"',
+            self.source,
+        )
         const_created = re.findall(
             r"CreateObject\((\w+)\)", self.source, flags=re.IGNORECASE
         )
         self.assertEqual(
-            {"HTTP_PROG_ID", "STREAM_PROG_ID", "WSHELL_PROG_ID"},
+            {"HTTP_PROG_ID", "STREAM_PROG_ID", "WSHELL_PROG_ID", "REGEX_PROG_ID"},
             set(const_created),
         )
 
@@ -618,6 +622,34 @@ class SourceContractTests(unittest.TestCase):
             "Public Property Get StandardOutput()",
             "Public Property Get StandardError()",
             "Public Property Get ProcessError()",
+        ):
+            self.assertIn(member, self.source)
+
+    def test_regex_hash_and_convert_surfaces_are_present(self) -> None:
+        for member in (
+            "Public Function Regex(",
+            "Public Property Get Pattern()",
+            "Public Function IsMatch(",
+            "Public Function Matches(",
+            "Public Function Split(",
+            "Public Property Get Success()",
+            "Public Property Get FirstIndex()",
+            "Public Property Get Length()",
+            "Public Property Get Groups()",
+            "Public Property Get RegexError()",
+            "Public Property Get Hash()",
+            "Public Function Sha256(",
+            "Public Function Sha512(",
+            "Public Function Sha1(",
+            "Public Function Md5(",
+            "Public Function HmacSha256(",
+            "Public Property Get Convert()",
+            "Public Function ToBase64String(",
+            "Public Function FromBase64String(",
+            "Public Function ToHexString(",
+            "Public Function FromHexString(",
+            "Public Function DownloadFileAsync(",
+            'Lib "bcrypt.dll"',
         ):
             self.assertIn(member, self.source)
 
