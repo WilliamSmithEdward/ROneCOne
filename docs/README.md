@@ -3,8 +3,8 @@
 Everything here describes one product: a single importable class module,
 [`src/ROneCOne.cls`](../src/ROneCOne.cls), that gives Excel VBA generic collections, LINQ,
 delegates, tasks, typed events, structured exceptions, an in-memory data layer, an awaitable
-HTTP client, a System.Text.Json-style JSON serializer, a System.IO-style file layer, and
-regex, hashing, and encoding helpers.
+HTTP client, JSON, CSV, and XML exchange, a System.IO-style file layer, DateTimeOffset-style
+dates and durations, invariant text formatting, and regex, hashing, and encoding helpers.
 
 Choose the path that matches what you are trying to do.
 
@@ -25,7 +25,9 @@ Start here if you write workbook code and want results quickly. The
 | [JSON and typed objects](user-guide/json-and-objects.md) | Parse, serialize, and bind JSON |
 | [Files and folders](user-guide/files-and-folders.md) | Read and write files with real encodings |
 | [Processes and commands](user-guide/processes-and-commands.md) | Await command lines with captured output |
-| [Text, hashing, and encoding](user-guide/text-and-hashing.md) | Regex, digests, base64, and hex |
+| [Text, hashing, and encoding](user-guide/text-and-hashing.md) | Regex, formatting, digests, base64, and hex |
+| [Dates and times](user-guide/dates-and-times.md) | Parse ISO 8601 and epochs, convert zones, add durations |
+| [XML documents and tables](user-guide/xml-and-tables.md) | Query XML with XPath and land it in DataTables |
 | [Practical reference](user-guide/reference.md) | Find names, defaults, and limits fast |
 
 ## Exact contracts
@@ -48,6 +50,9 @@ syntax. Each technical document links back to its user guide.
 | [Processes](process.md) | Transport, output decoding, exit-code and failure contract |
 | [Regular expressions](regex.md) | Dialect, match model, split and replace semantics |
 | [Hashing and encoding](hashing.md) | Digests, vectors, base64 and hex rules |
+| [Dates, times, and durations](datetime.md) | Instant model, parsing, precision, zone behavior |
+| [Formatting, building, and identity](strings.md) | Format grammar, builder, GUID, random semantics |
+| [XML](xml.md) | Parser posture, XPath, namespaces, DataTable bridges |
 
 ## Understand the design
 

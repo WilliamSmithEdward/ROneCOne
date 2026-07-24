@@ -140,9 +140,11 @@ gains a second thread; the overlap lives inside the components.
 
 Exchange is text in and out of the data layer: the JSON reader scans a one-time byte snapshot
 under RFC 8259 strictness, the CSV parser applies RFC 4180 quote discipline with deterministic
-column inference, and both writers emit invariant-culture values from one buffer. The file
-system layer feeds them through `ADODB.Stream` with byte-order-mark discipline and
-`System.IO`-shaped failure semantics, keeping every prog-id on the source-contract whitelist.
+column inference, and the XML surface queries a secured MSXML6 document (DTDs prohibited,
+externals unresolved) whose table bridges reuse the CSV inference so all three formats agree on
+every value shape. All writers emit invariant-culture values from one buffer. The file system
+layer feeds them through `ADODB.Stream` with byte-order-mark discipline and `System.IO`-shaped
+failure semantics, keeping every prog-id on the source-contract whitelist.
 
 ## Text and cryptography slice
 
@@ -153,6 +155,17 @@ flow into the LINQ surface. Hashing calls Windows CNG (`bcrypt.dll`) directly th
 compute at native speed; `Convert` supplies base64 and hex in pure VBA. Text hashes as its
 UTF-8 bytes so digests match every other platform. The .NET Framework crypto COM classes were
 rejected after a probe found them unregistered on the target machine.
+
+Composite formatting (`Strings.Format`, `AppendFormat`) computes `G N F D X P` numeric text in
+pure VBA arithmetic, invariant on every machine, and `StringBuilder` exposes the JSON writer's
+doubling buffer as a value. Identity and randomness ride two more `Declare`s: `CoCreateGuid`
+for canonical version 4 GUIDs and `BCryptGenRandom` behind `RandomNumberGenerator`.
+
+The DateTime slice stores instants as epoch milliseconds plus a clock offset, in the
+`DateTimeOffset` model. All calendar math is exact integer arithmetic in `Double`; every local
+zone conversion is delegated per instant to kernel32 (`SystemTimeToTzSpecificLocalTime` and its
+inverse against the machine's current zone), so the runtime carries no offset table and no
+daylight saving rules of its own.
 
 ## Event slice
 
@@ -199,6 +212,9 @@ contexts are keyed to one workbook, and process-global mutable state never coupl
 | Available | File, Directory, and Path surfaces with RFC 4180 CSV exchange |
 | Available | Awaitable shell commands over polled WScript Exec |
 | Available | Regular expressions, CNG hashing, and base64 or hex encoding |
+| Available | DateTimeOffset-style instants and durations over kernel32 zone conversion |
+| Available | Invariant composite formatting, StringBuilder, GUIDs, and crypto randomness |
+| Available | XML over secured MSXML6 with DataTable bridges both ways |
 | Constrained by host | Arbitrary VBA, COM, and workbook state remain on Excel's thread |
 
 Each capability must pass its full behavioral, live-host, and performance gates before it enters

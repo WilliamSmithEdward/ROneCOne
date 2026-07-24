@@ -50,8 +50,11 @@ Tasks, typed events, and structured Try, Catch, and Finally flows.
 | Exchange JSON | Serialize and deserialize trees, tables, and your own classes, System.Text.Json style |
 | Read and write files | File, Directory, and Path surfaces with real UTF-8, System.IO style |
 | Exchange CSV | RFC 4180 round trips between DataTables and CSV text with typed columns |
+| Exchange XML | XPath queries over secured MSXML6 and typed DataTable bridges both ways |
 | Run command lines | Awaitable processes with exit codes and captured output, never a frozen Excel |
 | Match and hash text | Regular expressions, SHA and HMAC digests, and base64 or hex encoding |
+| Work with real timestamps | DateTimeOffset-style instants: ISO 8601, Unix epochs, zone conversion, durations |
+| Format and build text | String.Format-style invariant formatting, StringBuilder, GUIDs, crypto randomness |
 | Build responsive workbook logic | Typed events with predictable subscription and delivery |
 | Handle failure deliberately | Structured Try, Catch, and Finally flows |
 | Deploy without a platform project | One importable class module with no outside dependency |

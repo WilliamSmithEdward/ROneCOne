@@ -10,6 +10,33 @@ checksums for each version are on the
 
 ### Added
 
+- XML in the spirit of System.Xml: `ROneCOne.Xml.Parse(text, [selectionNamespaces])` and
+  `Load(path, [selectionNamespaces])` wrap a secured MSXML6 document (DTDs prohibited,
+  external references unresolved) and return nodes with `Name`, `Value`, `GetAttribute`,
+  `HasAttribute`, `Elements`, `SelectNodes`, `SelectSingleNode`, and `OuterXml`; failures
+  raise the typed `ROneCOne.XmlError` with the parser's line, position, and reason.
+  `Xml.DeserializeTable(text, [tableName], [rowsPath])` turns row elements into a typed
+  DataTable through the same deterministic inference CSV uses, and `table.ToXml` writes
+  round-trippable element-per-column rows in the DataTable.WriteXml shape, omitting nulls.
+  See [ADR 0022](docs/decisions/0022-xml-over-msxml6.md).
+- Invariant text formatting and identity helpers: `ROneCOne.Strings.Format` implements the
+  String.Format grammar (`{index,alignment:format}`, brace escapes, `G N F D X P` specifiers,
+  date tokens) with invariant output on every machine; `ROneCOne.StringBuilder()` builds long
+  text in linear time with `Append`, `AppendLine`, `AppendFormat`, `Length`, `Clear`, and
+  `ToString`; `ROneCOne.Guid.NewGuid` mints canonical version 4 GUIDs; and
+  `ROneCOne.RandomNumberGenerator` draws crypto-grade `GetBytes` and rejection-sampled
+  `GetInt32` from Windows CNG. Malformed templates raise the typed `ROneCOne.FormatError`.
+  See [ADR 0021](docs/decisions/0021-invariant-formatting-and-identity.md).
+- Dates and times in the spirit of DateTimeOffset: `ROneCOne.DateTime` parses full ISO 8601
+  with offsets (`Parse`/`TryParse`), reads the clock (`UtcNow`, `Now`, `Today`), converts Unix
+  epochs and VBA dates both ways, does calendar arithmetic with month-end clamping, re-views
+  instants (`ToUniversalTime`, `ToLocalTime`, `ToOffset`), compares by instant, and formats
+  round-trip ISO text or a `yyyy MM dd HH mm ss fff` token pattern. `ROneCOne.TimeSpan`
+  carries signed durations with totals, .NET-signed components, algebra, and a d.hh:mm:ss
+  text round trip. Windows performs every zone conversion per instant through kernel32; the
+  runtime hard-codes no offsets and no daylight saving rules. Text failures raise the typed
+  `ROneCOne.FormatError`. See
+  [ADR 0020](docs/decisions/0020-datetime-over-kernel32-time.md).
 - Regular expressions in the spirit of System.Text.RegularExpressions:
   `ROneCOne.Regex(pattern, [ignoreCase], [multiLine])` over the in-box script engine, with
   `IsMatch`, `Match` (a typed match carrying `Success`, `Value`, `FirstIndex`, `Length`, and a

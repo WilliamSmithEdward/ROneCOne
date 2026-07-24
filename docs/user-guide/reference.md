@@ -116,6 +116,18 @@ Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 | Hashing | `Hash.Sha256`, `Sha512`, `Sha1`, `Md5`, `HmacSha256` |
 | Byte encoding | `Convert.ToBase64String`, `FromBase64String`, `ToHexString`, `FromHexString` |
 | Download a file | `HttpClient.DownloadFileAsync` |
+| Instants with offsets | `DateTime.Parse`, `TryParse`, `UtcNow`, `Now`, `Today`, `FromLocal`, `FromUtc` |
+| Epoch numbers | `FromUnixTimeSeconds`, `FromUnixTimeMilliseconds`, `ToUnixTimeSeconds`, `ToUnixTimeMilliseconds` |
+| Instant views and text | `ToUniversalTime`, `ToLocalTime`, `ToOffset`, `ToIsoString`, `ToString(pattern)` |
+| Calendar arithmetic | `AddYears` .. `AddMilliseconds`, `Add`, `Subtract`, `CompareTo` |
+| Durations | `TimeSpan.FromDays` .. `FromMilliseconds`, `Zero`, `Parse`, `Total*`, components, `Duration`, `Negate` |
+| Invariant formatting | `Strings.Format("{0,8:N2}", ...)` with `G N F D X P` and date tokens |
+| Text building | `StringBuilder().Append`, `AppendLine`, `AppendFormat`, `Length`, `Clear`, `ToString` |
+| Identifiers | `Guid.NewGuid`, `Guid.EmptyGuid` |
+| Crypto randomness | `RandomNumberGenerator.GetBytes(count)`, `GetInt32(fromInclusive, toExclusive)` |
+| XML documents | `Xml.Parse`, `Xml.Load`, `Name`, `Value`, `GetAttribute`, `HasAttribute`, `OuterXml` |
+| XML queries | `Elements([name])`, `SelectNodes(xpath)`, `SelectSingleNode(xpath)` |
+| XML and tables | `Xml.DeserializeTable(text, [name], [rowsPath])`, `table.ToXml([root], [row])` |
 
 ## Type tokens
 
@@ -171,6 +183,8 @@ VBA reserves several names that C# uses for LINQ. ROneCOne uses the closest lega
 | `Single` | `SingleItem` |
 | Explicit delegate `Invoke` | `Run` or natural call syntax |
 | `DbConnection.Open` / `Close` | `Connect` / `Disconnect` |
+| `XElement.Attribute` | `GetAttribute` (with `HasAttribute`) |
+| `System.Random` | `RandomNumberGenerator` (the crypto source; no seed) |
 
 ## Compatibility and deployment
 
