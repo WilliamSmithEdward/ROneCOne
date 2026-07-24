@@ -126,8 +126,23 @@ it delivered no practical performance gain, and the decision is recorded in
 
 Data tables maintain primary-key hash indexes. Relations cache parent and child lookup indexes and
 invalidate them from table version changes. Provider objects remain late-bound ADO wrappers;
-task-returning calls report cooperative capability honestly, and deterministic scopes centralize
-cleanup and dual-failure aggregation.
+`OpenAsync` and the read-shaped execute verbs start natively inside ADO and their Tasks poll
+provider state, while affected-row and row-by-row verbs keep documented single-step execution.
+Deterministic scopes centralize cleanup and dual-failure aggregation.
+
+## Transport and exchange slice
+
+Three transports share one shape: start the operation on an in-process COM component, hold a
+pollable handle, and let the Task scheduler poll it cooperatively. WinHTTP carries web requests
+(`WaitForResponse(0)`), ADO carries native async database work (the `State` bitmask), and the
+Windows Script Host carries shell commands (`Exec.Status` with scratch-file capture). VBA never
+gains a second thread; the overlap lives inside the components.
+
+Exchange is text in and out of the data layer: the JSON reader scans a one-time byte snapshot
+under RFC 8259 strictness, the CSV parser applies RFC 4180 quote discipline with deterministic
+column inference, and both writers emit invariant-culture values from one buffer. The file
+system layer feeds them through `ADODB.Stream` with byte-order-mark discipline and
+`System.IO`-shaped failure semantics, keeping every prog-id on the source-contract whitelist.
 
 ## Event slice
 
@@ -168,6 +183,11 @@ contexts are keyed to one workbook, and process-global mutable state never coupl
 | Available | Cooperative Tasks with await-style coordination, cancellation, progress, and completion sources |
 | Available | Mutable, concurrent-style, immutable, and specialized generic collections |
 | Available | DataTable, DataSet, DataView, relations, readers, adapters, and providers |
+| Available | Awaitable HTTP client over polled WinHTTP |
+| Available | JSON serialization in the spirit of System.Text.Json |
+| Available | Native provider async over polled ADODB state |
+| Available | File, Directory, and Path surfaces with RFC 4180 CSV exchange |
+| Available | Awaitable shell commands over polled WScript Exec |
 | Constrained by host | Arbitrary VBA, COM, and workbook state remain on Excel's thread |
 
 Each capability must pass its full behavioral, live-host, and performance gates before it enters
