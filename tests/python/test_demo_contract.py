@@ -17,6 +17,8 @@ JSON_DEMO = DEMO_VBA / "JsonDemoUsage.bas"
 FILES_DEMO = DEMO_VBA / "FilesDemoUsage.bas"
 PROCESS_DEMO = DEMO_VBA / "ProcessDemoUsage.bas"
 TEXT_DEMO = DEMO_VBA / "TextDemoUsage.bas"
+DATETIME_DEMO = DEMO_VBA / "DateTimeDemoUsage.bas"
+XML_DEMO = DEMO_VBA / "XmlDemoUsage.bas"
 CUSTOMER = DEMO_VBA / "DemoCustomer.cls"
 COLLECTIONS_BUILDER = ROOT / "tools" / "build_collections_demo_workbook.cjs"
 CAPABILITY_BUILDER = ROOT / "tools" / "build_capability_demo_workbooks.cjs"
@@ -281,6 +283,10 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("ROneCOne.Convert.ToHexString(", source)
         self.assertIn("ROneCOne.Convert.ToBase64String(", source)
         self.assertIn("ROneCOne.Convert.FromHexString(", source)
+        self.assertIn("ROneCOne.Strings.Format(", source)
+        self.assertIn("ROneCOne.StringBuilder()", source)
+        self.assertIn("ROneCOne.Guid.NewGuid", source)
+        self.assertIn("ROneCOne.RandomNumberGenerator.GetBytes(", source)
         # The demo is self-contained: no network and no installs.
         self.assertNotIn("ROneCOne.HttpClient()", source)
         self.assertNotIn("GetAsync", source)
@@ -289,6 +295,47 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn('"text"', builder)
         self.assertIn("ROneCOne_Text_Demo.xlsx", builder)
         self.assertIn("RunROneCOneTextDemo", builder)
+
+    def test_datetime_demo_parses_instants_offline(self) -> None:
+        source = DATETIME_DEMO.read_text(encoding="utf-8")
+        builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")
+
+        self.assertIn("ROneCOne.DateTime.Parse(", source)
+        self.assertIn(".ToUniversalTime.ToIsoString", source)
+        self.assertIn("ROneCOne.DateTime.FromUnixTimeSeconds(", source)
+        self.assertIn(".ToUnixTimeSeconds", source)
+        self.assertIn(".CompareTo(", source)
+        self.assertIn(".AddMonths(1)", source)
+        self.assertIn(".Subtract(", source)
+        self.assertIn("ROneCOne.TimeSpan.FromMinutes(90)", source)
+        self.assertIn("ROneCOne.FormatError", source)
+        # The demo is self-contained: no network and no installs.
+        self.assertNotIn("ROneCOne.HttpClient()", source)
+        self.assertNotIn("http://", source)
+        self.assertNotIn("https://", source)
+        self.assertIn('"datetime"', builder)
+        self.assertIn("ROneCOne_DateTime_Demo.xlsx", builder)
+        self.assertIn("RunROneCOneDateTimeDemo", builder)
+
+    def test_xml_demo_queries_and_extracts_offline(self) -> None:
+        source = XML_DEMO.read_text(encoding="utf-8")
+        builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")
+
+        self.assertIn("ROneCOne.Xml.Parse(", source)
+        self.assertIn(".GetAttribute(", source)
+        self.assertIn('.SelectNodes("//book")', source)
+        self.assertIn(".SelectSingleNode(", source)
+        self.assertIn("xmlns:p='urn:demo'", source)
+        self.assertIn("ROneCOne.Xml.DeserializeTable(", source)
+        self.assertIn(".ToXml()", source)
+        self.assertIn("ROneCOne.XmlError", source)
+        # The demo is self-contained: no network and no installs.
+        self.assertNotIn("ROneCOne.HttpClient()", source)
+        self.assertNotIn("http://", source)
+        self.assertNotIn("https://", source)
+        self.assertIn('"xml"', builder)
+        self.assertIn("ROneCOne_Xml_Demo.xlsx", builder)
+        self.assertIn("RunROneCOneXmlDemo", builder)
 
     def test_data_demo_leads_with_typed_data_and_provider_sugar(self) -> None:
         source = DATA_DEMO.read_text(encoding="utf-8")
@@ -315,6 +362,8 @@ class DemoContractTests(unittest.TestCase):
             "ROneCOne_Files_Demo",
             "ROneCOne_Process_Demo",
             "ROneCOne_Text_Demo",
+            "ROneCOne_DateTime_Demo",
+            "ROneCOne_Xml_Demo",
         ):
             self.assertIn(name, builder)
             self.assertIn(name, packager)
@@ -361,6 +410,8 @@ class DemoContractTests(unittest.TestCase):
             FILES_DEMO,
             PROCESS_DEMO,
             TEXT_DEMO,
+            DATETIME_DEMO,
+            XML_DEMO,
             CUSTOMER,
         ):
             with self.subTest(path=path.name):

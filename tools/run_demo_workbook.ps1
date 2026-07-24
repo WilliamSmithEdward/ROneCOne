@@ -15,6 +15,10 @@ param(
     [double]$MaxProcessBenchmarkSeconds = 5,
     [ValidateRange(0.01, 60)]
     [double]$MaxTextBenchmarkSeconds = 2.5,
+    [ValidateRange(0.01, 60)]
+    [double]$MaxDateTimeBenchmarkSeconds = 2.5,
+    [ValidateRange(0.01, 60)]
+    [double]$MaxXmlBenchmarkSeconds = 2.5,
     [switch]$Worker,
     [string]$ProcessInfoPath = "demo\.working\demo-processes.json"
 )
@@ -195,6 +199,16 @@ public static class ROneCOneDemoProcess
                 $benchmarkSeconds -gt $MaxTextBenchmarkSeconds)) {
             throw "Text benchmark exceeded the $MaxTextBenchmarkSeconds-second gate."
         }
+        if ($featureName -eq "Dates + times" -and `
+            ($benchmarkSeconds -le 0 -or `
+                $benchmarkSeconds -gt $MaxDateTimeBenchmarkSeconds)) {
+            throw "DateTime benchmark exceeded the $MaxDateTimeBenchmarkSeconds-second gate."
+        }
+        if ($featureName -eq "XML" -and `
+            ($benchmarkSeconds -le 0 -or `
+                $benchmarkSeconds -gt $MaxXmlBenchmarkSeconds)) {
+            throw "XML benchmark exceeded the $MaxXmlBenchmarkSeconds-second gate."
+        }
         [pscustomobject]@{
             workbook = $resolvedWorkbook
             feature = $featureName
@@ -206,6 +220,8 @@ public static class ROneCOneDemoProcess
             files_gate_seconds = $MaxFilesBenchmarkSeconds
             process_gate_seconds = $MaxProcessBenchmarkSeconds
             text_gate_seconds = $MaxTextBenchmarkSeconds
+            datetime_gate_seconds = $MaxDateTimeBenchmarkSeconds
+            xml_gate_seconds = $MaxXmlBenchmarkSeconds
             member_dispatch_seconds = $memberDispatchSeconds
             ordering_seconds = $orderingSeconds
             ordering_gate_seconds = $MaxOrderingBenchmarkSeconds

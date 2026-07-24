@@ -2,17 +2,22 @@ Attribute VB_Name = "TextDemoUsage"
 Option Explicit
 
 ' ============================================================================
-' ROneCOne tutorial: regular expressions, hashing, and encoding
+' ROneCOne tutorial: regular expressions, formatting, hashing, and encoding
 ' ----------------------------------------------------------------------------
 ' This demo never touches the network. It matches text with real regular
-' expressions, computes the same digests every other platform produces, and
-' moves bytes between base64 and hexadecimal, all in-process.
+' expressions, formats values the same way on every machine, builds long text
+' in linear time, computes the same digests every other platform produces,
+' and moves bytes between base64 and hexadecimal, all in-process.
 '
 ' The surface mirrors what C# programmers know: ROneCOne.Regex has the
 ' System.Text.RegularExpressions verbs (IsMatch, Match, Matches, Replace,
-' Split); ROneCOne.Hash computes SHA and HMAC digests through Windows CNG;
-' and ROneCOne.Convert encodes byte arrays as base64 or hex. Text hashes as
-' its UTF-8 bytes, so a digest here equals the one from Python or sha256sum.
+' Split); ROneCOne.Strings.Format speaks the String.Format grammar with
+' invariant output; ROneCOne.StringBuilder appends without the quadratic
+' slowdown; ROneCOne.Guid and ROneCOne.RandomNumberGenerator mint ids and
+' crypto-grade randomness; ROneCOne.Hash computes SHA and HMAC digests
+' through Windows CNG; and ROneCOne.Convert encodes byte arrays as base64 or
+' hex. Text hashes as its UTF-8 bytes, so a digest here equals the one from
+' Python or sha256sum.
 '
 ' To run it: press Alt+F8, choose RunROneCOneTextDemo, and click Run.
 ' ============================================================================
@@ -65,6 +70,16 @@ Private Sub WriteTextExamples()
             ROneCOne.Convert.FromHexString("4D616E"))
         .Range("E14").Value2 = ROneCOne.Convert.ToHexString( _
             ROneCOne.Convert.FromHexString("4d616e"))
+        ' Formatting is invariant on every machine: a period decimal
+        ' separator and comma grouping, whatever the locale says.
+        .Range("E15").Value2 = ROneCOne.Strings.Format( _
+            "{0} owes {1:N2}", "Ada", 1234.5)
+        .Range("E16").Value2 = ROneCOne.Strings.Format("[{0,6:X4}]", 255)
+        .Range("E17").Value2 = ROneCOne.StringBuilder().Append("a") _
+            .AppendFormat("{0:D3}", 7).ToString
+        .Range("E18").Value2 = CStr(Len(ROneCOne.Guid.NewGuid)) & _
+            " chars, " & CStr(UBound( _
+            ROneCOne.RandomNumberGenerator.GetBytes(8)) + 1) & " bytes"
     End With
 End Sub
 

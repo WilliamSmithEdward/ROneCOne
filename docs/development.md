@@ -185,6 +185,12 @@ powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
 powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
     -InputPath demo\.working\ROneCOne_Text_Demo.xlsx `
     -OutputPath demo\ROneCOne_Text_Demo.xlsm
+powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
+    -InputPath demo\.working\ROneCOne_DateTime_Demo.xlsx `
+    -OutputPath demo\ROneCOne_DateTime_Demo.xlsm
+powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
+    -InputPath demo\.working\ROneCOne_Xml_Demo.xlsx `
+    -OutputPath demo\ROneCOne_Xml_Demo.xlsm
 .venv\Scripts\python.exe tools\package_demo_workbook.py
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
@@ -211,6 +217,12 @@ powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Text_Demo.xlsm `
     -MacroName RunROneCOneTextDemo
+powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_DateTime_Demo.xlsm `
+    -MacroName RunROneCOneDateTimeDemo
+powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Xml_Demo.xlsm `
+    -MacroName RunROneCOneXmlDemo
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Collections_Demo.xlsm `
@@ -236,6 +248,12 @@ powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Text_Demo.xlsm `
     -OutputPrefix text
+powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_DateTime_Demo.xlsm `
+    -OutputPrefix datetime
+powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Xml_Demo.xlsm `
+    -OutputPrefix xml
 ```
 
 Development-only VBIDE trust is used once during each conversion to seed an otherwise empty
@@ -243,7 +261,8 @@ Development-only VBIDE trust is used once during each conversion to seed an othe
 automation. The render pass re-evaluates the status formulas in the artifact-tool spreadsheet
 engine, which coerces `0 = ""` to true the way JavaScript does; Excel itself computes PASS and
 the run gate is authoritative, but demo examples avoid a raw `0` as an expected value so the
-review renders stay truthful. Every core capability gets a separate workbook with its own macro, examples,
+review renders stay truthful. Excel also coerces time-shaped text (such as `36:7`) into a date
+serial on write, so demo values never look like clock times either. Every core capability gets a separate workbook with its own macro, examples,
 benchmark, live execution gate, and all-sheet render pass. Renders accumulate in the ignored
 `demo\.working` directory across runs; pass `-Clean` to the first render call of a batch to drop
 every stale PNG set first.

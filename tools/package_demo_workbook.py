@@ -20,6 +20,8 @@ JSON_WORKBOOK = ROOT / "demo" / "ROneCOne_Json_Demo.xlsm"
 FILES_WORKBOOK = ROOT / "demo" / "ROneCOne_Files_Demo.xlsm"
 PROCESS_WORKBOOK = ROOT / "demo" / "ROneCOne_Process_Demo.xlsm"
 TEXT_WORKBOOK = ROOT / "demo" / "ROneCOne_Text_Demo.xlsm"
+DATETIME_WORKBOOK = ROOT / "demo" / "ROneCOne_DateTime_Demo.xlsm"
+XML_WORKBOOK = ROOT / "demo" / "ROneCOne_Xml_Demo.xlsm"
 
 
 def package_delegates(workbook_path: Path = DELEGATES_WORKBOOK) -> None:
@@ -150,6 +152,8 @@ def parse_args() -> argparse.Namespace:
             "files",
             "process",
             "text",
+            "datetime",
+            "xml",
             "all",
         ),
         default="all",
@@ -165,6 +169,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--files-workbook", type=Path, default=FILES_WORKBOOK)
     parser.add_argument("--process-workbook", type=Path, default=PROCESS_WORKBOOK)
     parser.add_argument("--text-workbook", type=Path, default=TEXT_WORKBOOK)
+    parser.add_argument("--datetime-workbook", type=Path, default=DATETIME_WORKBOOK)
+    parser.add_argument("--xml-workbook", type=Path, default=XML_WORKBOOK)
     return parser.parse_args()
 
 
@@ -240,3 +246,17 @@ if __name__ == "__main__":
             ROOT / "demo" / "vba" / "TextDemoUsage.bas",
         )
         print(arguments.text_workbook)
+    if arguments.kind in ("datetime", "all"):
+        package_capability(
+            arguments.datetime_workbook,
+            "DateTimeDemoUsage",
+            ROOT / "demo" / "vba" / "DateTimeDemoUsage.bas",
+        )
+        print(arguments.datetime_workbook)
+    if arguments.kind in ("xml", "all"):
+        package_capability(
+            arguments.xml_workbook,
+            "XmlDemoUsage",
+            ROOT / "demo" / "vba" / "XmlDemoUsage.bas",
+        )
+        print(arguments.xml_workbook)

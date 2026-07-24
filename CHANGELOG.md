@@ -10,6 +10,15 @@ checksums for each version are on the
 
 ### Added
 
+- Twelfth and thirteenth demo workbooks, plus a wider text demo.
+  `ROneCOne_DateTime_Demo.xlsm` parses ISO 8601 and epoch timestamps offline, re-views
+  instants across offsets, clamps calendar arithmetic, subtracts instants into durations,
+  shows the typed rejection of impossible dates, and gates a benchmark that round-trips
+  1,000 timestamps. `ROneCOne_Xml_Demo.xlsm` parses and queries XML offline with XPath and
+  namespaces, refuses a DOCTYPE with the typed error, lands a catalog in a typed DataTable,
+  writes it back with `ToXml`, and gates a benchmark extracting a 1,000-row table.
+  `ROneCOne_Text_Demo.xlsm` adds invariant `Strings.Format` rows, a `StringBuilder` chain,
+  and GUID plus random-byte minting.
 - XML in the spirit of System.Xml: `ROneCOne.Xml.Parse(text, [selectionNamespaces])` and
   `Load(path, [selectionNamespaces])` wrap a secured MSXML6 document (DTDs prohibited,
   external references unresolved) and return nodes with `Name`, `Value`, `GetAttribute`,
