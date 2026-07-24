@@ -179,6 +179,8 @@ Private Const ROLE_STRINGS_FACTORY As Long = 62
 Private Const ROLE_STRING_BUILDER As Long = 63
 Private Const ROLE_GUID_FACTORY As Long = 64
 Private Const ROLE_RANDOM_FACTORY As Long = 65
+Private Const ROLE_XML_FACTORY As Long = 66
+Private Const ROLE_XML_NODE As Long = 67
 
 Private Const TASK_WORK As Long = 1
 Private Const TASK_COMPLETED As Long = 2
@@ -324,6 +326,7 @@ Private Const ERROR_CSV_PARSE As Long = vbObjectError + 4114
 Private Const ERROR_PROCESS As Long = vbObjectError + 4115
 Private Const ERROR_REGEX As Long = vbObjectError + 4116
 Private Const ERROR_FORMAT As Long = vbObjectError + 4117
+Private Const ERROR_XML As Long = vbObjectError + 4118
 
 Private Const HTTP_PROG_ID As String = "WinHttp.WinHttpRequest.5.1"
 Private Const HTTP_DEFAULT_TIMEOUT_MS As Long = 30000
@@ -350,6 +353,10 @@ Private Const WSHELL_PROG_ID As String = "WScript.Shell"
 
 ' The in-box script engine's expression object backs the Regex surface.
 Private Const REGEX_PROG_ID As String = "VBScript.RegExp"
+
+' MSXML6 ships with every supported Windows and backs the Xml surface with
+' secure parser defaults: DTDs prohibited, external references unresolved.
+Private Const XML_PROG_ID As String = "MSXML2.DOMDocument.6.0"
 
 ' Windows CNG option flag: the algorithm provider operates in HMAC mode.
 Private Const BCRYPT_HMAC_FLAG As Long = 8
@@ -594,6 +601,14 @@ Attribute Value.VB_Description = "Captures an expression value, or reads a node,
                 "This value does not accept an argument."
         End If
         Value = mName
+        Exit Function
+    End If
+    If mRole = ROLE_XML_NODE Then
+        If Not IsMissing(capturedValue) Then
+            RaiseContractError ERROR_INVALID_ARGUMENT, "Value", _
+                "This value does not accept an argument."
+        End If
+        Value = mProviderObject.Text
         Exit Function
     End If
     If mRole = ROLE_NODE Or mRole = ROLE_ENTRY Then
@@ -2545,7 +2560,15 @@ Public Function DeserializeTable( _
     Optional ByVal tableName As String = vbNullString, _
     Optional ByVal arrayPath As String = "$" _
 ) As ROneCOne
-Attribute DeserializeTable.VB_Description = "Parses JSON or CSV text into a typed DataTable."
+Attribute DeserializeTable.VB_Description = "Parses JSON, CSV, or XML text into a DataTable."
+    If mRole = ROLE_XML_FACTORY Then
+        If Len(tableName) = 0 Then tableName = "Xml"
+        ' The path selects one node per row; the default takes every child
+        ' element of the document element.
+        If arrayPath = "$" Then arrayPath = "/*/*"
+        Set DeserializeTable = XmlDeserializeTable(text, tableName, arrayPath)
+        Exit Function
+    End If
     If mRole = ROLE_CSV_FACTORY Then
         If arrayPath <> "$" Then
             RaiseContractError ERROR_INVALID_ARGUMENT, "DeserializeTable", _
@@ -3219,6 +3242,119 @@ Attribute FromHexString.VB_Description = "Decodes hexadecimal text into a Byte a
     FromHexString = bytes
 End Function
 
+Public Property Get Xml() As ROneCOne
+Attribute Xml.VB_Description = "Gets the System.Xml-style document surface over MSXML6."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigureXmlFactory
+    Set Xml = factory
+End Property
+
+Public Function Load( _
+    ByVal path As String, _
+    Optional ByVal selectionNamespaces As String = vbNullString _
+) As ROneCOne
+Attribute Load.VB_Description = "Loads an XML file, honoring its declared encoding."
+    Dim dom As Object
+
+    RequireXmlFactory "Load"
+    Set dom = CreateSecuredXmlDocument(selectionNamespaces)
+    If Not dom.Load(path) Then RaiseXmlParseError dom
+    If dom.documentElement Is Nothing Then
+        RaiseXmlError "The XML has no document element."
+    End If
+    Set Load = BuildXmlNode(dom.documentElement)
+End Function
+
+Public Property Get Name() As String
+Attribute Name.VB_Description = "Gets an XML node's element name."
+    RequireXmlNode "Name"
+    Name = mProviderObject.nodeName
+End Property
+
+Public Function GetAttribute(ByVal attributeName As String) As String
+Attribute GetAttribute.VB_Description = "Gets an attribute's text, raising when it is absent."
+    Dim attributeNode As Object
+
+    RequireXmlNode "GetAttribute"
+    Set attributeNode = XmlFindAttribute(attributeName)
+    If attributeNode Is Nothing Then
+        RaiseXmlError "The attribute '" & attributeName & _
+            "' is not present on <" & mProviderObject.nodeName & ">."
+    End If
+    GetAttribute = attributeNode.Text
+End Function
+
+Public Function HasAttribute(ByVal attributeName As String) As Boolean
+Attribute HasAttribute.VB_Description = "Tests whether an attribute is present on the node."
+    RequireXmlNode "HasAttribute"
+    HasAttribute = Not XmlFindAttribute(attributeName) Is Nothing
+End Function
+
+Public Function Elements( _
+    Optional ByVal elementName As String = vbNullString _
+) As ROneCOne
+Attribute Elements.VB_Description = "Lists child elements, optionally filtered by name."
+    Dim child As Object
+    Dim results As ROneCOne
+
+    RequireXmlNode "Elements"
+    Set results = ROneCOne.ListOf(Me)
+    For Each child In mProviderObject.childNodes
+        If child.nodeType = 1 Then
+            If Len(elementName) = 0 Or child.nodeName = elementName Then
+                results.Add BuildXmlNode(child)
+            End If
+        End If
+    Next child
+    Set Elements = results
+End Function
+
+Public Function SelectNodes(ByVal xpath As String) As ROneCOne
+Attribute SelectNodes.VB_Description = "Runs an XPath query and lists every matching node."
+    Dim matched As Object
+    Dim node As Object
+    Dim results As ROneCOne
+
+    RequireXmlNode "SelectNodes"
+    Set matched = XmlRunXPath(xpath, "SelectNodes")
+    Set results = ROneCOne.ListOf(Me)
+    For Each node In matched
+        results.Add BuildXmlNode(node)
+    Next node
+    Set SelectNodes = results
+End Function
+
+Public Function SelectSingleNode(ByVal xpath As String) As ROneCOne
+Attribute SelectSingleNode.VB_Description = "Runs an XPath query; Nothing when nothing matches."
+    Dim matched As Object
+
+    RequireXmlNode "SelectSingleNode"
+    Set matched = XmlRunXPath(xpath, "SelectSingleNode")
+    If matched.Length > 0 Then
+        Set SelectSingleNode = BuildXmlNode(matched.Item(0))
+    End If
+End Function
+
+Public Property Get OuterXml() As String
+Attribute OuterXml.VB_Description = "Gets the node's serialized markup."
+    RequireXmlNode "OuterXml"
+    OuterXml = mProviderObject.xml
+End Property
+
+Public Function ToXml( _
+    Optional ByVal rootName As String = "NewDataSet", _
+    Optional ByVal rowName As String = vbNullString _
+) As String
+Attribute ToXml.VB_Description = "Serializes this DataTable to element-per-column XML."
+    If mRole <> ROLE_DATA_TABLE Then
+        RaiseContractError ERROR_INVALID_OPERATION, "ToXml", _
+            "ToXml requires a DataTable."
+    End If
+    ToXml = XmlSerializeTable(Me, rootName, rowName)
+End Function
+
 Public Property Get Strings() As ROneCOne
 Attribute Strings.VB_Description = "Gets the String.Format-style text formatting surface."
     Dim factory As ROneCOne
@@ -3382,16 +3518,23 @@ Attribute TimeSpan.VB_Description = "Gets the TimeSpan duration surface."
     Set TimeSpan = factory
 End Property
 
-Public Function Parse(ByVal text As String) As ROneCOne
-Attribute Parse.VB_Description = "Parses ISO 8601 text or a d.hh:mm:ss duration by surface."
+Public Function Parse( _
+    ByVal text As String, _
+    Optional ByVal selectionNamespaces As String = vbNullString _
+) As ROneCOne
+Attribute Parse.VB_Description = "Parses ISO 8601 text, a duration, or an XML document."
     Select Case mRole
         Case ROLE_DATETIME_FACTORY
+            RequireNoNamespaces selectionNamespaces, "Parse"
             Set Parse = ParseDateTimeText(text, "Parse")
         Case ROLE_TIMESPAN_FACTORY
+            RequireNoNamespaces selectionNamespaces, "Parse"
             Set Parse = ParseTimeSpanText(text)
+        Case ROLE_XML_FACTORY
+            Set Parse = XmlParseCore(text, selectionNamespaces)
         Case Else
             RaiseContractError ERROR_INVALID_OPERATION, "Parse", _
-                "Parse requires the DateTime or TimeSpan surface."
+                "Parse requires the DateTime, TimeSpan, or Xml surface."
     End Select
 End Function
 
@@ -8705,6 +8848,11 @@ Attribute FormatError.VB_Description = "Gets the ROneCOne text format error numb
     FormatError = ERROR_FORMAT
 End Property
 
+Public Property Get XmlError() As Long
+Attribute XmlError.VB_Description = "Gets the ROneCOne XML parse and query error number."
+    XmlError = ERROR_XML
+End Property
+
 Public Property Get UnboundParameterError() As Long
 Attribute UnboundParameterError.VB_Description = "Gets the unbound-parameter error number."
     UnboundParameterError = ERROR_UNBOUND_PARAMETER
@@ -9673,6 +9821,15 @@ End Sub
 
 Friend Sub ConfigureRandomFactory()
     mRole = ROLE_RANDOM_FACTORY
+End Sub
+
+Friend Sub ConfigureXmlFactory()
+    mRole = ROLE_XML_FACTORY
+End Sub
+
+Friend Sub ConfigureXmlNode(ByVal nodeObject As Object)
+    mRole = ROLE_XML_NODE
+    Set mProviderObject = nodeObject
 End Sub
 
 Friend Sub ConfigureProcessResult( _
@@ -13030,6 +13187,30 @@ Private Sub RequireRandomFactory(ByVal memberName As String)
     If mRole <> ROLE_RANDOM_FACTORY Then
         RaiseContractError ERROR_INVALID_OPERATION, memberName, _
             memberName & " requires the Random surface."
+    End If
+End Sub
+
+Private Sub RequireXmlFactory(ByVal memberName As String)
+    If mRole <> ROLE_XML_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires the Xml surface."
+    End If
+End Sub
+
+Private Sub RequireXmlNode(ByVal memberName As String)
+    If mRole <> ROLE_XML_NODE Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires an XML node."
+    End If
+End Sub
+
+Private Sub RequireNoNamespaces( _
+    ByVal selectionNamespaces As String, _
+    ByVal memberName As String _
+)
+    If Len(selectionNamespaces) > 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "Selection namespaces apply only to the Xml surface."
     End If
 End Sub
 
@@ -21849,6 +22030,350 @@ End Function
 Private Function HexByteText(ByVal value As Byte) As String
     HexByteText = Right$("0" & Hex$(value), 2)
 End Function
+
+' ---------------------------------------------------------------------------
+' Xml core: a secured MSXML6 document behind XPath queries, plus the bridges
+' between element-per-column XML and typed DataTables. Column typing reuses
+' the CSV inference so both exchange formats agree on every value shape.
+' ---------------------------------------------------------------------------
+
+Private Function CreateSecuredXmlDocument( _
+    ByVal selectionNamespaces As String _
+) As Object
+    Dim dom As Object
+
+    Set dom = CreateObject(XML_PROG_ID)
+    dom.async = False
+    dom.validateOnParse = False
+    dom.resolveExternals = False
+    If Len(selectionNamespaces) > 0 Then
+        On Error GoTo BadNamespaces
+        dom.setProperty "SelectionNamespaces", selectionNamespaces
+        On Error GoTo 0
+    End If
+    Set CreateSecuredXmlDocument = dom
+    Exit Function
+BadNamespaces:
+    RaiseXmlError "The selection namespaces are not valid: " & _
+        selectionNamespaces
+End Function
+
+Private Function XmlParseCore( _
+    ByVal text As String, _
+    ByVal selectionNamespaces As String _
+) As ROneCOne
+    Dim dom As Object
+
+    Set dom = CreateSecuredXmlDocument(selectionNamespaces)
+    If Not dom.loadXML(text) Then RaiseXmlParseError dom
+    If dom.documentElement Is Nothing Then
+        RaiseXmlError "The XML has no document element."
+    End If
+    Set XmlParseCore = BuildXmlNode(dom.documentElement)
+End Function
+
+Private Function BuildXmlNode(ByVal nodeObject As Object) As ROneCOne
+    Dim instance As ROneCOne
+
+    Set instance = New ROneCOne
+    instance.ConfigureXmlNode nodeObject
+    Set BuildXmlNode = instance
+End Function
+
+Private Function XmlFindAttribute(ByVal attributeName As String) As Object
+    If mProviderObject.Attributes Is Nothing Then Exit Function
+    Set XmlFindAttribute = _
+        mProviderObject.Attributes.getNamedItem(attributeName)
+End Function
+
+Private Function XmlRunXPath( _
+    ByVal xpath As String, _
+    ByVal memberName As String _
+) As Object
+    On Error GoTo Failed
+    Set XmlRunXPath = mProviderObject.SelectNodes(xpath)
+    Exit Function
+Failed:
+    RaiseXmlError memberName & " could not run the XPath query '" & _
+        xpath & "': " & Err.Description
+End Function
+
+Private Sub RaiseXmlParseError(ByVal dom As Object)
+    Dim reason As String
+
+    reason = Trim$(VBA.Replace$(CStr(dom.parseError.reason), vbCrLf, " "))
+    RaiseXmlError "The XML failed to parse at line " & _
+        CStr(dom.parseError.Line) & ", position " & _
+        CStr(dom.parseError.linepos) & ": " & reason
+End Sub
+
+Private Sub RaiseXmlError(ByVal message As String)
+    Err.Raise ERROR_XML, "ROneCOne.XmlException", message
+End Sub
+
+Private Function XmlDeserializeTable( _
+    ByVal text As String, _
+    ByVal tableName As String, _
+    ByVal rowsPath As String _
+) As ROneCOne
+    Dim cellText As String
+    Dim columnIndex As Long
+    Dim columnNames As Collection
+    Dim columnTypes() As Long
+    Dim dateValue As Date
+    Dim dom As Object
+    Dim nameKeys As Collection
+    Dim rowNode As Object
+    Dim rowNodes As Object
+    Dim rowValues() As Variant
+    Dim table As ROneCOne
+
+    Set dom = CreateSecuredXmlDocument(vbNullString)
+    If Not dom.loadXML(text) Then RaiseXmlParseError dom
+    On Error Resume Next
+    Set rowNodes = dom.SelectNodes(rowsPath)
+    If Err.Number <> 0 Then
+        On Error GoTo 0
+        RaiseXmlError "The row path '" & rowsPath & "' is not a valid XPath."
+    End If
+    On Error GoTo 0
+    If rowNodes.Length = 0 Then
+        RaiseXmlError "The row path '" & rowsPath & _
+            "' matched no row elements."
+    End If
+
+    ' Columns are the union, in first-seen order, of every row's attributes
+    ' and simple child elements; nested elements never become columns.
+    Set columnNames = New Collection
+    Set nameKeys = New Collection
+    For Each rowNode In rowNodes
+        CollectXmlColumns rowNode, columnNames, nameKeys
+    Next rowNode
+    If columnNames.Count = 0 Then
+        RaiseXmlError "The row elements have no attributes or simple " & _
+            "child elements to become columns."
+    End If
+
+    ReDim columnTypes(1 To columnNames.Count)
+    For Each rowNode In rowNodes
+        For columnIndex = 1 To columnNames.Count
+            If TryXmlCellText(rowNode, _
+                CStr(columnNames.Item(columnIndex)), cellText) Then
+                If Len(cellText) > 0 Then
+                    MergeCsvColumnType columnTypes(columnIndex), _
+                        CsvClassifyCell(cellText, False)
+                End If
+            End If
+        Next columnIndex
+    Next rowNode
+
+    Set table = ROneCOne.DataTable(tableName)
+    For columnIndex = 1 To columnNames.Count
+        If columnTypes(columnIndex) = 0 Then
+            columnTypes(columnIndex) = vbString
+        End If
+        table.Column CStr(columnNames.Item(columnIndex)), _
+            columnTypes(columnIndex)
+    Next columnIndex
+    For Each rowNode In rowNodes
+        ReDim rowValues(0 To columnNames.Count - 1)
+        For columnIndex = 1 To columnNames.Count
+            If Not TryXmlCellText(rowNode, _
+                CStr(columnNames.Item(columnIndex)), cellText) Then
+                rowValues(columnIndex - 1) = Null
+            ElseIf Len(cellText) = 0 Then
+                rowValues(columnIndex - 1) = Null
+            ElseIf columnTypes(columnIndex) = vbString Then
+                rowValues(columnIndex - 1) = cellText
+            ElseIf columnTypes(columnIndex) = vbDate Then
+                If CsvTryIsoDate(cellText, dateValue) Then
+                    rowValues(columnIndex - 1) = dateValue
+                End If
+            Else
+                rowValues(columnIndex - 1) = CsvConvertCell(cellText, _
+                    columnTypes(columnIndex))
+            End If
+        Next columnIndex
+        table.LoadRow rowValues
+    Next rowNode
+    Set XmlDeserializeTable = table
+End Function
+
+Private Sub CollectXmlColumns( _
+    ByVal rowNode As Object, _
+    ByVal columnNames As Collection, _
+    ByVal nameKeys As Collection _
+)
+    Dim attributeNode As Object
+    Dim child As Object
+
+    If Not rowNode.Attributes Is Nothing Then
+        For Each attributeNode In rowNode.Attributes
+            AddXmlColumnName CStr(attributeNode.nodeName), _
+                columnNames, nameKeys
+        Next attributeNode
+    End If
+    For Each child In rowNode.childNodes
+        If child.nodeType = 1 Then
+            If Not XmlHasElementChildren(child) Then
+                AddXmlColumnName CStr(child.nodeName), columnNames, nameKeys
+            End If
+        End If
+    Next child
+End Sub
+
+Private Sub AddXmlColumnName( _
+    ByVal columnName As String, _
+    ByVal columnNames As Collection, _
+    ByVal nameKeys As Collection _
+)
+    On Error Resume Next
+    nameKeys.Add columnNames.Count + 1, "k" & UCase$(columnName)
+    If Err.Number = 0 Then columnNames.Add columnName
+    On Error GoTo 0
+End Sub
+
+Private Function XmlHasElementChildren(ByVal node As Object) As Boolean
+    Dim child As Object
+
+    For Each child In node.childNodes
+        If child.nodeType = 1 Then
+            XmlHasElementChildren = True
+            Exit Function
+        End If
+    Next child
+End Function
+
+Private Function TryXmlCellText( _
+    ByVal rowNode As Object, _
+    ByVal columnName As String, _
+    ByRef cellText As String _
+) As Boolean
+    Dim attributeNode As Object
+    Dim child As Object
+
+    ' A simple child element wins over an attribute of the same name.
+    For Each child In rowNode.childNodes
+        If child.nodeType = 1 Then
+            If child.nodeName = columnName And _
+                Not XmlHasElementChildren(child) Then
+                cellText = child.Text
+                TryXmlCellText = True
+                Exit Function
+            End If
+        End If
+    Next child
+    If Not rowNode.Attributes Is Nothing Then
+        Set attributeNode = rowNode.Attributes.getNamedItem(columnName)
+        If Not attributeNode Is Nothing Then
+            cellText = attributeNode.Text
+            TryXmlCellText = True
+            Exit Function
+        End If
+    End If
+End Function
+
+Private Function XmlSerializeTable( _
+    ByVal table As ROneCOne, _
+    ByVal rootName As String, _
+    ByVal rowName As String _
+) As String
+    Dim builder As JsonTextBuilder
+    Dim cells As Collection
+    Dim columnIndex As Long
+    Dim columnNames() As String
+    Dim columns As Collection
+    Dim row As ROneCOne
+    Dim wrapped As ROneCOne
+
+    If Len(rowName) = 0 Then rowName = table.TableName
+    If Len(rowName) = 0 Then rowName = "Row"
+    RequireXmlElementName rootName
+    RequireXmlElementName rowName
+    Set columns = table.InternalDataColumns
+    If columns.Count = 0 Then
+        RaiseXmlError "XML serialization requires at least one column."
+    End If
+    ReDim columnNames(1 To columns.Count)
+    For columnIndex = 1 To columns.Count
+        columnNames(columnIndex) = columns.Item(columnIndex).ColumnName
+        RequireXmlElementName columnNames(columnIndex)
+    Next columnIndex
+    JsonBuilderInit builder, 512
+    JsonBuilderAppend builder, "<" & rootName & ">"
+    For Each row In table.InternalDataRows
+        If row.RowState <> "Deleted" Then
+            JsonBuilderAppend builder, "<" & rowName & ">"
+            Set cells = row.InternalDataRows
+            For columnIndex = 1 To cells.Count
+                Set wrapped = cells.Item(columnIndex)
+                ' A database null omits its element, like DataTable.WriteXml.
+                If Not IsNullDataValue(wrapped) Then
+                    JsonBuilderAppend builder, _
+                        "<" & columnNames(columnIndex) & ">"
+                    JsonBuilderAppend builder, _
+                        XmlCellText(JsonUnwrapValue(wrapped))
+                    JsonBuilderAppend builder, _
+                        "</" & columnNames(columnIndex) & ">"
+                End If
+            Next columnIndex
+            JsonBuilderAppend builder, "</" & rowName & ">"
+        End If
+    Next row
+    JsonBuilderAppend builder, "</" & rootName & ">"
+    XmlSerializeTable = JsonBuilderText(builder)
+End Function
+
+Private Function XmlCellText(ByVal value As Variant) As String
+    Dim clockDate As Date
+    Dim msOfDay As Long
+
+    Select Case VarType(value)
+        Case vbString
+            XmlCellText = XmlEscapeText(CStr(value))
+        Case vbBoolean
+            If value Then
+                XmlCellText = "true"
+            Else
+                XmlCellText = "false"
+            End If
+        Case vbByte, vbInteger, vbLong, vbLongLong
+            XmlCellText = CStr(value)
+        Case vbSingle, vbDouble, vbCurrency, vbDecimal
+            XmlCellText = JsonNumberText(CDbl(value))
+        Case vbDate
+            MsToClockParts DateToMs(CDate(value)), clockDate, msOfDay
+            XmlCellText = ClockStampText(clockDate, msOfDay)
+        Case Else
+            RaiseXmlError "XML cells must be scalar values; '" & _
+                TypeName(value) & "' is not writable."
+    End Select
+End Function
+
+Private Function XmlEscapeText(ByVal text As String) As String
+    XmlEscapeText = VBA.Replace$(text, "&", "&amp;")
+    XmlEscapeText = VBA.Replace$(XmlEscapeText, "<", "&lt;")
+    XmlEscapeText = VBA.Replace$(XmlEscapeText, ">", "&gt;")
+End Function
+
+Private Sub RequireXmlElementName(ByVal elementName As String)
+    Dim index As Long
+    Dim probe As String
+
+    If Len(elementName) = 0 Then
+        RaiseXmlError "An XML element name cannot be empty."
+    End If
+    For index = 1 To Len(elementName)
+        probe = Mid$(elementName, index, 1)
+        If Not ((probe >= "A" And probe <= "Z") Or _
+            (probe >= "a" And probe <= "z") Or probe = "_" Or _
+            (index > 1 And ((probe >= "0" And probe <= "9") Or _
+            probe = "-" Or probe = "."))) Then
+            RaiseXmlError "The name '" & elementName & _
+                "' cannot be an XML element name."
+        End If
+    Next index
+End Sub
 
 Private Function IsDateTimeInstance(ByVal value As Variant) As Boolean
     Dim runtimeValue As ROneCOne

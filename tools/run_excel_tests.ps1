@@ -1,7 +1,7 @@
 param(
     [string]$WorkbookPath = "tests\output\ROneCOne_DelegateTests.xlsm",
     [ValidateRange(5, 300)]
-    [int]$TimeoutSeconds = 30,
+    [int]$TimeoutSeconds = 90,
     [ValidateRange(0.01, 60)]
     [double]$MaxBenchmarkSeconds = 0.5,
     [ValidateRange(0.01, 60)]

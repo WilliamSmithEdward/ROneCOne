@@ -70,6 +70,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestDateTimeSurface
     mCurrentTest = "TestStringsSurface"
     TestStringsSurface
+    mCurrentTest = "TestXmlSurface"
+    TestXmlSurface
     mCurrentTest = "TestHttpSurface"
     TestHttpSurface
     mCurrentTest = vbNullString
@@ -1972,6 +1974,125 @@ Private Sub TestStringsSurface()
     On Error GoTo 0
     AssertEqual "random empty range raises", _
         ROneCOne.InvalidArgumentError, missError
+End Sub
+
+Private Sub TestXmlSurface()
+    Dim doc As ROneCOne
+    Dim firstBook As ROneCOne
+    Dim missError As Long
+    Dim node As ROneCOne
+    Dim table As ROneCOne
+    Dim xmlPath As String
+    Dim xmlText As String
+
+    ' The Xml surface rides MSXML6 with its secure defaults intact: DTDs
+    ' stay prohibited and external references are never resolved.
+    mCurrentTest = "TestXmlSurface.Parse"
+    xmlText = "<catalog created=""2026-01-05""><book id=""1"">" & _
+        "<title>First</title><price>10.5</price></book>" & _
+        "<book id=""2""><title>Second &amp; Third</title></book></catalog>"
+    Set doc = ROneCOne.Xml.Parse(xmlText)
+    AssertEqual "xml root name", "catalog", doc.Name
+    AssertEqual "xml root attribute", "2026-01-05", _
+        doc.GetAttribute("created")
+    AssertTrue "xml has attribute", doc.HasAttribute("created")
+    AssertFalse "xml missing attribute", doc.HasAttribute("missing")
+    AssertEqual "xml elements count", 2&, doc.Elements.Count
+    AssertEqual "xml elements filtered", 2&, doc.Elements("book").Count
+    AssertEqual "xml select nodes", 2&, doc.SelectNodes("//book").Count
+    Set node = doc.SelectSingleNode("//book[@id='2']/title")
+    AssertEqual "xml predicate text", "Second & Third", node.Value
+    AssertTrue "xml select miss is nothing", _
+        doc.SelectSingleNode("//missing") Is Nothing
+    Set firstBook = doc.Elements("book").Item(0)
+    AssertEqual "xml child attribute", "1", firstBook.GetAttribute("id")
+    AssertTrue "xml outer xml", _
+        InStr(1, firstBook.OuterXml, "<title>First</title>") > 0
+    AssertEqual "xml value concatenates", "First10.5", firstBook.Value
+
+    mCurrentTest = "TestXmlSurface.Namespaces"
+    Set doc = ROneCOne.Xml.Parse( _
+        "<root xmlns=""urn:probe""><item/><item/></root>", _
+        "xmlns:p='urn:probe'")
+    AssertEqual "xml plain xpath misses namespace", 0&, _
+        doc.SelectNodes("//item").Count
+    AssertEqual "xml mapped xpath hits", 2&, _
+        doc.SelectNodes("//p:item").Count
+
+    mCurrentTest = "TestXmlSurface.Failures"
+    missError = 0
+    On Error Resume Next
+    ROneCOne.Xml.Parse "<a><b></a>"
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "xml bad markup raises", ROneCOne.XmlError, missError
+    missError = 0
+    On Error Resume Next
+    ROneCOne.Xml.Parse "<!DOCTYPE a [<!ENTITY e ""x"">]><a>&e;</a>"
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "xml dtd blocked", ROneCOne.XmlError, missError
+    Set doc = ROneCOne.Xml.Parse("<a><b>1</b></a>")
+    missError = 0
+    On Error Resume Next
+    doc.SelectNodes "///bad["
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "xml bad xpath raises", ROneCOne.XmlError, missError
+    missError = 0
+    On Error Resume Next
+    doc.GetAttribute "missing"
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "xml absent attribute raises", ROneCOne.XmlError, missError
+
+    mCurrentTest = "TestXmlSurface.Files"
+    xmlPath = CStr(ROneCOne.Path.Combine( _
+        CStr(ROneCOne.Path.GetTempPath), "ROneCOne_Xml_Test.xml"))
+    ROneCOne.File.WriteAllText xmlPath, _
+        "<?xml version=""1.0"" encoding=""utf-8""?><data><row>1</row></data>"
+    Set doc = ROneCOne.Xml.Load(xmlPath)
+    AssertEqual "xml file root", "data", doc.Name
+    ROneCOne.File.Delete xmlPath
+    missError = 0
+    On Error Resume Next
+    ROneCOne.Xml.Load xmlPath
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "xml missing file raises", ROneCOne.XmlError, missError
+
+    mCurrentTest = "TestXmlSurface.Tables"
+    Set table = ROneCOne.Xml.DeserializeTable(xmlText, "Books", "//book")
+    AssertEqual "xml table name", "Books", table.TableName
+    AssertEqual "xml table rows", 2&, table.Rows.Count
+    AssertEqual "xml table columns", 3&, table.Columns.Count
+    AssertEqual "xml typed id", 1&, table.Rows.Item(0).Item("id")
+    AssertEqual "xml typed price", 10.5, table.Rows.Item(0).Item("price")
+    AssertEqual "xml text column", "Second & Third", _
+        table.Rows.Item(1).Item("title")
+    AssertTrue "xml missing cell is null", _
+        IsNull(table.Rows.Item(1).Item("price"))
+    Set table = ROneCOne.DataTable("Pets")
+    table.Column "name", vbString
+    table.Column "age", vbLong
+    table.LoadRow Array("Rex", 4)
+    table.LoadRow Array("Mia & Co <3", Null)
+    AssertEqual "xml serialize", "<NewDataSet><Pets><name>Rex</name>" & _
+        "<age>4</age></Pets><Pets><name>Mia &amp; Co &lt;3</name>" & _
+        "</Pets></NewDataSet>", table.ToXml
+    Set table = ROneCOne.Xml.DeserializeTable(table.ToXml, "Round", "//Pets")
+    AssertEqual "xml round trip rows", 2&, table.Rows.Count
+    AssertEqual "xml round trip typed age", 4&, _
+        table.Rows.Item(0).Item("age")
+
+    mCurrentTest = "TestXmlSurface.Guards"
+    missError = 0
+    On Error Resume Next
+    ROneCOne.Xml.Elements
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "xml node role guard", _
+        ROneCOne.InvalidOperationError, missError
 End Sub
 
 Private Function ElapsedSecondsSince(ByVal started As Double) As Double

@@ -570,11 +570,21 @@ class SourceContractTests(unittest.TestCase):
             'Private Const REGEX_PROG_ID As String = "VBScript.RegExp"',
             self.source,
         )
+        self.assertIn(
+            'Private Const XML_PROG_ID As String = "MSXML2.DOMDocument.6.0"',
+            self.source,
+        )
         const_created = re.findall(
             r"CreateObject\((\w+)\)", self.source, flags=re.IGNORECASE
         )
         self.assertEqual(
-            {"HTTP_PROG_ID", "STREAM_PROG_ID", "WSHELL_PROG_ID", "REGEX_PROG_ID"},
+            {
+                "HTTP_PROG_ID",
+                "STREAM_PROG_ID",
+                "WSHELL_PROG_ID",
+                "REGEX_PROG_ID",
+                "XML_PROG_ID",
+            },
             set(const_created),
         )
 
@@ -717,6 +727,27 @@ class SourceContractTests(unittest.TestCase):
             self.source,
             re.compile(r"(?<![.\w])Format\$\(", re.IGNORECASE),
         )
+
+    def test_xml_surface_is_present_and_secured(self) -> None:
+        for member in (
+            "Public Property Get Xml()",
+            "Public Function Load(",
+            "Public Property Get Name()",
+            "Public Function GetAttribute(",
+            "Public Function HasAttribute(",
+            "Public Function Elements(",
+            "Public Function SelectNodes(",
+            "Public Function SelectSingleNode(",
+            "Public Property Get OuterXml()",
+            "Public Function ToXml(",
+            "Public Property Get XmlError()",
+            '"SelectionNamespaces"',
+        ):
+            self.assertIn(member, self.source)
+        # The parser must keep MSXML6's secure posture: DTDs stay prohibited
+        # (never re-enabled) and external references are never resolved.
+        self.assertIn(".resolveExternals = False", self.source)
+        self.assertNotIn('"ProhibitDTD", False', self.source)
 
     def test_json_surface_is_present_and_runtime_native(self) -> None:
         for member in (
