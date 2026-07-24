@@ -10,6 +10,11 @@ checksums for each version are on the
 
 ### Added
 
+- Fourteenth demo workbook. `ROneCOne_Zip_Demo.xlsm` builds a small tree, zips it, reads an
+  entry without extracting, proves interop both ways against PowerShell (opening a
+  Compress-Archive deflate archive and handing its own output to Expand-Archive), shows the
+  directory-traversal guard refusing a hostile entry, and gates a benchmark that inflates a
+  1,000-line archived file. All offline.
 - Zip archives over a pure-VBA engine, in the spirit of System.IO.Compression:
   `ROneCOne.ZipFile.OpenRead` lists and reads entries (`Entries`, `GetEntry`, and per-entry
   `FullName`, `Name`, `Length`, `CompressedLength`, `ReadAllText`, `ReadAllBytes`,

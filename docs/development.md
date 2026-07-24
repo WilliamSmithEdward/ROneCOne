@@ -191,6 +191,9 @@ powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
 powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
     -InputPath demo\.working\ROneCOne_Xml_Demo.xlsx `
     -OutputPath demo\ROneCOne_Xml_Demo.xlsm
+powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
+    -InputPath demo\.working\ROneCOne_Zip_Demo.xlsx `
+    -OutputPath demo\ROneCOne_Zip_Demo.xlsm
 .venv\Scripts\python.exe tools\package_demo_workbook.py
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
@@ -229,6 +232,9 @@ powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Xml_Demo.xlsm `
     -MacroName RunROneCOneXmlDemo
+powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Zip_Demo.xlsm `
+    -MacroName RunROneCOneZipDemo
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Collections_Demo.xlsm `
@@ -266,6 +272,9 @@ powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Xml_Demo.xlsm `
     -OutputPrefix xml
+powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Zip_Demo.xlsm `
+    -OutputPrefix zip
 ```
 
 Development-only VBIDE trust is used once during each conversion to seed an otherwise empty

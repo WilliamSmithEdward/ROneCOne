@@ -22,6 +22,7 @@ PROCESS_WORKBOOK = ROOT / "demo" / "ROneCOne_Process_Demo.xlsm"
 TEXT_WORKBOOK = ROOT / "demo" / "ROneCOne_Text_Demo.xlsm"
 DATETIME_WORKBOOK = ROOT / "demo" / "ROneCOne_DateTime_Demo.xlsm"
 XML_WORKBOOK = ROOT / "demo" / "ROneCOne_Xml_Demo.xlsm"
+ZIP_WORKBOOK = ROOT / "demo" / "ROneCOne_Zip_Demo.xlsm"
 
 
 def package_delegates(workbook_path: Path = DELEGATES_WORKBOOK) -> None:
@@ -154,6 +155,7 @@ def parse_args() -> argparse.Namespace:
             "text",
             "datetime",
             "xml",
+            "zip",
             "all",
         ),
         default="all",
@@ -171,6 +173,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--text-workbook", type=Path, default=TEXT_WORKBOOK)
     parser.add_argument("--datetime-workbook", type=Path, default=DATETIME_WORKBOOK)
     parser.add_argument("--xml-workbook", type=Path, default=XML_WORKBOOK)
+    parser.add_argument("--zip-workbook", type=Path, default=ZIP_WORKBOOK)
     return parser.parse_args()
 
 
@@ -260,3 +263,10 @@ if __name__ == "__main__":
             ROOT / "demo" / "vba" / "XmlDemoUsage.bas",
         )
         print(arguments.xml_workbook)
+    if arguments.kind in ("zip", "all"):
+        package_capability(
+            arguments.zip_workbook,
+            "ZipDemoUsage",
+            ROOT / "demo" / "vba" / "ZipDemoUsage.bas",
+        )
+        print(arguments.zip_workbook)

@@ -685,6 +685,73 @@ const capabilities = [
       ],
     ],
   },
+  {
+    key: "zip",
+    title: "ROneCOne Zip",
+    subtitle: "Open and make zip archives, pure VBA, offline",
+    macro: "RunROneCOneZipDemo",
+    feature: "Zip",
+    output: "ROneCOne_Zip_Demo.xlsx",
+    benchmark: "Inflate a 1,000-line archived file",
+    benchmarkResult: "Summed value",
+    architecture: [
+      ["Single-file core", "ROneCOne.cls", "One import", "ENFORCED", 1, 0],
+      ["No COM component", "Pure-VBA engine", "No reference, add-in, or Shell automation", "ENFORCED", 1, 0],
+      ["Verified reads", "RFC 1951 inflate + CRC-32", "Every entry is checked against its own CRC", "ENFORCED", 1, 0],
+      ["Safe extraction", "Directory-traversal guard", "Zip-slip names are refused before any write", "ENFORCED", 1, 0],
+      ["Interoperable", "Compress-Archive both ways", "Reads .NET deflate, writes what Expand-Archive reads", "ENFORCED", 1, 0],
+    ],
+    examples: [
+      [
+        "Open an archive and count entries",
+        "ZipFile.OpenRead(path).Entries",
+        "Set archive = ROneCOne.ZipFile.OpenRead(madePath)\narchive.Entries.Count",
+        2,
+      ],
+      [
+        "Read an entry without extracting",
+        "entry.Open() into a reader",
+        "archive.GetEntry(\"readme.txt\").ReadAllText()",
+        "read me first",
+      ],
+      [
+        "An entry knows its size",
+        "entry.Length",
+        "archive.GetEntry(\"sub/data.csv\").Length",
+        15,
+      ],
+      [
+        "Stored entries are uncompressed",
+        "entry.CompressedLength = entry.Length",
+        "archive.GetEntry(\"sub/data.csv\").CompressedLength = _\n    archive.GetEntry(\"sub/data.csv\").Length",
+        true,
+      ],
+      [
+        "PowerShell zips, ROneCOne opens",
+        "Compress-Archive then OpenRead",
+        "ROneCOne.ZipFile.OpenRead(psMadePath).Entries.Count >= 2",
+        true,
+      ],
+      [
+        "And inflates its DEFLATE",
+        "RFC 1951 inflate",
+        "InStr(1, ROneCOne.ZipFile.OpenRead(psMadePath) _\n    .GetEntry(\"readme.txt\").ReadAllText(), \"read me first\") > 0",
+        true,
+      ],
+      [
+        "ROneCOne writes, PowerShell reads",
+        "CreateFromDirectory then Expand-Archive",
+        "ROneCOne.File.ReadAllText(ps_out & \"\\readme.txt\")",
+        "read me first",
+      ],
+      [
+        "Zip-slip names are refused",
+        "directory-traversal guard",
+        "On Error Resume Next\nROneCOne.ZipFile.ExtractToDirectory hostilePath, target\nIf Err.Number = ROneCOne.ZipError Then ...",
+        "traversal refused",
+      ],
+    ],
+  },
 ];
 
 function titleBand(sheet, title, subtitle, endColumn) {

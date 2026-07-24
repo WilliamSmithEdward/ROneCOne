@@ -19,6 +19,7 @@ PROCESS_DEMO = DEMO_VBA / "ProcessDemoUsage.bas"
 TEXT_DEMO = DEMO_VBA / "TextDemoUsage.bas"
 DATETIME_DEMO = DEMO_VBA / "DateTimeDemoUsage.bas"
 XML_DEMO = DEMO_VBA / "XmlDemoUsage.bas"
+ZIP_DEMO = DEMO_VBA / "ZipDemoUsage.bas"
 CUSTOMER = DEMO_VBA / "DemoCustomer.cls"
 COLLECTIONS_BUILDER = ROOT / "tools" / "build_collections_demo_workbook.cjs"
 CAPABILITY_BUILDER = ROOT / "tools" / "build_capability_demo_workbooks.cjs"
@@ -337,6 +338,26 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("ROneCOne_Xml_Demo.xlsx", builder)
         self.assertIn("RunROneCOneXmlDemo", builder)
 
+    def test_zip_demo_round_trips_and_interops_offline(self) -> None:
+        source = ZIP_DEMO.read_text(encoding="utf-8")
+        builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")
+
+        self.assertIn("ROneCOne.ZipFile.CreateFromDirectory", source)
+        self.assertIn("ROneCOne.ZipFile.OpenRead(", source)
+        self.assertIn(".GetEntry(", source)
+        self.assertIn(".ReadAllText()", source)
+        self.assertIn("ROneCOne.ZipFile.ExtractToDirectory", source)
+        self.assertIn("ROneCOne.ZipError", source)
+        self.assertIn("Compress-Archive", source)
+        self.assertIn("Expand-Archive", source)
+        # The network is never touched; PowerShell runs locally.
+        self.assertNotIn("ROneCOne.HttpClient()", source)
+        self.assertNotIn("http://", source)
+        self.assertNotIn("https://", source)
+        self.assertIn('"zip"', builder)
+        self.assertIn("ROneCOne_Zip_Demo.xlsx", builder)
+        self.assertIn("RunROneCOneZipDemo", builder)
+
     def test_data_demo_leads_with_typed_data_and_provider_sugar(self) -> None:
         source = DATA_DEMO.read_text(encoding="utf-8")
 
@@ -364,6 +385,7 @@ class DemoContractTests(unittest.TestCase):
             "ROneCOne_Text_Demo",
             "ROneCOne_DateTime_Demo",
             "ROneCOne_Xml_Demo",
+            "ROneCOne_Zip_Demo",
         ):
             self.assertIn(name, builder)
             self.assertIn(name, packager)
@@ -412,6 +434,7 @@ class DemoContractTests(unittest.TestCase):
             TEXT_DEMO,
             DATETIME_DEMO,
             XML_DEMO,
+            ZIP_DEMO,
             CUSTOMER,
         ):
             with self.subTest(path=path.name):

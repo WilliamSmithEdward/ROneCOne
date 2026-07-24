@@ -19,6 +19,8 @@ param(
     [double]$MaxDateTimeBenchmarkSeconds = 2.5,
     [ValidateRange(0.01, 60)]
     [double]$MaxXmlBenchmarkSeconds = 2.5,
+    [ValidateRange(0.01, 60)]
+    [double]$MaxZipBenchmarkSeconds = 5,
     [switch]$Worker,
     [string]$ProcessInfoPath = "demo\.working\demo-processes.json"
 )
@@ -209,6 +211,11 @@ public static class ROneCOneDemoProcess
                 $benchmarkSeconds -gt $MaxXmlBenchmarkSeconds)) {
             throw "XML benchmark exceeded the $MaxXmlBenchmarkSeconds-second gate."
         }
+        if ($featureName -eq "Zip" -and `
+            ($benchmarkSeconds -le 0 -or `
+                $benchmarkSeconds -gt $MaxZipBenchmarkSeconds)) {
+            throw "Zip benchmark exceeded the $MaxZipBenchmarkSeconds-second gate."
+        }
         [pscustomobject]@{
             workbook = $resolvedWorkbook
             feature = $featureName
@@ -222,6 +229,7 @@ public static class ROneCOneDemoProcess
             text_gate_seconds = $MaxTextBenchmarkSeconds
             datetime_gate_seconds = $MaxDateTimeBenchmarkSeconds
             xml_gate_seconds = $MaxXmlBenchmarkSeconds
+            zip_gate_seconds = $MaxZipBenchmarkSeconds
             member_dispatch_seconds = $memberDispatchSeconds
             ordering_seconds = $orderingSeconds
             ordering_gate_seconds = $MaxOrderingBenchmarkSeconds
