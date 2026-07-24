@@ -183,6 +183,7 @@ Private Const ROLE_XML_FACTORY As Long = 66
 Private Const ROLE_XML_NODE As Long = 67
 Private Const ROLE_URI_FACTORY As Long = 68
 Private Const ROLE_WEB_UTILITY_FACTORY As Long = 69
+Private Const ROLE_LOGGER As Long = 70
 
 Private Const TASK_WORK As Long = 1
 Private Const TASK_COMPLETED As Long = 2
@@ -366,6 +367,14 @@ Private Const BCRYPT_HMAC_FLAG As Long = 8
 ' Windows CNG option flag: draw from the system-preferred random provider.
 Private Const BCRYPT_USE_SYSTEM_RNG As Long = 2
 
+' Logging severities in the Microsoft.Extensions.Logging order.
+Private Const LOG_LEVEL_TRACE As Long = 0
+Private Const LOG_LEVEL_DEBUG As Long = 1
+Private Const LOG_LEVEL_INFORMATION As Long = 2
+Private Const LOG_LEVEL_WARNING As Long = 3
+Private Const LOG_LEVEL_ERROR As Long = 4
+Private Const LOG_LEVEL_CRITICAL As Long = 5
+
 ' The DateTime surface stores instants as milliseconds since the Unix epoch
 ' 1970-01-01T00:00:00Z; the bounds pin the supported clock years 0100-9999.
 Private Const MS_PER_DAY As Double = 86400000#
@@ -522,6 +531,7 @@ Private mDateTimeMs As Double
 Private mDateTimeOffsetMinutes As Long
 Private mTimeSpanMs As Double
 Private mStringBuilder As JsonTextBuilder
+Private mLoggerMinimumLevel As Long
 Private mHttpBaseAddress As String
 Private mHttpTimeoutMs As Long
 Private mHttpHeaderNames As Collection
@@ -3251,6 +3261,112 @@ Attribute FromHexString.VB_Description = "Decodes hexadecimal text into a Byte a
     Next index
     FromHexString = bytes
 End Function
+
+Public Function Logger( _
+    ByVal filePath As String, _
+    Optional ByVal minimumLevel As String = "Information" _
+) As ROneCOne
+Attribute Logger.VB_Description = "Creates a file logger shaped after M.E.Logging."
+    Dim instance As ROneCOne
+
+    If Len(Trim$(filePath)) = 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "Logger", _
+            "The log file path cannot be empty."
+    End If
+    Set instance = New ROneCOne
+    instance.ConfigureLogger filePath, _
+        LoggerLevelValue(minimumLevel, "Logger")
+    Set Logger = instance
+End Function
+
+Public Sub LogTrace(ByVal template As String, ParamArray values() As Variant)
+Attribute LogTrace.VB_Description = "Writes a Trace line when the level is enabled."
+    Dim argumentValues() As Variant
+
+    RequireLogger "LogTrace"
+    argumentValues = values
+    LoggerWrite LOG_LEVEL_TRACE, template, argumentValues
+End Sub
+
+Public Sub LogDebug(ByVal template As String, ParamArray values() As Variant)
+Attribute LogDebug.VB_Description = "Writes a Debug line when the level is enabled."
+    Dim argumentValues() As Variant
+
+    RequireLogger "LogDebug"
+    argumentValues = values
+    LoggerWrite LOG_LEVEL_DEBUG, template, argumentValues
+End Sub
+
+Public Sub LogInformation( _
+    ByVal template As String, _
+    ParamArray values() As Variant _
+)
+Attribute LogInformation.VB_Description = "Writes an Information line when enabled."
+    Dim argumentValues() As Variant
+
+    RequireLogger "LogInformation"
+    argumentValues = values
+    LoggerWrite LOG_LEVEL_INFORMATION, template, argumentValues
+End Sub
+
+Public Sub LogWarning( _
+    ByVal template As String, _
+    ParamArray values() As Variant _
+)
+Attribute LogWarning.VB_Description = "Writes a Warning line when the level is enabled."
+    Dim argumentValues() As Variant
+
+    RequireLogger "LogWarning"
+    argumentValues = values
+    LoggerWrite LOG_LEVEL_WARNING, template, argumentValues
+End Sub
+
+Public Sub LogError(ByVal template As String, ParamArray values() As Variant)
+Attribute LogError.VB_Description = "Writes an Error line when the level is enabled."
+    Dim argumentValues() As Variant
+
+    RequireLogger "LogError"
+    argumentValues = values
+    LoggerWrite LOG_LEVEL_ERROR, template, argumentValues
+End Sub
+
+Public Sub LogCritical( _
+    ByVal template As String, _
+    ParamArray values() As Variant _
+)
+Attribute LogCritical.VB_Description = "Writes a Critical line; Critical is never filtered."
+    Dim argumentValues() As Variant
+
+    RequireLogger "LogCritical"
+    argumentValues = values
+    LoggerWrite LOG_LEVEL_CRITICAL, template, argumentValues
+End Sub
+
+Public Function IsEnabled(ByVal levelName As String) As Boolean
+Attribute IsEnabled.VB_Description = "Tests whether a severity level would be written."
+    RequireLogger "IsEnabled"
+    IsEnabled = LoggerLevelValue(levelName, "IsEnabled") >= _
+        mLoggerMinimumLevel
+End Function
+
+Public Property Get MinimumLevel() As String
+Attribute MinimumLevel.VB_Description = "Gets the logger's minimum severity level name."
+    RequireLogger "MinimumLevel"
+    Select Case mLoggerMinimumLevel
+        Case LOG_LEVEL_TRACE
+            MinimumLevel = "Trace"
+        Case LOG_LEVEL_DEBUG
+            MinimumLevel = "Debug"
+        Case LOG_LEVEL_INFORMATION
+            MinimumLevel = "Information"
+        Case LOG_LEVEL_WARNING
+            MinimumLevel = "Warning"
+        Case LOG_LEVEL_ERROR
+            MinimumLevel = "Error"
+        Case Else
+            MinimumLevel = "Critical"
+    End Select
+End Property
 
 Public Property Get Uri() As ROneCOne
 Attribute Uri.VB_Description = "Gets the System.Uri-style escaping surface."
@@ -9995,6 +10111,12 @@ Friend Sub ConfigureUriFactory()
     mRole = ROLE_URI_FACTORY
 End Sub
 
+Friend Sub ConfigureLogger(ByVal filePath As String, ByVal levelValue As Long)
+    mRole = ROLE_LOGGER
+    mName = filePath
+    mLoggerMinimumLevel = levelValue
+End Sub
+
 Friend Sub ConfigureWebUtilityFactory()
     mRole = ROLE_WEB_UTILITY_FACTORY
 End Sub
@@ -13393,6 +13515,13 @@ Private Sub RequireUriFactory(ByVal memberName As String)
     If mRole <> ROLE_URI_FACTORY Then
         RaiseContractError ERROR_INVALID_OPERATION, memberName, _
             memberName & " requires the Uri surface."
+    End If
+End Sub
+
+Private Sub RequireLogger(ByVal memberName As String)
+    If mRole <> ROLE_LOGGER Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires a Logger."
     End If
 End Sub
 
@@ -22228,6 +22357,77 @@ End Function
 
 Private Function HexByteText(ByVal value As Byte) As String
     HexByteText = Right$("0" & Hex$(value), 2)
+End Function
+
+' ---------------------------------------------------------------------------
+' Logger core: one UTC millisecond timestamp, a three-letter severity code,
+' and a composite-formatted message per line. Every call appends through the
+' file layer and closes, so written lines survive a crash.
+' ---------------------------------------------------------------------------
+
+Private Sub LoggerWrite( _
+    ByVal level As Long, _
+    ByVal template As String, _
+    ByRef values() As Variant _
+)
+    Dim line As String
+
+    If level < mLoggerMinimumLevel Then Exit Sub
+    line = LoggerTimestampText() & " [" & LoggerLevelCode(level) & "] " & _
+        FormatCompositeCore(template, values) & vbCrLf
+    IoWriteTextFile mName, line, "utf-8", True, "Logger"
+End Sub
+
+Private Function LoggerTimestampText() As String
+    Dim clockDate As Date
+    Dim msOfDay As Long
+    Dim systemNow As SYSTEMTIME
+
+    GetSystemTime systemNow
+    MsToClockParts SystemTimeToMs(systemNow), clockDate, msOfDay
+    LoggerTimestampText = ClockStampText(clockDate, msOfDay) & "." & _
+        PadNumber(msOfDay Mod 1000, 3) & "Z"
+End Function
+
+Private Function LoggerLevelCode(ByVal level As Long) As String
+    Select Case level
+        Case LOG_LEVEL_TRACE
+            LoggerLevelCode = "TRC"
+        Case LOG_LEVEL_DEBUG
+            LoggerLevelCode = "DBG"
+        Case LOG_LEVEL_INFORMATION
+            LoggerLevelCode = "INF"
+        Case LOG_LEVEL_WARNING
+            LoggerLevelCode = "WRN"
+        Case LOG_LEVEL_ERROR
+            LoggerLevelCode = "ERR"
+        Case Else
+            LoggerLevelCode = "CRT"
+    End Select
+End Function
+
+Private Function LoggerLevelValue( _
+    ByVal levelName As String, _
+    ByVal memberName As String _
+) As Long
+    Select Case LCase$(Trim$(levelName))
+        Case "trace"
+            LoggerLevelValue = LOG_LEVEL_TRACE
+        Case "debug"
+            LoggerLevelValue = LOG_LEVEL_DEBUG
+        Case "information"
+            LoggerLevelValue = LOG_LEVEL_INFORMATION
+        Case "warning"
+            LoggerLevelValue = LOG_LEVEL_WARNING
+        Case "error"
+            LoggerLevelValue = LOG_LEVEL_ERROR
+        Case "critical"
+            LoggerLevelValue = LOG_LEVEL_CRITICAL
+        Case Else
+            RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+                "Levels are Trace, Debug, Information, Warning, Error, " & _
+                "and Critical."
+    End Select
 End Function
 
 ' ---------------------------------------------------------------------------

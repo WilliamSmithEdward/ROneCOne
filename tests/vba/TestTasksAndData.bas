@@ -72,6 +72,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestStringsSurface
     mCurrentTest = "TestEscapingSurface"
     TestEscapingSurface
+    mCurrentTest = "TestLoggerSurface"
+    TestLoggerSurface
     mCurrentTest = "TestXmlSurface"
     TestXmlSurface
     mCurrentTest = "TestHttpSurface"
@@ -2041,6 +2043,69 @@ Private Sub TestEscapingSurface()
     On Error GoTo 0
     AssertEqual "escaping role guard", _
         ROneCOne.InvalidOperationError, missError
+End Sub
+
+Private Sub TestLoggerSurface()
+    Dim lines As ROneCOne
+    Dim logPath As String
+    Dim missError As Long
+    Dim quietLogger As ROneCOne
+    Dim verboseLogger As ROneCOne
+
+    ' Every call appends one complete line and closes the file, so written
+    ' lines are on disk immediately and survive a crash.
+    mCurrentTest = "TestLoggerSurface.Levels"
+    logPath = CStr(ROneCOne.Path.Combine( _
+        CStr(ROneCOne.Path.GetTempPath), "ROneCOne_Logger_Test.log"))
+    ROneCOne.File.Delete logPath
+    Set quietLogger = ROneCOne.Logger(logPath)
+    AssertEqual "logger default level", "Information", _
+        quietLogger.MinimumLevel
+    AssertFalse "logger debug disabled", quietLogger.IsEnabled("Debug")
+    AssertTrue "logger warning enabled", quietLogger.IsEnabled("Warning")
+    quietLogger.LogInformation "user {0} scored {1:N1}", "Ada", 12.34
+    quietLogger.LogDebug "should be filtered {0}", 1
+    quietLogger.LogError "failed with {0}", "boom"
+    Set lines = ROneCOne.File.ReadAllLines(logPath)
+    AssertEqual "logger filtered line count", 2&, lines.Count
+    AssertTrue "logger formats invariantly", _
+        InStr(1, CStr(lines.Item(0)), "[INF] user Ada scored 12.3") > 0
+    AssertTrue "logger error code", _
+        InStr(1, CStr(lines.Item(1)), "[ERR] failed with boom") > 0
+    AssertTrue "logger timestamp shape", ROneCOne.Regex( _
+        "^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[INF\] ") _
+        .IsMatch(CStr(lines.Item(0)))
+
+    mCurrentTest = "TestLoggerSurface.Verbose"
+    ROneCOne.File.Delete logPath
+    Set verboseLogger = ROneCOne.Logger(logPath, "Trace")
+    verboseLogger.LogTrace "fine detail"
+    verboseLogger.LogCritical "the sky fell"
+    Set lines = ROneCOne.File.ReadAllLines(logPath)
+    AssertEqual "logger verbose count", 2&, lines.Count
+    AssertTrue "logger trace code", _
+        InStr(1, CStr(lines.Item(0)), "[TRC] fine detail") > 0
+    AssertTrue "logger critical code", _
+        InStr(1, CStr(lines.Item(1)), "[CRT] the sky fell") > 0
+    ROneCOne.File.Delete logPath
+
+    mCurrentTest = "TestLoggerSurface.Failures"
+    missError = 0
+    On Error Resume Next
+    ROneCOne.Logger logPath, "Loud"
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "logger invalid level raises", _
+        ROneCOne.InvalidArgumentError, missError
+    missError = 0
+    On Error Resume Next
+    ROneCOne.Logger(CStr(ROneCOne.Path.Combine( _
+        CStr(ROneCOne.Path.GetTempPath), _
+        "ROneCOne_Missing_Dir\x.log"))).LogInformation "never lands"
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "logger missing folder raises io", _
+        ROneCOne.IOError, missError
 End Sub
 
 Private Sub TestXmlSurface()

@@ -741,6 +741,20 @@ class SourceContractTests(unittest.TestCase):
         ):
             self.assertIn(member, self.source)
 
+    def test_logger_surface_is_present(self) -> None:
+        for member in (
+            "Public Function Logger(",
+            "Public Sub LogTrace(",
+            "Public Sub LogDebug(",
+            "Public Sub LogInformation(",
+            "Public Sub LogWarning(",
+            "Public Sub LogError(",
+            "Public Sub LogCritical(",
+            "Public Function IsEnabled(",
+            "Public Property Get MinimumLevel()",
+        ):
+            self.assertIn(member, self.source)
+
     def test_xml_surface_is_present_and_secured(self) -> None:
         for member in (
             "Public Property Get Xml()",
