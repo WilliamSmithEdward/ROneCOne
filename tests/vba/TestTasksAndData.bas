@@ -70,6 +70,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestDateTimeSurface
     mCurrentTest = "TestStringsSurface"
     TestStringsSurface
+    mCurrentTest = "TestEscapingSurface"
+    TestEscapingSurface
     mCurrentTest = "TestXmlSurface"
     TestXmlSurface
     mCurrentTest = "TestHttpSurface"
@@ -1553,6 +1555,24 @@ Private Sub TestProcessSurface()
     AssertTrue "process canceled await raises", capturedError <> 0
     AssertTrue "process canceled task state", task.IsCanceled
 
+    mCurrentTest = "TestProcessSurface.StandardInput"
+    Set result = ROneCOne.Process.RunAsync("sort", , , _
+        "banana" & vbCrLf & "apple" & vbCrLf & "cherry" & vbCrLf).Await
+    AssertEqual "process stdin exit code", 0&, result.ExitCode
+    AssertTrue "process stdin consumed", _
+        InStr(1, result.StandardOutput, "apple") > 0 And _
+        InStr(1, result.StandardOutput, "apple") < _
+        InStr(1, result.StandardOutput, "banana")
+    Set result = ROneCOne.Process.RunAsync("findstr b", , , _
+        "banana" & vbCrLf & "apple" & vbCrLf & "berry" & vbCrLf).Await
+    AssertTrue "process stdin filtered", _
+        InStr(1, result.StandardOutput, "banana") > 0 And _
+        InStr(1, result.StandardOutput, "apple") = 0
+    ' With no input, stdin still closes, so a filter sees end-of-file
+    ' immediately instead of waiting forever.
+    AssertEqual "process closed stdin ends filter", 0&, _
+        ROneCOne.Process.RunAsync("sort").Await.ExitCode
+
     mCurrentTest = "TestProcessSurface.Arguments"
     capturedError = 0
     On Error Resume Next
@@ -1974,6 +1994,53 @@ Private Sub TestStringsSurface()
     On Error GoTo 0
     AssertEqual "random empty range raises", _
         ROneCOne.InvalidArgumentError, missError
+End Sub
+
+Private Sub TestEscapingSurface()
+    Dim emoji As String
+    Dim missError As Long
+
+    ' Percent encoding runs over UTF-8 bytes with the RFC 3986 unreserved
+    ' set; HTML encoding covers the five markup entities plus numeric
+    ' references, decoding through surrogate pairs.
+    mCurrentTest = "TestEscapingSurface.Uri"
+    AssertEqual "uri escape basics", "a%20b%26c%3Dd", _
+        ROneCOne.Uri.EscapeDataString("a b&c=d")
+    AssertEqual "uri unreserved preserved", "AZaz09-._~", _
+        ROneCOne.Uri.EscapeDataString("AZaz09-._~")
+    AssertEqual "uri escape utf8", "%E2%98%83", _
+        ROneCOne.Uri.EscapeDataString(ChrW$(9731))
+    AssertEqual "uri unescape round trip", ChrW$(9731) & " x", _
+        ROneCOne.Uri.UnescapeDataString("%E2%98%83%20x")
+    AssertEqual "uri bad escape untouched", "%GG%2 a+b", _
+        ROneCOne.Uri.UnescapeDataString("%GG%2 a+b")
+    AssertEqual "uri empty text", vbNullString, _
+        ROneCOne.Uri.EscapeDataString(vbNullString)
+
+    mCurrentTest = "TestEscapingSurface.Html"
+    AssertEqual "html encode markup", _
+        "&lt;a &amp; &quot;b&quot;&#39;&gt;", _
+        ROneCOne.WebUtility.HtmlEncode("<a & ""b""'>")
+    AssertEqual "html encode non-ascii", "caf&#233;", _
+        ROneCOne.WebUtility.HtmlEncode("caf" & ChrW$(233))
+    AssertEqual "html decode entities", "<&AB&unknown;>", _
+        ROneCOne.WebUtility.HtmlDecode("&lt;&amp;&#65;&#x42;&unknown;&gt;")
+    emoji = ChrW$(&HD83D) & ChrW$(&HDE00)
+    AssertEqual "html encode surrogate pair", "&#128512;", _
+        ROneCOne.WebUtility.HtmlEncode(emoji)
+    AssertEqual "html decode surrogate pair", emoji, _
+        ROneCOne.WebUtility.HtmlDecode("&#128512;")
+    AssertEqual "html decode leaves bare ampersand", "a & b", _
+        ROneCOne.WebUtility.HtmlDecode("a & b")
+
+    mCurrentTest = "TestEscapingSurface.Guards"
+    missError = 0
+    On Error Resume Next
+    ROneCOne.Uri.HtmlEncode "x"
+    missError = Err.Number
+    On Error GoTo 0
+    AssertEqual "escaping role guard", _
+        ROneCOne.InvalidOperationError, missError
 End Sub
 
 Private Sub TestXmlSurface()

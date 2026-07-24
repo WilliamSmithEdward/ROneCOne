@@ -728,6 +728,19 @@ class SourceContractTests(unittest.TestCase):
             re.compile(r"(?<![.\w])Format\$\(", re.IGNORECASE),
         )
 
+    def test_uri_webutility_and_stdin_surfaces_are_present(self) -> None:
+        for member in (
+            "Public Property Get Uri()",
+            "Public Function EscapeDataString(",
+            "Public Function UnescapeDataString(",
+            "Public Property Get WebUtility()",
+            "Public Function HtmlEncode(",
+            "Public Function HtmlDecode(",
+            "Optional ByVal standardInput As String",
+            "Private Function IoDecodeText(",
+        ):
+            self.assertIn(member, self.source)
+
     def test_xml_surface_is_present_and_secured(self) -> None:
         for member in (
             "Public Property Get Xml()",

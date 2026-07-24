@@ -181,6 +181,8 @@ Private Const ROLE_GUID_FACTORY As Long = 64
 Private Const ROLE_RANDOM_FACTORY As Long = 65
 Private Const ROLE_XML_FACTORY As Long = 66
 Private Const ROLE_XML_NODE As Long = 67
+Private Const ROLE_URI_FACTORY As Long = 68
+Private Const ROLE_WEB_UTILITY_FACTORY As Long = 69
 
 Private Const TASK_WORK As Long = 1
 Private Const TASK_COMPLETED As Long = 2
@@ -2960,7 +2962,8 @@ End Property
 Public Function RunAsync( _
     ByVal command As String, _
     Optional ByVal workingDirectory As String = vbNullString, _
-    Optional ByVal cancellationToken As ROneCOne _
+    Optional ByVal cancellationToken As ROneCOne, _
+    Optional ByVal standardInput As String = vbNullString _
 ) As ROneCOne
 Attribute RunAsync.VB_Description = "Starts a shell command; the Task result carries its output."
     Dim errorPath As String
@@ -2991,6 +2994,13 @@ Attribute RunAsync.VB_Description = "Starts a shell command; the Task result car
     Set execObject = CreateObject(WSHELL_PROG_ID).Exec( _
         "cmd.exe /d /s /c """ & inner & " 1>""" & outputPath & _
         """ 2>""" & errorPath & """""")
+    On Error GoTo 0
+    ' Standard input is written now and always closed, so a filter such as
+    ' sort sees end-of-file instead of waiting forever. A command that has
+    ' already exited simply leaves the input undelivered.
+    On Error Resume Next
+    If Len(standardInput) > 0 Then execObject.StdIn.Write standardInput
+    execObject.StdIn.Close
     On Error GoTo 0
     Set pending = New ROneCOne
     pending.ConfigureProcessResult execObject, outputPath, errorPath
@@ -3240,6 +3250,155 @@ Attribute FromHexString.VB_Description = "Decodes hexadecimal text into a Byte a
         bytes(index) = code
     Next index
     FromHexString = bytes
+End Function
+
+Public Property Get Uri() As ROneCOne
+Attribute Uri.VB_Description = "Gets the System.Uri-style escaping surface."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigureUriFactory
+    Set Uri = factory
+End Property
+
+Public Function EscapeDataString(ByVal text As String) As String
+Attribute EscapeDataString.VB_Description = "Percent-encodes text for a URI query or path piece."
+    Dim buffer As JsonTextBuilder
+    Dim encoded As Variant
+    Dim index As Long
+
+    RequireUriFactory "EscapeDataString"
+    If Len(text) = 0 Then Exit Function
+    encoded = IoEncodeText(text, "utf-8", 3)
+    JsonBuilderInit buffer, Len(text) + 16
+    For index = LBound(encoded) To UBound(encoded)
+        If UriIsUnreservedByte(encoded(index)) Then
+            JsonBuilderAppend buffer, Chr$(encoded(index))
+        Else
+            JsonBuilderAppend buffer, "%" & HexByteText(CByte(encoded(index)))
+        End If
+    Next index
+    EscapeDataString = JsonBuilderText(buffer)
+End Function
+
+Public Function UnescapeDataString(ByVal text As String) As String
+Attribute UnescapeDataString.VB_Description = "Decodes percent escapes, leaving bad escapes alone."
+    Dim buffer As JsonTextBuilder
+    Dim index As Long
+    Dim pendingBytes() As Byte
+    Dim pendingCount As Long
+    Dim textLength As Long
+
+    RequireUriFactory "UnescapeDataString"
+    textLength = Len(text)
+    If textLength = 0 Then Exit Function
+    ReDim pendingBytes(0 To textLength \ 3)
+    JsonBuilderInit buffer, textLength
+    index = 1
+    Do While index <= textLength
+        If Mid$(text, index, 1) = "%" And _
+            IsHexPairText(Mid$(text, index + 1, 2)) Then
+            pendingBytes(pendingCount) = _
+                CByte(Val("&H" & Mid$(text, index + 1, 2)))
+            pendingCount = pendingCount + 1
+            index = index + 3
+        Else
+            FlushPendingUtf8 buffer, pendingBytes, pendingCount
+            JsonBuilderAppend buffer, Mid$(text, index, 1)
+            index = index + 1
+        End If
+    Loop
+    FlushPendingUtf8 buffer, pendingBytes, pendingCount
+    UnescapeDataString = JsonBuilderText(buffer)
+End Function
+
+Public Property Get WebUtility() As ROneCOne
+Attribute WebUtility.VB_Description = "Gets the System.Net.WebUtility-style HTML text surface."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigureWebUtilityFactory
+    Set WebUtility = factory
+End Property
+
+Public Function HtmlEncode(ByVal text As String) As String
+Attribute HtmlEncode.VB_Description = "Encodes markup characters and non-ASCII text for HTML."
+    Dim buffer As JsonTextBuilder
+    Dim code As Long
+    Dim index As Long
+    Dim lowUnit As Long
+    Dim textLength As Long
+
+    RequireWebUtilityFactory "HtmlEncode"
+    textLength = Len(text)
+    If textLength = 0 Then Exit Function
+    JsonBuilderInit buffer, textLength + 16
+    index = 1
+    Do While index <= textLength
+        code = AscW(Mid$(text, index, 1)) And &HFFFF&
+        If code >= &HD800& And code <= &HDBFF& And index < textLength Then
+            lowUnit = AscW(Mid$(text, index + 1, 1)) And &HFFFF&
+            If lowUnit >= &HDC00& And lowUnit <= &HDFFF& Then
+                code = &H10000 + (code - &HD800&) * &H400& + _
+                    (lowUnit - &HDC00&)
+                index = index + 1
+            End If
+        End If
+        Select Case code
+            Case 38
+                JsonBuilderAppend buffer, "&amp;"
+            Case 60
+                JsonBuilderAppend buffer, "&lt;"
+            Case 62
+                JsonBuilderAppend buffer, "&gt;"
+            Case 34
+                JsonBuilderAppend buffer, "&quot;"
+            Case 39
+                JsonBuilderAppend buffer, "&#39;"
+            Case Is >= 160
+                JsonBuilderAppend buffer, "&#" & CStr(code) & ";"
+            Case Else
+                JsonBuilderAppend buffer, ChrW$(code)
+        End Select
+        index = index + 1
+    Loop
+    HtmlEncode = JsonBuilderText(buffer)
+End Function
+
+Public Function HtmlDecode(ByVal text As String) As String
+Attribute HtmlDecode.VB_Description = "Decodes amp lt gt quot apos and numeric HTML entities."
+    Dim buffer As JsonTextBuilder
+    Dim entity As String
+    Dim index As Long
+    Dim semicolonAt As Long
+    Dim textLength As Long
+
+    RequireWebUtilityFactory "HtmlDecode"
+    textLength = Len(text)
+    If textLength = 0 Then Exit Function
+    JsonBuilderInit buffer, textLength
+    index = 1
+    Do While index <= textLength
+        If Mid$(text, index, 1) = "&" Then
+            semicolonAt = InStr(index + 1, text, ";")
+            If semicolonAt > index + 1 And semicolonAt - index <= 10 Then
+                entity = Mid$(text, index + 1, semicolonAt - index - 1)
+                If TryAppendHtmlEntity(buffer, entity) Then
+                    index = semicolonAt + 1
+                Else
+                    JsonBuilderAppend buffer, "&"
+                    index = index + 1
+                End If
+            Else
+                JsonBuilderAppend buffer, "&"
+                index = index + 1
+            End If
+        Else
+            JsonBuilderAppend buffer, Mid$(text, index, 1)
+            index = index + 1
+        End If
+    Loop
+    HtmlDecode = JsonBuilderText(buffer)
 End Function
 
 Public Property Get Xml() As ROneCOne
@@ -9832,6 +9991,14 @@ Friend Sub ConfigureXmlNode(ByVal nodeObject As Object)
     Set mProviderObject = nodeObject
 End Sub
 
+Friend Sub ConfigureUriFactory()
+    mRole = ROLE_URI_FACTORY
+End Sub
+
+Friend Sub ConfigureWebUtilityFactory()
+    mRole = ROLE_WEB_UTILITY_FACTORY
+End Sub
+
 Friend Sub ConfigureProcessResult( _
     ByVal execObject As Object, _
     ByVal outputPath As String, _
@@ -12758,6 +12925,24 @@ Private Function IoEncodeText( _
     IoEncodeText = encoded
 End Function
 
+Private Function IoDecodeText( _
+    ByRef bytes() As Byte, _
+    ByVal charset As String _
+) As String
+    Dim binaryStream As Object
+
+    ' The mirror of IoEncodeText: raw bytes become text through one stream
+    ' whose type flips from binary to text at position zero. Callers pass an
+    ' allocated, non-empty array.
+    Set binaryStream = CreateStreamObject(STREAM_TYPE_BINARY)
+    binaryStream.Write bytes
+    binaryStream.Position = 0
+    binaryStream.Type = STREAM_TYPE_TEXT
+    binaryStream.Charset = charset
+    IoDecodeText = binaryStream.ReadText(-1)
+    binaryStream.Close
+End Function
+
 Private Function EmptyByteArray() As Variant
     Dim bytes() As Byte
 
@@ -13201,6 +13386,20 @@ Private Sub RequireXmlNode(ByVal memberName As String)
     If mRole <> ROLE_XML_NODE Then
         RaiseContractError ERROR_INVALID_OPERATION, memberName, _
             memberName & " requires an XML node."
+    End If
+End Sub
+
+Private Sub RequireUriFactory(ByVal memberName As String)
+    If mRole <> ROLE_URI_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires the Uri surface."
+    End If
+End Sub
+
+Private Sub RequireWebUtilityFactory(ByVal memberName As String)
+    If mRole <> ROLE_WEB_UTILITY_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires the WebUtility surface."
     End If
 End Sub
 
@@ -22029,6 +22228,103 @@ End Function
 
 Private Function HexByteText(ByVal value As Byte) As String
     HexByteText = Right$("0" & Hex$(value), 2)
+End Function
+
+' ---------------------------------------------------------------------------
+' Escaping core: RFC 3986 percent encoding over UTF-8 bytes, and the HTML
+' entity dialect (the five markup entities plus numeric references).
+' ---------------------------------------------------------------------------
+
+Private Function UriIsUnreservedByte(ByVal value As Byte) As Boolean
+    Select Case value
+        Case 48 To 57, 65 To 90, 97 To 122, 45, 46, 95, 126
+            UriIsUnreservedByte = True
+    End Select
+End Function
+
+Private Function IsHexPairText(ByVal text As String) As Boolean
+    If Len(text) <> 2 Then Exit Function
+    IsHexPairText = IsHexDigitChar(Mid$(text, 1, 1)) And _
+        IsHexDigitChar(Mid$(text, 2, 1))
+End Function
+
+Private Function IsHexDigitChar(ByVal character As String) As Boolean
+    Select Case character
+        Case "0" To "9", "A" To "F", "a" To "f"
+            IsHexDigitChar = True
+    End Select
+End Function
+
+Private Sub FlushPendingUtf8( _
+    ByRef buffer As JsonTextBuilder, _
+    ByRef pendingBytes() As Byte, _
+    ByRef pendingCount As Long _
+)
+    Dim chunk() As Byte
+    Dim index As Long
+
+    If pendingCount = 0 Then Exit Sub
+    ReDim chunk(0 To pendingCount - 1)
+    For index = 0 To pendingCount - 1
+        chunk(index) = pendingBytes(index)
+    Next index
+    JsonBuilderAppend buffer, IoDecodeText(chunk, "utf-8")
+    pendingCount = 0
+End Sub
+
+Private Function TryAppendHtmlEntity( _
+    ByRef buffer As JsonTextBuilder, _
+    ByVal entity As String _
+) As Boolean
+    Dim code As Long
+    Dim digits As String
+    Dim index As Long
+
+    Select Case entity
+        Case "amp"
+            JsonBuilderAppend buffer, "&"
+        Case "lt"
+            JsonBuilderAppend buffer, "<"
+        Case "gt"
+            JsonBuilderAppend buffer, ">"
+        Case "quot"
+            JsonBuilderAppend buffer, """"
+        Case "apos"
+            JsonBuilderAppend buffer, "'"
+        Case Else
+            If Left$(entity, 1) <> "#" Then Exit Function
+            digits = Mid$(entity, 2)
+            If Left$(digits, 1) = "x" Or Left$(digits, 1) = "X" Then
+                digits = Mid$(digits, 2)
+                If Len(digits) = 0 Or Len(digits) > 6 Then Exit Function
+                For index = 1 To Len(digits)
+                    If Not IsHexDigitChar(Mid$(digits, index, 1)) Then
+                        Exit Function
+                    End If
+                Next index
+                code = CLng(Val("&H" & digits))
+            Else
+                If Len(digits) = 0 Or Len(digits) > 7 Then Exit Function
+                For index = 1 To Len(digits)
+                    If Mid$(digits, index, 1) < "0" Or _
+                        Mid$(digits, index, 1) > "9" Then Exit Function
+                Next index
+                code = CLng(digits)
+            End If
+            If code < 0 Or code > &H10FFFF Then Exit Function
+            If code >= &HD800& And code <= &HDFFF& Then Exit Function
+            JsonBuilderAppend buffer, CodePointText(code)
+    End Select
+    TryAppendHtmlEntity = True
+End Function
+
+Private Function CodePointText(ByVal code As Long) As String
+    If code <= &HFFFF& Then
+        CodePointText = ChrW$(code)
+    Else
+        CodePointText = ChrW$(&HD800& + (code - &H10000) \ &H400&) & _
+            ChrW$(&HDC00& + (code - &H10000) Mod &H400&)
+    End If
 End Function
 
 ' ---------------------------------------------------------------------------
