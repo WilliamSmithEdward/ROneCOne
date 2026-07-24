@@ -105,6 +105,9 @@ Private Const ROLE_USING As Long = 44
 Private Const ROLE_HTTP_CLIENT As Long = 45
 Private Const ROLE_HTTP_RESPONSE As Long = 46
 Private Const ROLE_JSON_FACTORY As Long = 47
+Private Const ROLE_FILE_FACTORY As Long = 48
+Private Const ROLE_DIRECTORY_FACTORY As Long = 49
+Private Const ROLE_PATH_FACTORY As Long = 50
 
 Private Const TASK_WORK As Long = 1
 Private Const TASK_COMPLETED As Long = 2
@@ -244,6 +247,7 @@ Private Const ERROR_TIMEOUT As Long = vbObjectError + 4109
 Private Const ERROR_CANCELED As Long = vbObjectError + 4110
 Private Const ERROR_HTTP_REQUEST As Long = vbObjectError + 4111
 Private Const ERROR_JSON_PARSE As Long = vbObjectError + 4112
+Private Const ERROR_IO As Long = vbObjectError + 4113
 
 Private Const HTTP_PROG_ID As String = "WinHttp.WinHttpRequest.5.1"
 Private Const HTTP_DEFAULT_TIMEOUT_MS As Long = 30000
@@ -256,6 +260,13 @@ Private Const ADO_STATE_OPEN As Long = 1
 Private Const ADO_STATE_CONNECTING As Long = 2
 Private Const ADO_STATE_EXECUTING As Long = 4
 Private Const ADO_STATE_FETCHING As Long = 8
+
+' ADODB.Stream enumeration values for the file system layer: stream types,
+' the overwrite save mode, and the prog-id used for text and byte transput.
+Private Const STREAM_PROG_ID As String = "ADODB.Stream"
+Private Const STREAM_TYPE_BINARY As Long = 1
+Private Const STREAM_TYPE_TEXT As Long = 2
+Private Const STREAM_SAVE_OVERWRITE As Long = 2
 
 ' Reader state for the JSON parser: a 1-based cursor over the input plus a
 ' byte snapshot of the same text as UTF-16 code units, so scanning loops read
@@ -1985,12 +1996,25 @@ Attribute CloneTable.VB_Description = "Copies a DataTable schema without rows."
     Set CloneTable = CloneDataTableSchema(Me)
 End Function
 
-Public Function Copy() As ROneCOne
-Attribute Copy.VB_Description = "Copies a DataTable schema and current rows."
+Public Function Copy( _
+    Optional ByVal sourcePath As Variant, _
+    Optional ByVal destinationPath As Variant, _
+    Optional ByVal overwrite As Boolean = False _
+) As ROneCOne
+Attribute Copy.VB_Description = "Copies a DataTable with its rows, or copies a file."
     Dim result As ROneCOne
     Dim row As ROneCOne
 
+    If mRole = ROLE_FILE_FACTORY Then
+        FileCopyCore RequirePathText(sourcePath, "Copy"), _
+            RequirePathText(destinationPath, "Copy"), overwrite
+        Exit Function
+    End If
     RequireDataTable Me, "Copy"
+    If Not IsMissing(sourcePath) Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "Copy", _
+            "Copy on a DataTable takes no arguments."
+    End If
     Set result = CloneDataTableSchema(Me)
     For Each row In ArrSnapshot(mItems, mItemsCount)
         If row.RowState <> "Deleted" Then CopyDataRowInto row, result
@@ -2034,9 +2058,26 @@ Attribute GetChanges.VB_Description = "Copies rows that have pending changes."
     Set GetChanges = result
 End Function
 
-Public Sub Delete()
-Attribute Delete.VB_Description = "Marks a DataRow as deleted."
+Public Sub Delete( _
+    Optional ByVal targetPath As Variant, _
+    Optional ByVal recursive As Boolean = False _
+)
+Attribute Delete.VB_Description = "Marks a DataRow deleted, or deletes a file or folder."
+    If mRole = ROLE_FILE_FACTORY Then
+        FileDeleteCore RequirePathText(targetPath, "Delete")
+        Exit Sub
+    End If
+    If mRole = ROLE_DIRECTORY_FACTORY Then
+        DirectoryDeleteCore _
+            TrimTrailingSeparators(RequirePathText(targetPath, "Delete")), _
+            recursive
+        Exit Sub
+    End If
     RequireDataRow Me, "Delete"
+    If Not IsMissing(targetPath) Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "Delete", _
+            "Delete on a DataRow takes no arguments."
+    End If
     If mRowState = ROW_STATE_DETACHED Then
         RaiseContractError ERROR_INVALID_OPERATION, "Delete", _
             "A detached DataRow cannot be deleted."
@@ -2480,6 +2521,258 @@ Public Function ToJson( _
 ) As String
 Attribute ToJson.VB_Description = "Serializes this collection, table, or row to JSON text."
     ToJson = ROneCOne.Json.Serialize(Me, writeIndented)
+End Function
+
+Public Property Get File() As ROneCOne
+Attribute File.VB_Description = "Gets the System.IO.File-style file surface."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigureFileFactory
+    Set File = factory
+End Property
+
+Public Property Get Directory() As ROneCOne
+Attribute Directory.VB_Description = "Gets the System.IO.Directory-style folder surface."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigureDirectoryFactory
+    Set Directory = factory
+End Property
+
+Public Property Get Path() As ROneCOne
+Attribute Path.VB_Description = "Gets the System.IO.Path-style path helper surface."
+    Dim factory As ROneCOne
+
+    Set factory = New ROneCOne
+    factory.ConfigurePathFactory
+    Set Path = factory
+End Property
+
+Public Function ReadAllText( _
+    ByVal filePath As String, _
+    Optional ByVal encoding As String = "utf-8" _
+) As String
+Attribute ReadAllText.VB_Description = "Reads a text file; a byte-order mark picks the decoder."
+    RequireFileFactory "ReadAllText"
+    ReadAllText = IoReadTextFile(filePath, _
+        NormalizeTextEncoding(encoding, "ReadAllText"), "ReadAllText")
+End Function
+
+Public Sub WriteAllText( _
+    ByVal filePath As String, _
+    ByVal contents As String, _
+    Optional ByVal encoding As String = "utf-8" _
+)
+Attribute WriteAllText.VB_Description = "Writes a text file; UTF-8 output has no byte-order mark."
+    RequireFileFactory "WriteAllText"
+    IoWriteTextFile filePath, contents, _
+        NormalizeTextEncoding(encoding, "WriteAllText"), False, "WriteAllText"
+End Sub
+
+Public Sub AppendAllText( _
+    ByVal filePath As String, _
+    ByVal contents As String, _
+    Optional ByVal encoding As String = "utf-8" _
+)
+Attribute AppendAllText.VB_Description = "Appends encoded text, creating the file when missing."
+    RequireFileFactory "AppendAllText"
+    IoWriteTextFile filePath, contents, _
+        NormalizeTextEncoding(encoding, "AppendAllText"), True, "AppendAllText"
+End Sub
+
+Public Function ReadAllLines( _
+    ByVal filePath As String, _
+    Optional ByVal encoding As String = "utf-8" _
+) As ROneCOne
+Attribute ReadAllLines.VB_Description = "Reads a text file into a List of String lines."
+    Dim line As Variant
+    Dim lines As ROneCOne
+    Dim normalized As String
+
+    RequireFileFactory "ReadAllLines"
+    Set lines = ROneCOne.ListOf(vbString)
+    normalized = IoReadTextFile(filePath, _
+        NormalizeTextEncoding(encoding, "ReadAllLines"), "ReadAllLines")
+    If Len(normalized) = 0 Then
+        Set ReadAllLines = lines
+        Exit Function
+    End If
+    normalized = Replace$(normalized, vbCrLf, vbLf)
+    normalized = Replace$(normalized, vbCr, vbLf)
+    If Right$(normalized, 1) = vbLf Then
+        normalized = Left$(normalized, Len(normalized) - 1)
+    End If
+    If Len(normalized) = 0 Then
+        lines.Add vbNullString
+    Else
+        For Each line In Split(normalized, vbLf)
+            lines.Add CStr(line)
+        Next line
+    End If
+    Set ReadAllLines = lines
+End Function
+
+Public Sub WriteAllLines( _
+    ByVal filePath As String, _
+    ByVal lines As Variant, _
+    Optional ByVal encoding As String = "utf-8" _
+)
+Attribute WriteAllLines.VB_Description = "Writes lines, terminating every one including the last."
+    Dim contents As String
+    Dim element As Variant
+    Dim elements As Collection
+    Dim index As Long
+    Dim parts() As String
+
+    RequireFileFactory "WriteAllLines"
+    Set elements = CollectSourceElements(lines, "WriteAllLines")
+    If elements.Count > 0 Then
+        ReDim parts(0 To elements.Count - 1)
+        For Each element In elements
+            parts(index) = CStr(element)
+            index = index + 1
+        Next element
+        contents = VBA.Join(parts, vbCrLf) & vbCrLf
+    End If
+    IoWriteTextFile filePath, contents, _
+        NormalizeTextEncoding(encoding, "WriteAllLines"), False, "WriteAllLines"
+End Sub
+
+Public Function ReadAllBytes(ByVal filePath As String) As Variant
+Attribute ReadAllBytes.VB_Description = "Reads a whole file as a Byte array."
+    RequireFileFactory "ReadAllBytes"
+    ReadAllBytes = IoReadAllBytesCore(filePath, "ReadAllBytes")
+End Function
+
+Public Sub WriteAllBytes(ByVal filePath As String, ByVal bytes As Variant)
+Attribute WriteAllBytes.VB_Description = "Writes a Byte array as a whole file."
+    RequireFileFactory "WriteAllBytes"
+    If VarType(bytes) <> (vbArray Or vbByte) Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "WriteAllBytes", _
+            "WriteAllBytes requires a Byte array."
+    End If
+    IoWriteAllBytesCore filePath, bytes, "WriteAllBytes"
+End Sub
+
+Public Sub Move(ByVal sourcePath As String, ByVal destinationPath As String)
+Attribute Move.VB_Description = "Moves a file; an existing destination is an error."
+    RequireFileFactory "Move"
+    FileMoveCore sourcePath, destinationPath
+End Sub
+
+Public Sub CreateDirectory(ByVal directoryPath As String)
+Attribute CreateDirectory.VB_Description = "Creates a folder, including missing parents."
+    RequireDirectoryFactory "CreateDirectory"
+    DirectoryCreateCore TrimTrailingSeparators(directoryPath), _
+        "CreateDirectory"
+End Sub
+
+Public Function GetFiles( _
+    ByVal directoryPath As String, _
+    Optional ByVal searchPattern As String = "*", _
+    Optional ByVal allDirectories As Boolean = False _
+) As ROneCOne
+Attribute GetFiles.VB_Description = "Lists matching file paths, sorted, optionally recursive."
+    RequireDirectoryFactory "GetFiles"
+    Set GetFiles = DirectoryEntriesCore(directoryPath, searchPattern, _
+        allDirectories, True, "GetFiles")
+End Function
+
+Public Function GetDirectories( _
+    ByVal directoryPath As String, _
+    Optional ByVal searchPattern As String = "*", _
+    Optional ByVal allDirectories As Boolean = False _
+) As ROneCOne
+Attribute GetDirectories.VB_Description = "Lists matching folder paths, sorted, maybe recursive."
+    RequireDirectoryFactory "GetDirectories"
+    Set GetDirectories = DirectoryEntriesCore(directoryPath, searchPattern, _
+        allDirectories, False, "GetDirectories")
+End Function
+
+Public Function GetFileName(ByVal pathText As String) As String
+Attribute GetFileName.VB_Description = "Gets the file name and extension of a path."
+    RequirePathFactory "GetFileName"
+    GetFileName = Mid$(pathText, PathLastSeparator(pathText) + 1)
+End Function
+
+Public Function GetDirectoryName(ByVal pathText As String) As String
+Attribute GetDirectoryName.VB_Description = "Gets the directory portion of a path."
+    Dim separatorAt As Long
+
+    RequirePathFactory "GetDirectoryName"
+    separatorAt = PathLastSeparator(pathText)
+    If separatorAt = 0 Then Exit Function
+    GetDirectoryName = TrimTrailingSeparators(Left$(pathText, separatorAt))
+    If Len(GetDirectoryName) = 2 And Right$(GetDirectoryName, 1) = ":" Then
+        GetDirectoryName = GetDirectoryName & "\"
+    ElseIf Len(GetDirectoryName) = 0 Then
+        GetDirectoryName = Left$(pathText, 1)
+    End If
+End Function
+
+Public Function GetExtension(ByVal pathText As String) As String
+Attribute GetExtension.VB_Description = "Gets the extension of a path, including its dot."
+    Dim dotAt As Long
+    Dim nameText As String
+
+    RequirePathFactory "GetExtension"
+    nameText = Mid$(pathText, PathLastSeparator(pathText) + 1)
+    dotAt = InStrRev(nameText, ".")
+    If dotAt = 0 Or dotAt = Len(nameText) Then Exit Function
+    GetExtension = Mid$(nameText, dotAt)
+End Function
+
+Public Function GetFileNameWithoutExtension(ByVal pathText As String) As String
+Attribute GetFileNameWithoutExtension.VB_Description = "Gets the file name minus its extension."
+    Dim dotAt As Long
+    Dim nameText As String
+
+    RequirePathFactory "GetFileNameWithoutExtension"
+    nameText = Mid$(pathText, PathLastSeparator(pathText) + 1)
+    dotAt = InStrRev(nameText, ".")
+    If dotAt > 0 Then nameText = Left$(nameText, dotAt - 1)
+    GetFileNameWithoutExtension = nameText
+End Function
+
+Public Function ChangeExtension( _
+    ByVal pathText As String, _
+    ByVal extension As String _
+) As String
+Attribute ChangeExtension.VB_Description = "Replaces a path's extension; empty text removes it."
+    Dim dotAt As Long
+    Dim nameText As String
+    Dim trimmed As String
+
+    RequirePathFactory "ChangeExtension"
+    nameText = Mid$(pathText, PathLastSeparator(pathText) + 1)
+    dotAt = InStrRev(nameText, ".")
+    If dotAt > 0 Then
+        trimmed = Left$(pathText, _
+            Len(pathText) - (Len(nameText) - dotAt + 1))
+    Else
+        trimmed = pathText
+    End If
+    If Len(extension) = 0 Then
+        ChangeExtension = trimmed
+    ElseIf Left$(extension, 1) = "." Then
+        ChangeExtension = trimmed & extension
+    Else
+        ChangeExtension = trimmed & "." & extension
+    End If
+End Function
+
+Public Function GetFullPath(ByVal pathText As String) As String
+Attribute GetFullPath.VB_Description = "Resolves a path against the current directory."
+    RequirePathFactory "GetFullPath"
+    GetFullPath = CreateFileSystemObject().GetAbsolutePathName(pathText)
+End Function
+
+Public Function GetTempPath() As String
+Attribute GetTempPath.VB_Description = "Gets the temporary folder path with a trailing separator."
+    RequirePathFactory "GetTempPath"
+    GetTempPath = CreateFileSystemObject().GetSpecialFolder(2).Path & "\"
 End Function
 
 Public Function HttpClient() As ROneCOne
@@ -3685,13 +3978,17 @@ Attribute DynamicInvoke.VB_Description = "Invokes from an array or sequence of a
     AssignPublicResult DynamicInvoke, result
 End Function
 
-Public Function Combine(ParamArray delegates() As Variant) As ROneCOne
-Attribute Combine.VB_Description = "Returns an immutable multicast delegate."
+Public Function Combine(ParamArray delegates() As Variant) As Variant
+Attribute Combine.VB_Description = "Combines delegates into a multicast, or joins path parts."
     Dim combined As ROneCOne
     Dim invocationList As Collection
     Dim rawDelegate As Variant
     Dim delegateValue As ROneCOne
 
+    If mRole = ROLE_PATH_FACTORY Then
+        Combine = CombinePathParts(delegates)
+        Exit Function
+    End If
     Set invocationList = New Collection
     If IsDelegateRole(mRole) Then
         AppendInvocationList invocationList, Me
@@ -6292,7 +6589,17 @@ Attribute AnyItem.VB_Description = "Tests whether any element exists or matches 
 End Function
 
 Public Function Exists(Optional ByVal predicate As Variant) As Boolean
-Attribute Exists.VB_Description = "Tests whether any element exists or matches."
+Attribute Exists.VB_Description = "Tests whether an element matches or a file system path exists."
+    If mRole = ROLE_FILE_FACTORY Then
+        Exists = CreateFileSystemObject().FileExists( _
+            RequirePathText(predicate, "Exists"))
+        Exit Function
+    End If
+    If mRole = ROLE_DIRECTORY_FACTORY Then
+        Exists = CreateFileSystemObject().FolderExists( _
+            TrimTrailingSeparators(RequirePathText(predicate, "Exists")))
+        Exit Function
+    End If
     If IsMissing(predicate) Then
         Exists = AnyItem
     Else
@@ -7234,6 +7541,11 @@ Attribute JsonError.VB_Description = "Gets the ROneCOne JSON parse and write err
     JsonError = ERROR_JSON_PARSE
 End Property
 
+Public Property Get IOError() As Long
+Attribute IOError.VB_Description = "Gets the ROneCOne file system error number."
+    IOError = ERROR_IO
+End Property
+
 Public Property Get UnboundParameterError() As Long
 Attribute UnboundParameterError.VB_Description = "Gets the unbound-parameter error number."
     UnboundParameterError = ERROR_UNBOUND_PARAMETER
@@ -8084,6 +8396,18 @@ End Sub
 
 Friend Sub ConfigureJsonFactory()
     mRole = ROLE_JSON_FACTORY
+End Sub
+
+Friend Sub ConfigureFileFactory()
+    mRole = ROLE_FILE_FACTORY
+End Sub
+
+Friend Sub ConfigureDirectoryFactory()
+    mRole = ROLE_DIRECTORY_FACTORY
+End Sub
+
+Friend Sub ConfigurePathFactory()
+    mRole = ROLE_PATH_FACTORY
 End Sub
 
 Friend Sub ConfigureHttpResponse(ByVal request As Object)
@@ -10639,7 +10963,7 @@ Private Function CollectJsonPropertyNames( _
     Dim names As Collection
 
     Set names = New Collection
-    For Each element In JsonSourceElements(propertyNames, memberName)
+    For Each element In CollectSourceElements(propertyNames, memberName)
         If IsObject(element) Or VarType(element) <> vbString Then
             RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
                 "Every property name must be text."
@@ -10661,7 +10985,7 @@ Private Function CollectJsonInstances( _
     Dim instances As Collection
 
     Set instances = New Collection
-    For Each element In JsonSourceElements(source, memberName)
+    For Each element In CollectSourceElements(source, memberName)
         If Not IsObject(element) Then
             RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
                 "Every source element must be an object instance."
@@ -10671,7 +10995,7 @@ Private Function CollectJsonInstances( _
     Set CollectJsonInstances = instances
 End Function
 
-Private Function JsonSourceElements( _
+Private Function CollectSourceElements( _
     ByVal values As Variant, _
     ByVal memberName As String _
 ) As Collection
@@ -10694,25 +11018,558 @@ Private Function JsonSourceElements( _
             For Each element In sequence
                 elements.Add element
             Next element
-            Set JsonSourceElements = elements
+            Set CollectSourceElements = elements
             Exit Function
         End If
         If TypeName(values) = "Collection" Then
             For Each element In values
                 elements.Add element
             Next element
-            Set JsonSourceElements = elements
+            Set CollectSourceElements = elements
             Exit Function
         End If
     ElseIf IsArray(values) Then
         For Each element In values
             elements.Add element
         Next element
-        Set JsonSourceElements = elements
+        Set CollectSourceElements = elements
         Exit Function
     End If
     RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
         "Expected a ROneCOne sequence, VBA array, or Collection."
+End Function
+
+Private Sub RequireFileFactory(ByVal memberName As String)
+    If mRole <> ROLE_FILE_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires the File surface."
+    End If
+End Sub
+
+Private Sub RequireDirectoryFactory(ByVal memberName As String)
+    If mRole <> ROLE_DIRECTORY_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires the Directory surface."
+    End If
+End Sub
+
+Private Sub RequirePathFactory(ByVal memberName As String)
+    If mRole <> ROLE_PATH_FACTORY Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires the Path surface."
+    End If
+End Sub
+
+Private Sub RaiseIoError(ByVal message As String)
+    Err.Raise ERROR_IO, "ROneCOne.IOException", message
+End Sub
+
+Private Function RequirePathText( _
+    ByVal value As Variant, _
+    ByVal memberName As String _
+) As String
+    If Not IsMissing(value) Then
+        If VarType(value) = vbString Then
+            If Len(Trim$(CStr(value))) > 0 Then
+                RequirePathText = CStr(value)
+                Exit Function
+            End If
+        End If
+    End If
+    RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+        "A file system path is required."
+End Function
+
+Private Function CreateFileSystemObject() As Object
+    Set CreateFileSystemObject = CreateObject("Scripting.FileSystemObject")
+End Function
+
+Private Function CreateStreamObject(ByVal streamType As Long) As Object
+    Set CreateStreamObject = CreateObject(STREAM_PROG_ID)
+    CreateStreamObject.Type = streamType
+    CreateStreamObject.Open
+End Function
+
+Private Function NormalizeTextEncoding( _
+    ByVal encoding As String, _
+    ByVal memberName As String _
+) As String
+    Select Case LCase$(Trim$(encoding))
+        Case "utf-8"
+            NormalizeTextEncoding = "utf-8"
+        Case "utf-16"
+            NormalizeTextEncoding = "unicode"
+        Case "windows-1252"
+            NormalizeTextEncoding = "windows-1252"
+        Case Else
+            RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+                "Encoding must be utf-8, utf-16, or windows-1252."
+    End Select
+End Function
+
+Private Function TextBomSkipBytes(ByVal charset As String) As Long
+    If charset = "utf-8" Then
+        TextBomSkipBytes = 3
+    ElseIf charset = "unicode" Then
+        TextBomSkipBytes = 2
+    End If
+End Function
+
+Private Function SniffTextCharset( _
+    ByVal filePath As String, _
+    ByVal requestedCharset As String _
+) As String
+    Dim fileNumber As Integer
+    Dim head(0 To 2) As Byte
+    Dim headLength As Long
+
+    ' A byte-order mark decides the decoder; without one, the caller's
+    ' requested encoding stands. The native read touches at most 3 bytes.
+    SniffTextCharset = requestedCharset
+    fileNumber = FreeFile
+    Open filePath For Binary Access Read As #fileNumber
+    headLength = LOF(fileNumber)
+    If headLength > 3 Then headLength = 3
+    If headLength >= 2 Then Get #fileNumber, 1, head
+    Close #fileNumber
+    If headLength < 2 Then Exit Function
+    If head(0) = &HFF And head(1) = &HFE Then
+        SniffTextCharset = "unicode"
+    ElseIf head(0) = &HFE And head(1) = &HFF Then
+        SniffTextCharset = "bigendianunicode"
+    ElseIf headLength >= 3 Then
+        If head(0) = &HEF And head(1) = &HBB And head(2) = &HBF Then
+            SniffTextCharset = "utf-8"
+        End If
+    End If
+End Function
+
+Private Function IoReadTextFile( _
+    ByVal filePath As String, _
+    ByVal charset As String, _
+    ByVal memberName As String _
+) As String
+    Dim content As Variant
+    Dim stream As Object
+
+    IoRequireExistingFile filePath, memberName
+    On Error GoTo ReadFailed
+    Set stream = CreateStreamObject(STREAM_TYPE_TEXT)
+    stream.Charset = SniffTextCharset(filePath, charset)
+    stream.LoadFromFile filePath
+    content = stream.ReadText(-1)
+    stream.Close
+    On Error GoTo 0
+    If Not IsNull(content) Then IoReadTextFile = CStr(content)
+    Exit Function
+
+ReadFailed:
+    RaiseIoError "The file '" & filePath & "' could not be read: " & _
+        Err.Description
+End Function
+
+Private Sub IoWriteTextFile( _
+    ByVal filePath As String, _
+    ByVal contents As String, _
+    ByVal charset As String, _
+    ByVal append As Boolean, _
+    ByVal memberName As String _
+)
+    Dim encoded As Variant
+    Dim skipBytes As Long
+    Dim target As Object
+
+    ' UTF-8 output never carries a byte-order mark; UTF-16 keeps its mark at
+    ' the start of a file, and appended text never embeds one mid-file.
+    If append And CreateFileSystemObject().FileExists(filePath) Then
+        encoded = IoEncodeText(contents, charset, TextBomSkipBytes(charset))
+        On Error GoTo WriteFailed
+        Set target = CreateStreamObject(STREAM_TYPE_BINARY)
+        target.LoadFromFile filePath
+        target.Position = target.Size
+    Else
+        If charset = "unicode" Then
+            skipBytes = 0
+        Else
+            skipBytes = TextBomSkipBytes(charset)
+        End If
+        encoded = IoEncodeText(contents, charset, skipBytes)
+        On Error GoTo WriteFailed
+        Set target = CreateStreamObject(STREAM_TYPE_BINARY)
+    End If
+    If UBound(encoded) >= LBound(encoded) Then target.Write encoded
+    target.SaveToFile filePath, STREAM_SAVE_OVERWRITE
+    target.Close
+    On Error GoTo 0
+    Exit Sub
+
+WriteFailed:
+    RaiseIoError "The file '" & filePath & "' could not be written: " & _
+        Err.Description
+End Sub
+
+Private Function IoEncodeText( _
+    ByVal contents As String, _
+    ByVal charset As String, _
+    ByVal skipBytes As Long _
+) As Variant
+    Dim binaryStream As Object
+    Dim encoded As Variant
+    Dim textStream As Object
+
+    Set textStream = CreateStreamObject(STREAM_TYPE_TEXT)
+    textStream.Charset = charset
+    textStream.WriteText contents
+    If skipBytes > textStream.Size Then skipBytes = textStream.Size
+    textStream.Position = skipBytes
+    Set binaryStream = CreateStreamObject(STREAM_TYPE_BINARY)
+    textStream.CopyTo binaryStream
+    textStream.Close
+    If binaryStream.Size > 0 Then
+        binaryStream.Position = 0
+        encoded = binaryStream.Read(-1)
+    Else
+        encoded = EmptyByteArray()
+    End If
+    binaryStream.Close
+    IoEncodeText = encoded
+End Function
+
+Private Function EmptyByteArray() As Variant
+    Dim bytes() As Byte
+
+    bytes = vbNullString
+    EmptyByteArray = bytes
+End Function
+
+Private Function IoReadAllBytesCore( _
+    ByVal filePath As String, _
+    ByVal memberName As String _
+) As Variant
+    Dim stream As Object
+
+    IoRequireExistingFile filePath, memberName
+    On Error GoTo ReadFailed
+    Set stream = CreateStreamObject(STREAM_TYPE_BINARY)
+    stream.LoadFromFile filePath
+    If stream.Size > 0 Then
+        IoReadAllBytesCore = stream.Read(-1)
+    Else
+        IoReadAllBytesCore = EmptyByteArray()
+    End If
+    stream.Close
+    On Error GoTo 0
+    Exit Function
+
+ReadFailed:
+    RaiseIoError "The file '" & filePath & "' could not be read: " & _
+        Err.Description
+End Function
+
+Private Sub IoWriteAllBytesCore( _
+    ByVal filePath As String, _
+    ByVal bytes As Variant, _
+    ByVal memberName As String _
+)
+    Dim stream As Object
+
+    On Error GoTo WriteFailed
+    Set stream = CreateStreamObject(STREAM_TYPE_BINARY)
+    If UBound(bytes) >= LBound(bytes) Then stream.Write bytes
+    stream.SaveToFile filePath, STREAM_SAVE_OVERWRITE
+    stream.Close
+    On Error GoTo 0
+    Exit Sub
+
+WriteFailed:
+    RaiseIoError "The file '" & filePath & "' could not be written: " & _
+        Err.Description
+End Sub
+
+Private Sub IoRequireExistingFile( _
+    ByVal filePath As String, _
+    ByVal memberName As String _
+)
+    If Not CreateFileSystemObject().FileExists(filePath) Then
+        RaiseIoError "The file '" & filePath & "' was not found."
+    End If
+End Sub
+
+Private Sub FileDeleteCore(ByVal filePath As String)
+    Dim fso As Object
+
+    Set fso = CreateFileSystemObject()
+    If Not fso.FileExists(filePath) Then Exit Sub
+    On Error GoTo DeleteFailed
+    fso.DeleteFile filePath, True
+    On Error GoTo 0
+    Exit Sub
+
+DeleteFailed:
+    RaiseIoError "The file '" & filePath & "' could not be deleted: " & _
+        Err.Description
+End Sub
+
+Private Sub FileCopyCore( _
+    ByVal sourcePath As String, _
+    ByVal destinationPath As String, _
+    ByVal overwrite As Boolean _
+)
+    Dim fso As Object
+
+    Set fso = CreateFileSystemObject()
+    If Not fso.FileExists(sourcePath) Then
+        RaiseIoError "The file '" & sourcePath & "' was not found."
+    End If
+    If Not overwrite Then
+        If fso.FileExists(destinationPath) Then
+            RaiseIoError "The file '" & destinationPath & _
+                "' already exists."
+        End If
+    End If
+    On Error GoTo CopyFailed
+    fso.CopyFile sourcePath, destinationPath, overwrite
+    On Error GoTo 0
+    Exit Sub
+
+CopyFailed:
+    RaiseIoError "The file '" & sourcePath & "' could not be copied: " & _
+        Err.Description
+End Sub
+
+Private Sub FileMoveCore( _
+    ByVal sourcePath As String, _
+    ByVal destinationPath As String _
+)
+    Dim fso As Object
+
+    Set fso = CreateFileSystemObject()
+    If Not fso.FileExists(sourcePath) Then
+        RaiseIoError "The file '" & sourcePath & "' was not found."
+    End If
+    If fso.FileExists(destinationPath) Then
+        RaiseIoError "The file '" & destinationPath & "' already exists."
+    End If
+    On Error GoTo MoveFailed
+    fso.MoveFile sourcePath, destinationPath
+    On Error GoTo 0
+    Exit Sub
+
+MoveFailed:
+    RaiseIoError "The file '" & sourcePath & "' could not be moved: " & _
+        Err.Description
+End Sub
+
+Private Sub DirectoryCreateCore( _
+    ByVal directoryPath As String, _
+    ByVal memberName As String _
+)
+    Dim fso As Object
+    Dim parentPath As String
+
+    Set fso = CreateFileSystemObject()
+    If fso.FolderExists(directoryPath) Then Exit Sub
+    parentPath = fso.GetParentFolderName(directoryPath)
+    If Len(parentPath) > 0 Then
+        If Not fso.FolderExists(parentPath) Then
+            DirectoryCreateCore parentPath, memberName
+        End If
+    End If
+    On Error GoTo CreateFailed
+    fso.CreateFolder directoryPath
+    On Error GoTo 0
+    Exit Sub
+
+CreateFailed:
+    RaiseIoError "The folder '" & directoryPath & _
+        "' could not be created: " & Err.Description
+End Sub
+
+Private Sub DirectoryDeleteCore( _
+    ByVal directoryPath As String, _
+    ByVal recursive As Boolean _
+)
+    Dim folderObject As Object
+    Dim fso As Object
+
+    Set fso = CreateFileSystemObject()
+    If Not fso.FolderExists(directoryPath) Then
+        RaiseIoError "The folder '" & directoryPath & "' was not found."
+    End If
+    If Not recursive Then
+        Set folderObject = fso.GetFolder(directoryPath)
+        If folderObject.Files.Count > 0 Or _
+            folderObject.SubFolders.Count > 0 Then
+            RaiseIoError "The folder '" & directoryPath & _
+                "' is not empty; pass recursive to delete it."
+        End If
+    End If
+    On Error GoTo DeleteFailed
+    fso.DeleteFolder directoryPath, True
+    On Error GoTo 0
+    Exit Sub
+
+DeleteFailed:
+    RaiseIoError "The folder '" & directoryPath & _
+        "' could not be deleted: " & Err.Description
+End Sub
+
+Private Function DirectoryEntriesCore( _
+    ByVal directoryPath As String, _
+    ByVal searchPattern As String, _
+    ByVal allDirectories As Boolean, _
+    ByVal wantFiles As Boolean, _
+    ByVal memberName As String _
+) As ROneCOne
+    Dim entry As Variant
+    Dim fso As Object
+    Dim index As Long
+    Dim patternLower As String
+    Dim results As Collection
+    Dim sorted() As String
+    Dim values As ROneCOne
+
+    Set fso = CreateFileSystemObject()
+    If Not fso.FolderExists(directoryPath) Then
+        RaiseIoError "The folder '" & directoryPath & "' was not found."
+    End If
+    patternLower = LCase$(Replace$(searchPattern, "[", "[[]"))
+    patternLower = Replace$(patternLower, "#", "[#]")
+    Set results = New Collection
+    CollectFolderEntries fso.GetFolder(directoryPath), patternLower, _
+        allDirectories, wantFiles, results
+    Set values = ROneCOne.ListOf(vbString)
+    If results.Count > 0 Then
+        ReDim sorted(1 To results.Count)
+        index = 0
+        For Each entry In results
+            index = index + 1
+            sorted(index) = CStr(entry)
+        Next entry
+        SortTextArray sorted, 1, results.Count
+        For index = 1 To results.Count
+            values.Add sorted(index)
+        Next index
+    End If
+    Set DirectoryEntriesCore = values
+End Function
+
+Private Sub CollectFolderEntries( _
+    ByVal folderObject As Object, _
+    ByVal patternLower As String, _
+    ByVal allDirectories As Boolean, _
+    ByVal wantFiles As Boolean, _
+    ByVal results As Collection _
+)
+    Dim entry As Object
+
+    If wantFiles Then
+        For Each entry In folderObject.Files
+            If LCase$(entry.Name) Like patternLower Then
+                results.Add CStr(entry.Path)
+            End If
+        Next entry
+    Else
+        For Each entry In folderObject.SubFolders
+            If LCase$(entry.Name) Like patternLower Then
+                results.Add CStr(entry.Path)
+            End If
+        Next entry
+    End If
+    If allDirectories Then
+        For Each entry In folderObject.SubFolders
+            CollectFolderEntries entry, patternLower, True, wantFiles, _
+                results
+        Next entry
+    End If
+End Sub
+
+Private Sub SortTextArray( _
+    ByRef values() As String, _
+    ByVal low As Long, _
+    ByVal high As Long _
+)
+    Dim lowerIndex As Long
+    Dim pivot As String
+    Dim swapValue As String
+    Dim upperIndex As Long
+
+    If low >= high Then Exit Sub
+    lowerIndex = low
+    upperIndex = high
+    pivot = values((low + high) \ 2)
+    Do While lowerIndex <= upperIndex
+        Do While StrComp(values(lowerIndex), pivot, vbTextCompare) < 0
+            lowerIndex = lowerIndex + 1
+        Loop
+        Do While StrComp(values(upperIndex), pivot, vbTextCompare) > 0
+            upperIndex = upperIndex - 1
+        Loop
+        If lowerIndex <= upperIndex Then
+            swapValue = values(lowerIndex)
+            values(lowerIndex) = values(upperIndex)
+            values(upperIndex) = swapValue
+            lowerIndex = lowerIndex + 1
+            upperIndex = upperIndex - 1
+        End If
+    Loop
+    SortTextArray values, low, upperIndex
+    SortTextArray values, lowerIndex, high
+End Sub
+
+Private Function CombinePathParts(ByVal parts As Variant) As String
+    Dim part As Variant
+    Dim partText As String
+    Dim result As String
+
+    For Each part In parts
+        partText = CStr(part)
+        If Len(partText) > 0 Then
+            If PathIsRooted(partText) Or Len(result) = 0 Then
+                result = partText
+            ElseIf Right$(result, 1) = "\" Or Right$(result, 1) = "/" Then
+                result = result & partText
+            Else
+                result = result & "\" & partText
+            End If
+        End If
+    Next part
+    CombinePathParts = result
+End Function
+
+Private Function PathIsRooted(ByVal pathText As String) As Boolean
+    If Len(pathText) = 0 Then Exit Function
+    If Left$(pathText, 1) = "\" Or Left$(pathText, 1) = "/" Then
+        PathIsRooted = True
+    ElseIf Len(pathText) >= 2 Then
+        PathIsRooted = (Mid$(pathText, 2, 1) = ":")
+    End If
+End Function
+
+Private Function PathLastSeparator(ByVal pathText As String) As Long
+    Dim backslashAt As Long
+    Dim slashAt As Long
+
+    backslashAt = InStrRev(pathText, "\")
+    slashAt = InStrRev(pathText, "/")
+    If backslashAt > slashAt Then
+        PathLastSeparator = backslashAt
+    Else
+        PathLastSeparator = slashAt
+    End If
+End Function
+
+Private Function TrimTrailingSeparators(ByVal pathText As String) As String
+    TrimTrailingSeparators = pathText
+    Do While Len(TrimTrailingSeparators) > 1
+        If Right$(TrimTrailingSeparators, 1) = "\" Or _
+            Right$(TrimTrailingSeparators, 1) = "/" Then
+            TrimTrailingSeparators = _
+                Left$(TrimTrailingSeparators, Len(TrimTrailingSeparators) - 1)
+        Else
+            Exit Do
+        End If
+    Loop
 End Function
 
 Private Sub RequireHttpClient(ByVal memberName As String)

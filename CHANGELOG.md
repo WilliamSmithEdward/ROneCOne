@@ -10,6 +10,14 @@ checksums for each version are on the
 
 ### Added
 
+- A file system layer in the spirit of System.IO: `ROneCOne.File` reads and writes text
+  (UTF-8 by default with no byte-order mark, byte-order marks honored on read, `utf-16` and
+  `windows-1252` on request), lines, and bytes, and copies, moves, and deletes with
+  System.IO's exact missing/existing semantics; `ROneCOne.Directory` creates parents in one
+  call, deletes empty-or-recursive, and enumerates files and folders sorted with `*`/`?`
+  patterns and optional recursion; `ROneCOne.Path` joins and dissects path text. Failures
+  raise the typed `ROneCOne.IOError` from source `ROneCOne.IOException`. See
+  [ADR 0015](docs/decisions/0015-file-system-layer-over-adodb-stream.md).
 - Native provider async: `OpenAsync`, `ExecuteReaderAsync`, `ExecuteScalarAsync`, and
   `FillAsync` now start their operation inside ADO with the async option at call time and the
   returned Task polls provider state cooperatively, so a slow query no longer freezes Excel

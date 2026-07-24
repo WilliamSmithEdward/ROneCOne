@@ -545,18 +545,54 @@ class SourceContractTests(unittest.TestCase):
             r'CreateObject\("([^"]+)"\)', self.source, flags=re.IGNORECASE
         )
         self.assertEqual(
-            {"adodb.connection", "adodb.command"},
+            {
+                "adodb.connection",
+                "adodb.command",
+                "scripting.filesystemobject",
+            },
             {value.lower() for value in created_prog_ids},
         )
-        # The one const-based CreateObject is the in-process WinHTTP client.
+        # The const-based CreateObjects are the in-process WinHTTP client and
+        # the ADODB stream used for encoded file transput.
         self.assertIn(
             'Private Const HTTP_PROG_ID As String = "WinHttp.WinHttpRequest.5.1"',
+            self.source,
+        )
+        self.assertIn(
+            'Private Const STREAM_PROG_ID As String = "ADODB.Stream"',
             self.source,
         )
         const_created = re.findall(
             r"CreateObject\((\w+)\)", self.source, flags=re.IGNORECASE
         )
-        self.assertEqual({"HTTP_PROG_ID"}, set(const_created))
+        self.assertEqual({"HTTP_PROG_ID", "STREAM_PROG_ID"}, set(const_created))
+
+    def test_file_system_surface_is_present(self) -> None:
+        for member in (
+            "Public Property Get File()",
+            "Public Property Get Directory()",
+            "Public Property Get Path()",
+            "Public Function ReadAllText(",
+            "Public Sub WriteAllText(",
+            "Public Sub AppendAllText(",
+            "Public Function ReadAllLines(",
+            "Public Sub WriteAllLines(",
+            "Public Function ReadAllBytes(",
+            "Public Sub WriteAllBytes(",
+            "Public Sub Move(",
+            "Public Sub CreateDirectory(",
+            "Public Function GetFiles(",
+            "Public Function GetDirectories(",
+            "Public Function GetFileName(",
+            "Public Function GetDirectoryName(",
+            "Public Function GetExtension(",
+            "Public Function GetFileNameWithoutExtension(",
+            "Public Function ChangeExtension(",
+            "Public Function GetFullPath(",
+            "Public Function GetTempPath(",
+            "Public Property Get IOError()",
+        ):
+            self.assertIn(member, self.source)
 
     def test_json_surface_is_present_and_runtime_native(self) -> None:
         for member in (

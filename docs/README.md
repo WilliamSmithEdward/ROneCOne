@@ -3,7 +3,7 @@
 Everything here describes one product: a single importable class module,
 [`src/ROneCOne.cls`](../src/ROneCOne.cls), that gives Excel VBA generic collections, LINQ,
 delegates, tasks, typed events, structured exceptions, an in-memory data layer, an awaitable
-HTTP client, and a System.Text.Json-style JSON serializer.
+HTTP client, a System.Text.Json-style JSON serializer, and a System.IO-style file layer.
 
 Choose the path that matches what you are trying to do.
 
@@ -22,6 +22,7 @@ Start here if you write workbook code and want results quickly. The
 | [Data and providers](user-guide/data-and-providers.md) | Model, query, and load tabular data |
 | [HTTP and web data](user-guide/http-and-web.md) | Call web APIs with awaitable requests |
 | [JSON and typed objects](user-guide/json-and-objects.md) | Parse, serialize, and bind JSON |
+| [Files and folders](user-guide/files-and-folders.md) | Read and write files with real encodings |
 | [Practical reference](user-guide/reference.md) | Find names, defaults, and limits fast |
 
 ## Exact contracts
@@ -39,6 +40,7 @@ syntax. Each technical document links back to its user guide.
 | [Data and providers](data.md) | Tables, relations, views, provider capabilities, deterministic cleanup |
 | [HTTP client](http.md) | Transport, verb semantics, failure model, the Application.Run boundary |
 | [JSON](json.md) | Model, strictness, serialization rules, table and object binding |
+| [Files](files.md) | Encodings, byte-order marks, failure contract, enumeration order |
 
 ## Understand the design
 

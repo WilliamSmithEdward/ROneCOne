@@ -106,6 +106,10 @@ Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 | Async provider access | `OpenAsync`, `ExecuteReaderAsync`, `FillAsync`, `UpdateAsync` |
 | Provider capability | `AsyncMode`, `State` |
 | Deterministic cleanup | `Using(resource).Run(work)` |
+| Text files | `File.ReadAllText`, `WriteAllText`, `AppendAllText`, `ReadAllLines`, `WriteAllLines` |
+| Binary files and management | `ReadAllBytes`, `WriteAllBytes`, `Exists`, `Copy`, `Move`, `Delete` |
+| Folders | `Directory.CreateDirectory`, `Exists`, `Delete`, `GetFiles`, `GetDirectories` |
+| Path text | `Path.Combine`, `GetFileName`, `GetDirectoryName`, `GetExtension`, `ChangeExtension`, `GetFullPath`, `GetTempPath` |
 
 ## Type tokens
 

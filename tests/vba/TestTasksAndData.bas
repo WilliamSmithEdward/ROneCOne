@@ -56,6 +56,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestProviderSurface
     mCurrentTest = "TestSqlServerProvider"
     TestSqlServerProvider
+    mCurrentTest = "TestFileSystemSurface"
+    TestFileSystemSurface
     mCurrentTest = "TestHttpSurface"
     TestHttpSurface
     mCurrentTest = vbNullString
@@ -1156,6 +1158,160 @@ Private Sub TestRelationConstraints()
     Err.Clear
     On Error GoTo 0
     AssertTrue "foreign key rejects orphan", relationError <> 0
+End Sub
+
+Private Sub TestFileSystemSurface()
+    Dim bytes As Variant
+    Dim capturedError As Long
+    Dim directories As ROneCOne
+    Dim files As ROneCOne
+    Dim lines As ROneCOne
+    Dim payload(0 To 2) As Byte
+    Dim sample As String
+    Dim testRoot As String
+
+    ' Every path lives under one scratch root next to the workbook, created
+    ' first and removed last, so the suite leaves nothing behind.
+    testRoot = ThisWorkbook.Path & "\ROneCOne_FileTests"
+    If ROneCOne.Directory.Exists(testRoot) Then
+        ROneCOne.Directory.Delete testRoot, True
+    End If
+    ROneCOne.Directory.CreateDirectory testRoot & "\inner\deep"
+    AssertTrue "fs nested create", _
+        ROneCOne.Directory.Exists(testRoot & "\inner\deep")
+
+    mCurrentTest = "TestFileSystemSurface.Text"
+    sample = "he" & ChrW$(233) & "llo " & ChrW$(8364)
+    ROneCOne.File.WriteAllText testRoot & "\sample.txt", sample
+    AssertEqual "fs utf8 round trip", sample, _
+        ROneCOne.File.ReadAllText(testRoot & "\sample.txt")
+    bytes = ROneCOne.File.ReadAllBytes(testRoot & "\sample.txt")
+    AssertEqual "fs utf8 write has no bom", 104&, CLng(bytes(0))
+    ROneCOne.File.AppendAllText testRoot & "\sample.txt", "!"
+    AssertEqual "fs append", sample & "!", _
+        ROneCOne.File.ReadAllText(testRoot & "\sample.txt")
+
+    mCurrentTest = "TestFileSystemSurface.Encodings"
+    ROneCOne.File.WriteAllText testRoot & "\sample16.txt", sample, "utf-16"
+    bytes = ROneCOne.File.ReadAllBytes(testRoot & "\sample16.txt")
+    AssertEqual "fs utf16 write keeps bom", 255&, CLng(bytes(0))
+    AssertEqual "fs bom decides decoder", sample, _
+        ROneCOne.File.ReadAllText(testRoot & "\sample16.txt")
+    ROneCOne.File.WriteAllText testRoot & "\ansi.txt", _
+        "h" & ChrW$(233), "windows-1252"
+    bytes = ROneCOne.File.ReadAllBytes(testRoot & "\ansi.txt")
+    AssertEqual "fs ansi single byte", 233&, CLng(bytes(1))
+    AssertEqual "fs ansi round trip", "h" & ChrW$(233), _
+        ROneCOne.File.ReadAllText(testRoot & "\ansi.txt", "windows-1252")
+    capturedError = 0
+    On Error Resume Next
+    ROneCOne.File.ReadAllText testRoot & "\sample.txt", "latin-5"
+    capturedError = Err.Number
+    On Error GoTo 0
+    AssertEqual "fs unknown encoding rejected", _
+        ROneCOne.InvalidArgumentError, capturedError
+
+    mCurrentTest = "TestFileSystemSurface.Lines"
+    ROneCOne.File.WriteAllLines testRoot & "\lines.txt", _
+        Array("alpha", "beta", "gamma")
+    Set lines = ROneCOne.File.ReadAllLines(testRoot & "\lines.txt")
+    AssertEqual "fs lines count", 3&, lines.Count
+    AssertEqual "fs lines first", "alpha", lines.Item(0)
+    AssertEqual "fs lines last", "gamma", lines.Item(2)
+    AssertTrue "fs lines terminate", _
+        Right$(ROneCOne.File.ReadAllText(testRoot & "\lines.txt"), 2) = vbCrLf
+
+    mCurrentTest = "TestFileSystemSurface.Bytes"
+    payload(0) = 1
+    payload(1) = 2
+    payload(2) = 3
+    ROneCOne.File.WriteAllBytes testRoot & "\payload.bin", payload
+    bytes = ROneCOne.File.ReadAllBytes(testRoot & "\payload.bin")
+    AssertEqual "fs bytes bound", 2&, CLng(UBound(bytes))
+    AssertEqual "fs bytes value", 3&, CLng(bytes(2))
+
+    mCurrentTest = "TestFileSystemSurface.CopyMoveDelete"
+    ROneCOne.File.Copy testRoot & "\sample.txt", testRoot & "\copy.txt"
+    AssertTrue "fs copy exists", ROneCOne.File.Exists(testRoot & "\copy.txt")
+    capturedError = 0
+    On Error Resume Next
+    ROneCOne.File.Copy testRoot & "\sample.txt", testRoot & "\copy.txt"
+    capturedError = Err.Number
+    On Error GoTo 0
+    AssertEqual "fs copy refuses overwrite", ROneCOne.IOError, capturedError
+    ROneCOne.File.Copy testRoot & "\sample.txt", testRoot & "\copy.txt", True
+    ROneCOne.File.Move testRoot & "\copy.txt", testRoot & "\moved.txt"
+    AssertTrue "fs move target", ROneCOne.File.Exists(testRoot & "\moved.txt")
+    AssertFalse "fs move source gone", _
+        ROneCOne.File.Exists(testRoot & "\copy.txt")
+    ROneCOne.File.Delete testRoot & "\moved.txt"
+    AssertFalse "fs delete", ROneCOne.File.Exists(testRoot & "\moved.txt")
+    capturedError = 0
+    On Error Resume Next
+    ROneCOne.File.Delete testRoot & "\moved.txt"
+    capturedError = Err.Number
+    On Error GoTo 0
+    AssertEqual "fs delete missing is silent", 0&, capturedError
+    capturedError = 0
+    On Error Resume Next
+    ROneCOne.File.ReadAllText testRoot & "\moved.txt"
+    capturedError = Err.Number
+    On Error GoTo 0
+    AssertEqual "fs read missing raises", ROneCOne.IOError, capturedError
+
+    mCurrentTest = "TestFileSystemSurface.Enumeration"
+    ROneCOne.File.WriteAllText testRoot & "\inner\note.txt", "inner note"
+    Set files = ROneCOne.Directory.GetFiles(testRoot, "*.txt")
+    AssertEqual "fs top files", 4&, files.Count
+    AssertEqual "fs files sorted", "ansi.txt", _
+        ROneCOne.Path.GetFileName(CStr(files.Item(0)))
+    Set files = ROneCOne.Directory.GetFiles(testRoot, "*.txt", True)
+    AssertEqual "fs recursive files", 5&, files.Count
+    Set files = ROneCOne.Directory.GetFiles(testRoot, "note.*", True)
+    AssertEqual "fs pattern match", 1&, files.Count
+    Set directories = ROneCOne.Directory.GetDirectories(testRoot)
+    AssertEqual "fs top directories", 1&, directories.Count
+    Set directories = ROneCOne.Directory.GetDirectories(testRoot, "*", True)
+    AssertEqual "fs recursive directories", 2&, directories.Count
+
+    mCurrentTest = "TestFileSystemSurface.Paths"
+    AssertEqual "path combine", "C:\data\in\file.txt", _
+        ROneCOne.Path.Combine("C:\data", "in", "file.txt")
+    AssertEqual "path combine rooted reset", "D:\other", _
+        ROneCOne.Path.Combine("C:\data", "D:\other")
+    AssertEqual "path combine keeps separator", "C:\data\x.txt", _
+        ROneCOne.Path.Combine("C:\data\", "x.txt")
+    AssertEqual "path file name", "b.txt", _
+        ROneCOne.Path.GetFileName("C:\a\b.txt")
+    AssertEqual "path directory name", "C:\a", _
+        ROneCOne.Path.GetDirectoryName("C:\a\b.txt")
+    AssertEqual "path extension", ".txt", _
+        ROneCOne.Path.GetExtension("C:\a\b.txt")
+    AssertEqual "path no extension", vbNullString, _
+        ROneCOne.Path.GetExtension("C:\a\b")
+    AssertEqual "path name without extension", "b", _
+        ROneCOne.Path.GetFileNameWithoutExtension("C:\a\b.txt")
+    AssertEqual "path dot file", vbNullString, _
+        ROneCOne.Path.GetFileNameWithoutExtension(".gitignore")
+    AssertEqual "path change extension", "C:\a\b.json", _
+        ROneCOne.Path.ChangeExtension("C:\a\b.txt", "json")
+    AssertEqual "path remove extension", "C:\a\b", _
+        ROneCOne.Path.ChangeExtension("C:\a\b.txt", vbNullString)
+    AssertTrue "path temp trailing separator", _
+        Right$(ROneCOne.Path.GetTempPath(), 1) = "\"
+    AssertTrue "path full path is rooted", _
+        Mid$(ROneCOne.Path.GetFullPath("sample.txt"), 2, 1) = ":"
+
+    mCurrentTest = "TestFileSystemSurface.Cleanup"
+    capturedError = 0
+    On Error Resume Next
+    ROneCOne.Directory.Delete testRoot
+    capturedError = Err.Number
+    On Error GoTo 0
+    AssertEqual "fs non-recursive delete refuses", _
+        ROneCOne.IOError, capturedError
+    ROneCOne.Directory.Delete testRoot, True
+    AssertFalse "fs root removed", ROneCOne.Directory.Exists(testRoot)
 End Sub
 
 Private Function ElapsedSecondsSince(ByVal started As Double) As Double
