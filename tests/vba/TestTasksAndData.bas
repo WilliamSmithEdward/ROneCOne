@@ -56,6 +56,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestProviderSurface
     mCurrentTest = "TestSqlServerProvider"
     TestSqlServerProvider
+    mCurrentTest = "TestQueryableSurface"
+    TestQueryableSurface
     mCurrentTest = "TestFileSystemSurface"
     TestFileSystemSurface
     mCurrentTest = "TestCsvSurface"
@@ -581,6 +583,188 @@ Private Sub TestProviderSurface()
     AssertEqual "provider closes", "Closed", connection.State
 End Sub
 
+Private Sub TestQueryableSurface()
+    Dim aceConnection As ROneCOne
+    Dim aceOrders As ROneCOne
+    Dim asyncTable As ROneCOne
+    Dim baseQuery As ROneCOne
+    Dim connection As ROneCOne
+    Dim filtered As ROneCOne
+    Dim firstRow As Variant
+    Dim ignoredCount As Long
+    Dim orders As ROneCOne
+    Dim page As ROneCOne
+    Dim projected As ROneCOne
+    Dim refusalError As Long
+    Dim strangeConnection As ROneCOne
+
+    ' Expression trees compile to parameterized SQL and run on the server.
+    ' The same six-row shape drives both supported dialects: SQL Server
+    ' through MSOLEDBSQL and ACE against a closed workbook file.
+    mCurrentTest = "TestQueryableSurface.SqlServer"
+    Set connection = ROneCOne.DbConnection(SQL_SERVER_CONNECTION)
+    connection.Connect
+    ROneCOne.DbCommand("CREATE TABLE #q_orders (Id int NOT NULL, " & _
+        "Customer nvarchar(40) NOT NULL, Total float NOT NULL, " & _
+        "Note nvarchar(20) NULL)", connection).ExecuteNonQuery
+    ROneCOne.DbCommand("INSERT INTO #q_orders VALUES " & _
+        "(1, 'Ada', 12.5, NULL), (2, 'Bo', 20, 'rush'), " & _
+        "(3, 'Cy', 7.25, 'gift'), (4, '100% done', 5, 'x'), " & _
+        "(5, 'under_score', 6, 'y'), (6, 'x'' OR ''1''=''1', 6.5, 'z'), " & _
+        "(7, 'underXscore', 5.5, 'w')", _
+        connection).ExecuteNonQuery
+    Set orders = connection.Queryable("#q_orders")
+
+    ' The generated SQL is inspectable, and every value rides a ? marker.
+    AssertEqual "queryable sql text", _
+        "SELECT TOP (2) * FROM [#q_orders] WHERE ([Total] >= ?) " & _
+        "ORDER BY [Total] DESC", _
+        orders.Where("Total").AtLeast(10#).OrderByDescending("Total") _
+            .Take(2).ToSqlString
+    AssertEqual "queryable parameter value", 10#, _
+        orders.Where("Total").AtLeast(10#).SqlParameterValues.Item(0)
+
+    Set filtered = orders.Where("Total").AtLeast(10#) _
+        .OrderByDescending("Total").ToDataTable
+    AssertEqual "queryable filtered rows", 2&, filtered.Rows.Count
+    AssertEqual "queryable ordered first", "Bo", _
+        CStr(filtered.Rows.Item(0).Item("Customer"))
+
+    ' Composition is immutable: a derived query never mutates its base.
+    Set baseQuery = orders.Where("Total").AtLeast(6#)
+    AssertEqual "queryable base count", 5&, baseQuery.Count
+    AssertEqual "queryable derived count", 2&, _
+        baseQuery.Where("Total").AtMost(6.5).Count
+    AssertEqual "queryable base unchanged", 5&, baseQuery.Count
+
+    AssertEqual "queryable expression predicate", 1&, orders.Where( _
+        orders.Condition("Total").AtLeast(6#).AndAlso( _
+        orders.Condition("Customer").EqualTo("Bo"))).Count
+
+    ' An injection-shaped value stays data because it travels as a
+    ' parameter, never as SQL text.
+    AssertEqual "queryable hostile value matches literally", 1&, _
+        orders.Where("Customer").EqualTo("x' OR '1'='1").Count
+    AssertEqual "queryable hostile value cannot widen", 0&, _
+        orders.Where("Customer").EqualTo("nomatch' OR 1=1 --").Count
+
+    ' A Null constant becomes IS NULL, never a silent no-row = NULL.
+    AssertEqual "queryable is null", 1&, _
+        orders.Where("Note").EqualTo(Null).Count
+    AssertEqual "queryable is not null", 6&, _
+        orders.Where("Note").NotEqualTo(Null).Count
+
+    ' LIKE wildcards inside user text are escaped per dialect.
+    AssertEqual "queryable contains literal percent", 1&, _
+        orders.Where("Customer").ContainsText("100%").Count
+    AssertEqual "queryable contains plain fragment", 2&, _
+        orders.Where("Customer").ContainsText("under").Count
+    AssertEqual "queryable contains literal underscore", 1&, _
+        orders.Where("Customer").ContainsText("under_").Count
+    AssertEqual "queryable starts with", 1&, _
+        orders.Where("Customer").StartsWith("Ada").Count
+
+    AssertEqual "queryable ignore case", 1&, _
+        orders.Where("Customer").EqualToIgnoreCase("ADA").Count
+    AssertEqual "queryable in list", 2&, _
+        orders.Where("Id").OneOf(Array(1&, 3&)).Count
+
+    mCurrentTest = "TestQueryableSurface.PagingAndTerminals"
+    Set page = orders.OrderBy("Id").Skip(1).Take(2).ToDataTable
+    AssertEqual "queryable page rows", 2&, page.Rows.Count
+    AssertEqual "queryable page first id", 2&, _
+        CLng(page.Rows.Item(0).Item("Id"))
+    Set projected = orders.SelectColumns("Customer", "Total") _
+        .Take(1).ToDataTable
+    AssertEqual "queryable projected columns", 2&, projected.Columns.Count
+    AssertTrue "queryable any matches", orders.AnyItem( _
+        orders.Condition("Total").AtLeast(15#))
+    AssertTrue "queryable any empty", _
+        Not orders.Where("Total").AtLeast(1000#).AnyItem
+    Set firstRow = orders.OrderBy("Total").FirstOrDefault
+    AssertEqual "queryable first row value", "100% done", _
+        CStr(firstRow.Item("Customer"))
+    Set firstRow = orders.Where("Total").AtLeast(1000#).FirstOrDefault
+    AssertTrue "queryable empty first is nothing", firstRow Is Nothing
+
+    mCurrentTest = "TestQueryableSurface.Async"
+    AssertEqual "queryable count async", 7&, CLng(orders.CountAsync.Await)
+    Set asyncTable = orders.Where("Total").AtLeast(6#).ToDataTableAsync.Await
+    AssertEqual "queryable async rows", 5&, asyncTable.Rows.Count
+
+    mCurrentTest = "TestQueryableSurface.Refusals"
+    refusalError = 0
+    On Error Resume Next
+    orders.Skip(1).ToDataTable
+    refusalError = Err.Number
+    On Error GoTo 0
+    AssertEqual "queryable skip needs order", ROneCOne.QueryError, _
+        refusalError
+    refusalError = 0
+    On Error Resume Next
+    ' Count is a property, so it needs a receiving variable; a bare
+    ' property statement is a VBA compile error, not a runtime one.
+    ignoredCount = orders.Where( _
+        orders.Condition("Customer.Length").AtLeast(1&)).Count
+    refusalError = Err.Number
+    On Error GoTo 0
+    AssertEqual "queryable nested member refused", ROneCOne.QueryError, _
+        refusalError
+    refusalError = 0
+    On Error Resume Next
+    connection.Queryable "bad[name"
+    refusalError = Err.Number
+    On Error GoTo 0
+    AssertEqual "queryable hostile identifier refused", _
+        ROneCOne.QueryError, refusalError
+    Set strangeConnection = ROneCOne.DbConnection( _
+        "Provider=SomethingElse.1;Data Source=nowhere;")
+    refusalError = 0
+    On Error Resume Next
+    strangeConnection.Queryable "Orders"
+    refusalError = Err.Number
+    On Error GoTo 0
+    AssertEqual "queryable unknown dialect refused", _
+        ROneCOne.QueryError, refusalError
+
+    ROneCOne.DbCommand("DROP TABLE #q_orders", connection).ExecuteNonQuery
+    connection.Disconnect
+
+    ' ACE half: the same surface over a closed workbook file, where TOP is
+    ' a literal, wildcards escape with brackets, and Skip refuses.
+    mCurrentTest = "TestQueryableSurface.Ace"
+    Set aceConnection = ROneCOne.DbConnection( _
+        "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & _
+        ThisWorkbook.Path & "\ROneCOne_QueryFixture.xlsx" & _
+        ";Extended Properties=""Excel 12.0 Xml;HDR=YES"";")
+    aceConnection.Connect
+    Set aceOrders = aceConnection.Queryable("Query Fixture$")
+    AssertEqual "ace queryable sql", _
+        "SELECT TOP 2 * FROM [Query Fixture$] WHERE ([Total] >= ?) " & _
+        "ORDER BY [Id]", _
+        aceOrders.Where("Total").AtLeast(6#).OrderBy("Id").Take(2) _
+            .ToSqlString
+    AssertEqual "ace queryable count", 5&, _
+        aceOrders.Where("Total").AtLeast(6#).Count
+    AssertEqual "ace contains literal percent", 1&, _
+        aceOrders.Where("Name").ContainsText("100%").Count
+    AssertEqual "ace contains literal underscore", 1&, _
+        aceOrders.Where("Name").ContainsText("under_").Count
+    AssertEqual "ace is null", 1&, _
+        aceOrders.Where("Note").EqualTo(Null).Count
+    Set page = aceOrders.OrderBy("Id").Take(2).ToDataTable
+    AssertEqual "ace top rows", 2&, page.Rows.Count
+    AssertEqual "ace first name", "Ada", _
+        CStr(page.Rows.Item(0).Item("Name"))
+    refusalError = 0
+    On Error Resume Next
+    aceOrders.Skip 1
+    refusalError = Err.Number
+    On Error GoTo 0
+    AssertEqual "ace skip refused", ROneCOne.QueryError, refusalError
+    aceConnection.Disconnect
+End Sub
+
 Private Sub TestSqlServerProvider()
     Dim canceledError As Long
     Dim command As ROneCOne
@@ -1035,14 +1219,21 @@ Private Sub TestAdvancedDataTable()
     mCurrentTest = "TestAdvancedDataTable.RowAdd"
     Set row = table.Row("Ada", ROneCOne.DBNull).Add
 
+    mCurrentTest = "TestAdvancedDataTable.RowAdd:itemId"
     AssertEqual "auto increment", 100&, row.Item("Id")
+    mCurrentTest = "TestAdvancedDataTable.RowAdd:itemName"
     AssertEqual "fluent row value", "Ada", row.Item("Name")
+    mCurrentTest = "TestAdvancedDataTable.RowAdd:itemNote"
     AssertTrue "explicit DBNull", IsNull(row.Item("Note"))
+    mCurrentTest = "TestAdvancedDataTable.RowAdd:find"
     AssertTrue "indexed primary-key Find", table.Find(100&) Is row
+    mCurrentTest = "TestAdvancedDataTable.RowAdd:bang"
     Set selected = table.SelectRows(table.Rows!Name.EqualTo("Ada"))
     AssertEqual "table SelectRows", 1&, selected.Count
 
+    mCurrentTest = "TestAdvancedDataTable.RowAdd:accept"
     table.AcceptChanges
+    mCurrentTest = "TestAdvancedDataTable.RowAdd:itemLet"
     row.Item("Name") = "Ada"
     Set changes = table.GetChanges
     AssertEqual "table GetChanges", 1&, changes.Rows.Count

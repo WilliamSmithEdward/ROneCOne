@@ -55,6 +55,10 @@ $providerFixtureWorkbook = $null
 $providerFixturePath = Join-Path `
     (Split-Path -Parent $resolvedWorkbook) `
     "ROneCOne_ProviderFixture.xlsx"
+$queryFixtureWorkbook = $null
+$queryFixturePath = Join-Path `
+    (Split-Path -Parent $resolvedWorkbook) `
+    "ROneCOne_QueryFixture.xlsx"
 $watcher = $null
 $excelProcessId = 0
 $watcherStop = Join-Path $PSScriptRoot "..\tests\output\vbe-watcher.stop"
@@ -133,6 +137,46 @@ public static class ROneCOneExcelProcess
     [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject(
         $providerFixtureWorkbook)
     $providerFixtureWorkbook = $null
+
+    $stage = "create query fixture"
+    Remove-Item -LiteralPath $queryFixturePath -Force -ErrorAction SilentlyContinue
+    $queryFixtureWorkbook = $excel.Workbooks.Add()
+    $queryFixture = $queryFixtureWorkbook.Worksheets.Item(1)
+    $queryFixture.Name = "Query Fixture"
+    $queryFixture.Range("A1").Value2 = "Id"
+    $queryFixture.Range("B1").Value2 = "Name"
+    $queryFixture.Range("C1").Value2 = "Total"
+    $queryFixture.Range("D1").Value2 = "Note"
+    # Row 2 carries a literal percent, row 5 a literal underscore, and row 3
+    # leaves Note empty so the IS NULL translation has something to find.
+    $queryFixture.Range("A2").Value2 = 1
+    $queryFixture.Range("B2").Value2 = "Ada"
+    $queryFixture.Range("C2").Value2 = 12.5
+    $queryFixture.Range("D2").Value2 = "rush"
+    $queryFixture.Range("A3").Value2 = 2
+    $queryFixture.Range("B3").Value2 = "Bo"
+    $queryFixture.Range("C3").Value2 = 20
+    $queryFixture.Range("A4").Value2 = 3
+    $queryFixture.Range("B4").Value2 = "Cy"
+    $queryFixture.Range("C4").Value2 = 7.25
+    $queryFixture.Range("D4").Value2 = "gift"
+    $queryFixture.Range("A5").Value2 = 4
+    $queryFixture.Range("B5").Value2 = "100% done"
+    $queryFixture.Range("C5").Value2 = 5
+    $queryFixture.Range("D5").Value2 = "x"
+    $queryFixture.Range("A6").Value2 = 5
+    $queryFixture.Range("B6").Value2 = "under_score"
+    $queryFixture.Range("C6").Value2 = 6
+    $queryFixture.Range("D6").Value2 = "y"
+    $queryFixture.Range("A7").Value2 = 6
+    $queryFixture.Range("B7").Value2 = "underXscore"
+    $queryFixture.Range("C7").Value2 = 6.5
+    $queryFixture.Range("D7").Value2 = "z"
+    $queryFixtureWorkbook.SaveAs($queryFixturePath, 51)
+    $queryFixtureWorkbook.Close($false)
+    [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject(
+        $queryFixtureWorkbook)
+    $queryFixtureWorkbook = $null
 
     $stage = "prepare result sheets"
     $testSheet = $null
@@ -470,6 +514,19 @@ finally {
                 $providerFixtureWorkbook)
         }
     }
+    if ($null -ne $queryFixtureWorkbook) {
+        try {
+            $queryFixtureWorkbook.Close($false)
+        }
+        catch {
+            [Console]::Error.WriteLine(
+                "Query fixture cleanup warning: $($_.Exception.Message)")
+        }
+        finally {
+            [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject(
+                $queryFixtureWorkbook)
+        }
+    }
     if ($null -ne $workbook) {
         try {
             $workbook.Close($false)
@@ -495,4 +552,5 @@ finally {
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
     Remove-Item -LiteralPath $providerFixturePath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $queryFixturePath -Force -ErrorAction SilentlyContinue
 }

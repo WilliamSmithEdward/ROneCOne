@@ -785,6 +785,22 @@ class SourceContractTests(unittest.TestCase):
         # Extraction must route every entry name through the escape guard.
         self.assertIn("SafeRelativeEntryPath(CStr(rawEntry(0)))", self.source)
 
+    def test_source_never_declares_a_bang_member_identifier(self) -> None:
+        # VBA normalizes identifier casing across the whole project, so a
+        # declaration like `ByVal name As String` rewrites every bare Name
+        # in the project, including the member that bang syntax turns into
+        # a string. `rows!Name` then compiles to `rows!name`, and the
+        # case-sensitive column lookup stops matching. The identifiers
+        # below are the ones the tests and demos reach through bang.
+        for identifier in ("name", "age", "city", "score"):
+            for declaration in ("ByVal", "ByRef", "Dim"):
+                self.assertNotIn(
+                    f"{declaration} {identifier} As ",
+                    self.source,
+                    f"declaring `{declaration} {identifier}` would "
+                    f"lowercase every bare use of that identifier",
+                )
+
     def test_queryable_surface_is_present_and_parameterized(self) -> None:
         for member in (
             "Public Function Queryable(",

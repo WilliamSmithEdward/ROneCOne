@@ -9563,30 +9563,38 @@ Private Sub RaiseQueryError(ByVal message As String)
     Err.Raise ERROR_QUERY, "ROneCOne.QueryTranslationException", message
 End Sub
 
+' The parameter below is deliberately not called "name". VBA normalizes
+' identifier casing across the whole project, so declaring a lowercase
+' "name" rewrites every bare Name identifier, including the member that
+' bang syntax turns into a string (rows!Name becomes rows!name). Column
+' lookup compares case-sensitively, so that silently breaks it.
 Private Function ValidateQueryIdentifier( _
-    ByVal name As String, _
+    ByVal identifierText As String, _
     ByVal memberName As String _
 ) As String
     Dim code As Long
     Dim index As Long
 
-    name = Trim$(name)
-    If Len(name) = 0 Or Len(name) > 128 Then
+    identifierText = Trim$(identifierText)
+    If Len(identifierText) = 0 Or Len(identifierText) > 128 Then
         RaiseQueryError memberName & _
             " requires an identifier of 1 to 128 characters."
     End If
-    For index = 1 To Len(name)
-        code = AscW(Mid$(name, index, 1))
+    For index = 1 To Len(identifierText)
+        code = AscW(Mid$(identifierText, index, 1))
         If code < 32 Or code = 91 Or code = 93 Then
             RaiseQueryError memberName & " cannot use the identifier [" & _
-                name & "]; brackets and control characters are refused."
+                identifierText & "]; brackets and control characters " & _
+                "are refused."
         End If
     Next index
-    ValidateQueryIdentifier = name
+    ValidateQueryIdentifier = identifierText
 End Function
 
-Private Function QueryQuoteIdentifier(ByVal name As String) As String
-    QueryQuoteIdentifier = "[" & name & "]"
+Private Function QueryQuoteIdentifier( _
+    ByVal identifierText As String _
+) As String
+    QueryQuoteIdentifier = "[" & identifierText & "]"
 End Function
 
 Private Function QueryableClone() As ROneCOne
