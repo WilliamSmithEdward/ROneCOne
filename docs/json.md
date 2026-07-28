@@ -59,4 +59,39 @@ property); `DataTableFromObjects(source, propertyNames, [tableName])` reads the 
 properties from each object, typing each column from its first non-null value. Property names
 bind through VBA's own member dispatch, which is case-insensitive.
 
+A member the target class does not expose is skipped rather than raising, matching how
+System.Text.Json treats unknown members. That matters for real API responses, which carry far
+more than any one class models.
+
+## Partial reads
+
+A large response is often almost entirely members you will never read. These two entry points
+walk the document once and step over everything else, so the cost tracks what you asked for
+rather than what arrived.
+
+| Member | Behavior |
+|---|---|
+| `DeserializeOnly(json, paths)` | Materializes only the listed paths, preserving structure |
+| `DeserializeAt(json, path)` | Returns the single value one path addresses |
+
+```vba
+Dim doc As ROneCOne
+
+Set doc = ROneCOne.Json.DeserializeOnly(payload, Array( _
+    "$.id", "$.name", "$.types", "$.sprites.front_default"))
+Debug.Print doc.Item("sprites").Item("front_default")
+```
+
+The result is a true subset of the source document: keeping `"$.sprites.front_default"` returns
+`sprites` as an object holding only that member, so navigation is identical to `Deserialize`.
+
+The two differ deliberately on absence. `DeserializeOnly` omits a missing path silently, because
+an allowlist over a varying API should tolerate one, while `DeserializeAt` raises
+`ROneCOne.JsonError`, the same split as `HasAttribute` against `GetAttribute` in the XML layer.
+
+`arrayPath` on `DeserializeTable` and `DeserializeObjects` now selects during the scan too, so an
+envelope's unrelated members are never built.
+
+See [ADR 0029](decisions/0029-json-partial-reads.md) for the measurements behind this.
+
 [Back to the documentation index](README.md)

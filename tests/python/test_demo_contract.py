@@ -364,6 +364,13 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("ROneCOne_Zip_Demo.xlsx", builder)
         self.assertIn("RunROneCOneZipDemo", builder)
 
+    def test_json_demo_shows_partial_reads(self) -> None:
+        source = JSON_DEMO.read_text(encoding="utf-8")
+
+        self.assertIn("ROneCOne.Json.DeserializeOnly(", source)
+        self.assertIn("ROneCOne.Json.DeserializeAt(", source)
+        self.assertIn("FatDocument()", source)
+
     def test_query_demo_runs_offline_and_shows_the_generated_sql(self) -> None:
         source = QUERY_DEMO.read_text(encoding="utf-8")
         builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")

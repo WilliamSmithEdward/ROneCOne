@@ -300,6 +300,18 @@ const capabilities = [
         "On Error Resume Next\nROneCOne.Json.Deserialize \"{\"\"a\"\":1,}\"\nIf Err.Number = ROneCOne.JsonError Then ...",
         "trailing comma rejected",
       ],
+      [
+        "Read only the members you need",
+        "no BCL analogue; contract shaping",
+        "ROneCOne.Json.DeserializeOnly(fat, Array( _\n    \"$.id\", \"$.sprites.front_default\")) _\n    .Item(\"sprites\").Item(\"front_default\")",
+        "front.png",
+      ],
+      [
+        "Or just one value by path",
+        "JsonDocument path navigation",
+        "ROneCOne.Json.DeserializeAt(fat, \"$.name\")",
+        "pikachu",
+      ],
     ],
   },
   {

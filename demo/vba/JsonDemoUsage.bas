@@ -142,8 +142,27 @@ Private Sub WriteJsonExamples()
         .Range("E15").Value2 = people.Item(1).CustomerName
         .Range("E16").Value2 = mapped.Rows.Count
         .Range("E17").Value2 = mTrace
+        ' A fat response is often almost entirely members you will never
+        ' read. DeserializeOnly keeps just the paths you name and steps
+        ' over the rest, and the shape it returns is a true subset, so
+        ' navigation reads exactly like a full parse.
+        .Range("E18").Value2 = CStr(ROneCOne.Json.DeserializeOnly( _
+            FatDocument(), Array("$.id", "$.sprites.front_default")) _
+            .Item("sprites").Item("front_default"))
+        ' And one path, one value, without building anything else.
+        .Range("E19").Value2 = CStr( _
+            ROneCOne.Json.DeserializeAt(FatDocument(), "$.name"))
     End With
 End Sub
+
+' A miniature of the real problem: the bulk of this document is a member
+' nobody in the examples above ever asks for.
+Private Function FatDocument() As String
+    FatDocument = "{""id"":25,""name"":""pikachu""," & _
+        """moves"":[{""m"":1},{""m"":2},{""m"":3},{""m"":4}]," & _
+        """sprites"":{""front_default"":""front.png""," & _
+        """versions"":{""old"":{""a"":1,""b"":2,""c"":3}}}}"
+End Function
 
 Private Sub RunJsonBenchmark()
     Dim document As String

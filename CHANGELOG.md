@@ -32,6 +32,22 @@ checksums for each version are on the
   of freezing the host. A line read takes an optional timeout, because a prompt arrives with no
   trailing newline. See [ADR 0028](docs/decisions/0028-interactive-process-sessions.md).
 
+- JSON partial reads, closing
+  [issue #1](https://github.com/WilliamSmithEdward/ROneCOne/issues/1): a large response is often
+  almost entirely members you will never read, and the parser used to build all of them.
+  `Json.DeserializeOnly(text, paths)` walks the document once and materializes only the requested
+  paths, preserving structure so navigation matches `Deserialize` exactly, and
+  `Json.DeserializeAt(text, path)` returns the single value one path addresses. `DeserializeTable`
+  and `DeserializeObjects` now apply `arrayPath` during the scan instead of parsing the whole
+  document and navigating the result. A missing path is omitted by `DeserializeOnly` and raises
+  from `DeserializeAt`. See [ADR 0029](docs/decisions/0029-json-partial-reads.md).
+
+### Fixed
+
+- `DeserializeInto` and `DeserializeObjects` no longer raise on a JSON member the target class
+  does not model. `CallByName` had no error trap, so error 438 made binding unusable against a
+  real API response; unknown members are now ignored, matching System.Text.Json.
+
 ### Host boundaries
 
 - VBA reserves `Kill` for its file-deletion statement, so a session terminates through
