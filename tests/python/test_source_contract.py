@@ -795,7 +795,7 @@ class SourceContractTests(unittest.TestCase):
             "Public Function ReadErrorLineAsync(",
             "Public Function ReadToEndAsync(",
             "Public Function WaitForExitAsync(",
-            "Public Sub Kill()",
+            "Public Sub KillProcess()",
             "Public Property Get HasExited()",
             "Friend Sub ConfigureProcessSession(",
             "Private Function AdvanceSessionTask()",

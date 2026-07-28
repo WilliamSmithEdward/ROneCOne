@@ -3299,19 +3299,34 @@ Attribute CloseInput.VB_Description = "Closes standard input so the command sees
 End Sub
 
 Public Function ReadLineAsync( _
+    Optional ByVal timeoutMilliseconds As Long = -1, _
     Optional ByVal cancellationToken As ROneCOne _
 ) As ROneCOne
 Attribute ReadLineAsync.VB_Description = "Awaits the next standard output line."
     Set ReadLineAsync = SessionCreateTask( _
-        "ReadOut", cancellationToken, "ReadLineAsync")
+        "ReadOut", cancellationToken, "ReadLineAsync", timeoutMilliseconds)
 End Function
 
 Public Function ReadErrorLineAsync( _
+    Optional ByVal timeoutMilliseconds As Long = -1, _
     Optional ByVal cancellationToken As ROneCOne _
 ) As ROneCOne
 Attribute ReadErrorLineAsync.VB_Description = "Awaits the next standard error line."
     Set ReadErrorLineAsync = SessionCreateTask( _
-        "ReadErr", cancellationToken, "ReadErrorLineAsync")
+        "ReadErr", cancellationToken, "ReadErrorLineAsync", _
+        timeoutMilliseconds)
+End Function
+
+Public Function ReadAvailable() As String
+Attribute ReadAvailable.VB_Description = "Takes buffered standard output without waiting."
+    RequireProcessSession "ReadAvailable"
+    ReadAvailable = InternalSessionRemainingText(False)
+End Function
+
+Public Function ReadErrorAvailable() As String
+Attribute ReadErrorAvailable.VB_Description = "Takes buffered standard error without waiting."
+    RequireProcessSession "ReadErrorAvailable"
+    ReadErrorAvailable = InternalSessionRemainingText(True)
 End Function
 
 Public Function ReadToEndAsync( _
@@ -3330,9 +3345,11 @@ Attribute WaitForExitAsync.VB_Description = "Awaits exit and resolves to the exi
         "Exit", cancellationToken, "WaitForExitAsync")
 End Function
 
-Public Sub Kill()
-Attribute Kill.VB_Description = "Terminates the session's command immediately."
-    RequireProcessSession "Kill"
+' VBA reserves Kill for its file-deletion statement, so the legal member
+' name here is KillProcess; System.Diagnostics.Process.Kill is the model.
+Public Sub KillProcess()
+Attribute KillProcess.VB_Description = "Terminates the session's command immediately."
+    RequireProcessSession "KillProcess"
     If mSessionExited Then Exit Sub
     TerminateProcess mSessionProcess, 1
     SessionRefreshExit
@@ -14993,7 +15010,8 @@ End Sub
 Private Function SessionCreateTask( _
     ByVal operationName As String, _
     ByVal cancellationToken As ROneCOne, _
-    ByVal memberName As String _
+    ByVal memberName As String, _
+    Optional ByVal timeoutMilliseconds As Long = -1 _
 ) As ROneCOne
     Dim taskValue As ROneCOne
 
@@ -15014,8 +15032,16 @@ Private Function SessionCreateTask( _
     End If
     Set taskValue = New ROneCOne
     taskValue.ConfigureSessionTask Me, operationName, 0, cancellationToken
+    If timeoutMilliseconds >= 0 Then
+        taskValue.InternalSetSessionDeadline _
+            MonotonicMilliseconds + CLngLng(timeoutMilliseconds)
+    End If
     Set SessionCreateTask = taskValue
 End Function
+
+Friend Sub InternalSetSessionDeadline(ByVal deadline As LongLong)
+    mTaskDeadline = deadline
+End Sub
 
 Private Function SessionQueueWrite( _
     ByVal text As String, _
@@ -17829,6 +17855,13 @@ Private Sub AdvanceTaskCore()
         If mOperator = TASK_HTTP_SEND Then mSource.InternalHttpAbort
         If mOperator = TASK_DB_ASYNC Then mSource.InternalDbAsyncAbort
         If mOperator = TASK_PROCESS_RUN Then mSource.InternalProcessAbort
+        ' A canceled read must hand its slot back, or the session can never
+        ' be read again.
+        If mOperator = TASK_SESSION Then
+            If mMethodName = "ReadOut" Or mMethodName = "ReadErr" Then
+                mSource.InternalSessionReleaseRead mMethodName = "ReadErr"
+            End If
+        End If
         mTaskStatus = TASK_STATUS_CANCELED
         Exit Sub
     End If
@@ -18004,6 +18037,16 @@ Private Function AdvanceSessionTask() As Boolean
         Case "ReadOut", "ReadErr"
             If Not mSource.InternalSessionReadPoll( _
                 mMethodName = "ReadErr", lineText, finished) Then
+                ' A prompt arrives without a trailing newline, so a line
+                ' read can legitimately have nothing to return while the
+                ' command sits waiting. An optional deadline resolves to
+                ' empty text instead of waiting forever, and it releases
+                ' the read slot so the session stays usable.
+                If mTaskDeadline < 0 Then Exit Function
+                If MonotonicMilliseconds < mTaskDeadline Then Exit Function
+                mSource.InternalSessionReleaseRead mMethodName = "ReadErr"
+                Set mTaskResult = CreateScalarResult(vbNullString)
+                AdvanceSessionTask = True
                 Exit Function
             End If
             mSource.InternalSessionReleaseRead mMethodName = "ReadErr"

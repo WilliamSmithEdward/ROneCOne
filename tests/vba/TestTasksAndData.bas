@@ -58,6 +58,8 @@ Public Sub RunROneCOneTaskAndDataTests()
     TestSqlServerProvider
     mCurrentTest = "TestQueryableSurface"
     TestQueryableSurface
+    mCurrentTest = "TestProcessSessionSurface"
+    TestProcessSessionSurface
     mCurrentTest = "TestFileSystemSurface"
     TestFileSystemSurface
     mCurrentTest = "TestCsvSurface"
@@ -582,6 +584,133 @@ Private Sub TestProviderSurface()
     connection.Disconnect
     AssertEqual "provider closes", "Closed", connection.State
 End Sub
+
+Private Sub TestProcessSessionSurface()
+    Dim buffered As String
+    Dim closedError As Long
+    Dim errorLine As String
+    Dim exitCode As Long
+    Dim killed As ROneCOne
+    Dim pending As ROneCOne
+    Dim reply As String
+    Dim secondRead As ROneCOne
+    Dim session As ROneCOne
+    Dim sorted As ROneCOne
+
+    ' A session keeps cmd.exe alive, so the workbook holds a conversation
+    ' with it instead of paying a process start per command. Every read and
+    ' write is awaited cooperatively; nothing blocks Excel.
+    mCurrentTest = "TestProcessSessionSurface.Conversation"
+    Set session = ROneCOne.Process.StartSession("echo ready")
+    AssertTrue "session has a process id", session.ProcessId > 0
+    AssertTrue "session start banner", _
+        InStr(1, SessionLineContaining(session, "ready"), "ready") > 0
+
+    session.WriteLineAsync("echo first_answer").Await
+    AssertTrue "session first answer", InStr(1, _
+        SessionLineContaining(session, "first_answer"), "first_answer") > 0
+
+    ' The same process answers again, which is the whole point of a session.
+    session.WriteLineAsync("echo second_answer").Await
+    AssertTrue "session second answer", InStr(1, _
+        SessionLineContaining(session, "second_answer"), "second_answer") > 0
+
+    mCurrentTest = "TestProcessSessionSurface.Streams"
+    session.WriteLineAsync("echo trouble 1>&2").Await
+    errorLine = session.ReadErrorLineAsync(4000).Await
+    AssertTrue "session separates standard error", _
+        InStr(1, errorLine, "trouble") > 0
+
+    mCurrentTest = "TestProcessSessionSurface.Prompt"
+    ' A prompt arrives with no trailing newline, so a line read has nothing
+    ' to return while the command sits waiting. ReadAvailable takes whatever
+    ' is buffered, prompt included, without waiting at all.
+    buffered = session.ReadAvailable
+    AssertTrue "session exposes buffered prompt", InStr(1, buffered, ">") > 0
+    ' With the buffer drained and the command idle, a bounded read resolves
+    ' to empty rather than waiting forever, and it hands the slot back so
+    ' the next read is accepted instead of being refused as still pending.
+    AssertEqual "session bounded read resolves empty", vbNullString, _
+        session.ReadLineAsync(600).Await
+    AssertEqual "session readable after a bounded read", vbNullString, _
+        session.ReadLineAsync(600).Await
+
+    mCurrentTest = "TestProcessSessionSurface.OnePendingRead"
+    Set pending = session.ReadLineAsync(4000)
+    closedError = 0
+    On Error Resume Next
+    Set secondRead = session.ReadLineAsync(4000)
+    closedError = Err.Number
+    On Error GoTo 0
+    AssertEqual "session refuses a second pending read", _
+        ROneCOne.ProcessError, closedError
+    session.WriteLineAsync("echo drain_pending").Await
+    AssertTrue "session pending read resolves", _
+        InStr(1, pending.Await, "drain_pending") > 0
+
+    mCurrentTest = "TestProcessSessionSurface.Exit"
+    AssertTrue "session still running", Not session.HasExited
+    session.WriteLineAsync("exit 3").Await
+    exitCode = session.WaitForExitAsync.Await
+    AssertEqual "session exit code", 3&, exitCode
+    AssertTrue "session reports exit", session.HasExited
+    AssertEqual "session ExitCode property", 3&, session.ExitCode
+
+    mCurrentTest = "TestProcessSessionSurface.CloseInput"
+    ' sort reads until end of file, so CloseInput is what lets it finish.
+    Set sorted = ROneCOne.Process.StartSession("sort")
+    sorted.WriteLineAsync("banana").Await
+    sorted.WriteLineAsync("apple").Await
+    sorted.CloseInput
+    AssertEqual "session sorted first line", "apple", _
+        SessionLineContaining(sorted, "apple")
+    AssertEqual "session sorted second line", "banana", _
+        SessionLineContaining(sorted, "banana")
+    AssertEqual "session exit after end of input", 0&, _
+        sorted.WaitForExitAsync.Await
+    closedError = 0
+    On Error Resume Next
+    sorted.WriteLineAsync("too late").Await
+    closedError = Err.Number
+    On Error GoTo 0
+    AssertEqual "session refuses a write after CloseInput", _
+        ROneCOne.ProcessError, closedError
+
+    mCurrentTest = "TestProcessSessionSurface.Kill"
+    Set killed = ROneCOne.Process.StartSession("pause")
+    AssertTrue "killed session starts running", Not killed.HasExited
+    killed.KillProcess
+    AssertTrue "killed session reports exit", killed.HasExited
+
+    mCurrentTest = "TestProcessSessionSurface.Refusals"
+    closedError = 0
+    On Error Resume Next
+    ROneCOne.Process.StartSession "   "
+    closedError = Err.Number
+    On Error GoTo 0
+    AssertEqual "session empty command refused", _
+        ROneCOne.InvalidArgumentError, closedError
+End Sub
+
+' Reads bounded lines until the wanted fragment appears or the stream runs
+' dry. cmd.exe interleaves prompts and blank lines around its answers.
+Private Function SessionLineContaining( _
+    ByVal session As ROneCOne, _
+    ByVal fragment As String _
+) As String
+    Dim attempt As Long
+    Dim lineText As String
+
+    For attempt = 1 To 12
+        lineText = session.ReadLineAsync(4000).Await
+        If InStr(1, lineText, fragment) > 0 Then
+            SessionLineContaining = Trim$(lineText)
+            Exit Function
+        End If
+        If Len(lineText) = 0 And session.HasExited Then Exit For
+    Next attempt
+    SessionLineContaining = vbNullString
+End Function
 
 Private Sub TestQueryableSurface()
     Dim aceConnection As ROneCOne
