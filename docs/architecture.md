@@ -141,6 +141,18 @@ overlap lives inside the components, or, for the watcher, in the passage of wall
 between polls. A shell command also accepts standard input, written and closed at start so a
 filter reads to end-of-file.
 
+An interactive session is the one transport that owns its plumbing rather than borrowing a COM
+component. `Process.StartSession` holds kernel32 pipes directly: reads size themselves from
+`PeekNamedPipe` so `ReadFile` only ever asks for bytes already waiting, and writes ride an
+overlapped named pipe so a payload larger than the buffer pends rather than blocking the host.
+The same cooperative poll drives both.
+
+The query slice joins two existing halves rather than adding a transport. `connection.Queryable`
+walks the expression trees the delegate layer already builds and emits parameterized SQL, which
+then executes through the unchanged `DbCommand` and `DbDataAdapter` path. Every captured constant
+becomes a `?` marker, and an expression the translator cannot express refuses with a typed error
+instead of silently degrading to a client-side scan.
+
 Exchange is text in and out of the data layer: the JSON reader scans a one-time byte snapshot
 under RFC 8259 strictness, the CSV parser applies RFC 4180 quote discipline with deterministic
 column inference, and the XML surface queries a secured MSXML6 document (DTDs prohibited,

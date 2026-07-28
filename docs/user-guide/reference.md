@@ -112,6 +112,8 @@ Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 | Folders | `Directory.CreateDirectory`, `Exists`, `Delete`, `GetFiles`, `GetDirectories` |
 | Path text | `Path.Combine`, `GetFileName`, `GetDirectoryName`, `GetExtension`, `ChangeExtension`, `GetFullPath`, `GetTempPath` |
 | Shell commands | `Process.RunAsync(command, [dir], [token], [stdin])`, `ExitCode`, `StandardOutput`, `StandardError` |
+| Interactive sessions | `Process.StartSession(command, [dir], [encoding])`, `WriteLineAsync`, `CloseInput`, `ReadLineAsync([ms])`, `ReadAvailable`, `WaitForExitAsync`, `KillProcess` |
+| Query a table as LINQ | `connection.Queryable(table)`, `Where`, `OrderBy`, `Take`, `Skip`, `SelectColumns`, `Count`, `ToDataTable`, `ToSqlString` |
 | Zip archives | `ZipFile.OpenRead`, `CreateFromDirectory`, `ExtractToDirectory`, `Entries`, `GetEntry` |
 | Zip entries | `FullName`, `Name`, `Length`, `CompressedLength`, `ReadAllText`, `ReadAllBytes`, `ExtractToFile` |
 | Watch a folder | `FileWatcher(folder, [filter]).WaitForChangeAsync`, `ChangeType`, `Name` |

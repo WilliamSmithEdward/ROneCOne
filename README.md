@@ -40,21 +40,22 @@ Tasks, typed events, and structured Try, Catch, and Finally flows.
 
 | You want to... | ROneCOne gives you... |
 |---|---|
-| Work with data cleanly | Typed collections and LINQ-style filtering, shaping, sorting, and aggregation |
+| Work with data cleanly | Typed collections with LINQ-style filtering, shaping, sorting, aggregation |
 | Reuse behavior | Delegates and expression-based functions that can be passed, combined, and invoked |
-| Coordinate async work | Await-style Tasks with delays, timeouts, cancellation, progress, and continuations |
+| Coordinate async work | Await-style Tasks with delays, timeouts, cancellation, and progress |
 | Model business data | DataTable, DataSet, DataView, relations, change tracking, and providers |
-| Call web APIs | An HttpClient with awaitable verbs, overlapped downloads, and typed failures |
+| Query a database | LINQ compiled to parameterized SQL, filtered on the server |
+| Call web APIs | An HttpClient with awaitable verbs, overlapped downloads, typed failures |
 | Exchange JSON | Serialize and deserialize trees, tables, and your own classes, System.Text.Json style |
-| Read and write files | File, Directory, and Path surfaces with real UTF-8, System.IO style |
+| Read and write files | File, Directory, and Path with real UTF-8, System.IO style |
 | Open and make zips | Read any zip and write archives in pure VBA |
-| Watch and log | Await folder changes and log runs to a file, service style |
-| Exchange CSV | RFC 4180 round trips between DataTables and CSV text with typed columns |
-| Exchange XML | XPath queries over secured MSXML6 and typed DataTable bridges both ways |
-| Run command lines | Awaitable processes with exit codes and captured output, never a frozen Excel |
+| Watch and log | Await folder changes and log runs, service style |
+| Exchange CSV | RFC 4180 round trips between DataTables and text, typed columns |
+| Exchange XML | XPath over secured MSXML6 with typed DataTable bridges |
+| Run command lines | Awaitable processes, plus live sessions you write to and read from |
 | Match and hash text | Regular expressions, SHA and HMAC digests, and base64 or hex encoding |
 | Work with timestamps | DateTimeOffset-style instants: ISO 8601, Unix epochs, zone conversion, durations |
-| Format and build text | String.Format-style invariant formatting, StringBuilder, GUIDs, crypto randomness |
+| Format and build text | Invariant String.Format, StringBuilder, GUIDs, crypto randomness |
 | Build responsive workbook logic | Typed events with predictable subscription and delivery |
 | Handle failure deliberately | Structured Try, Catch, and Finally flows |
 | Deploy without a project | One importable class module, no dependency |

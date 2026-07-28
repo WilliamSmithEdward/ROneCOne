@@ -93,6 +93,34 @@ Parameterized commands, readers, transactions, scalar and non-query execution, a
 source-column binding, and task-returning provider operations are available without adding an ADO
 reference.
 
+### Query without writing SQL
+
+`connection.Queryable(tableName)` lets you keep writing LINQ and have it run on the server. The
+same expressions you use over an in-memory list compile to a parameterized statement, so the
+filter happens in the database instead of after loading every row into Excel:
+
+```vba
+Dim recent As ROneCOne
+
+Set recent = connection.Queryable("Orders") _
+    .Where("Total").AtLeast(100) _
+    .OrderByDescending("Placed") _
+    .Take(50) _
+    .ToDataTable
+```
+
+Values always travel as parameters, so a customer name containing a quote is data, never SQL.
+`ToSqlString` shows exactly what will be sent, which is worth a look the first time:
+
+```vba
+Debug.Print connection.Queryable("Orders").Where("Total").AtLeast(100).ToSqlString
+' SELECT * FROM [Orders] WHERE ([Total] >= ?)
+```
+
+Anything that cannot be translated raises `ROneCOne.QueryError` instead of quietly loading the
+table and filtering in memory. The [Queryable reference](../query.md) lists what translates, what
+refuses, and how SQL Server and ACE differ.
+
 ### Clean up deterministically
 
 For deterministic cleanup around a zero-argument function, use

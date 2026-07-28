@@ -6,6 +6,40 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
+## Unreleased
+
+### Added
+
+- LINQ that runs on the server: `connection.Queryable(tableName)` compiles the runtime's own
+  expression trees into parameterized SQL, so a filter happens in the database instead of after
+  loading every row into Excel. `Where`, `OrderBy`, `OrderByDescending`, `ThenBy`,
+  `ThenByDescending`, `SelectColumns`, `Take`, and `Skip` compose immutably; `Count`, `AnyItem`,
+  `FirstOrDefault`, `ToDataTable`, `ToDataTableAsync`, and `CountAsync` execute; `ToSqlString` and
+  `SqlParameterValues` render exactly what will be sent. Every captured constant leaves as a `?`
+  marker, so a value can never be read as SQL. A `Null` becomes `IS NULL`, string helpers become
+  dialect-escaped `LIKE`, and `IsIn` becomes an `IN` list. SQL Server and ACE differ in row
+  limits, offsets, wildcard escaping, and the uppercase function, all settled by live probe.
+  Anything untranslatable refuses with the typed `ROneCOne.QueryError` rather than falling back to
+  a client-side scan. See [ADR 0027](docs/decisions/0027-linq-to-sql-over-expression-trees.md).
+- Interactive command sessions: `ROneCOne.Process.StartSession(command, [workingDirectory],
+  [encodingName])` keeps one `cmd.exe` alive so a workbook can hold a conversation with it.
+  `WriteAsync` and `WriteLineAsync` queue input, `CloseInput` signals end of file,
+  `ReadLineAsync` and `ReadErrorLineAsync` await the next line on each stream separately,
+  `ReadAvailable` and `ReadErrorAvailable` take what is buffered without waiting, `ReadToEndAsync`
+  collects the rest, and `WaitForExitAsync` resolves to the exit code, alongside `HasExited`,
+  `ExitCode`, `ProcessId`, and `KillProcess`. Nothing blocks Excel: reads size themselves from
+  `PeekNamedPipe`, and writes ride an overlapped named pipe so an oversized payload pends instead
+  of freezing the host. A line read takes an optional timeout, because a prompt arrives with no
+  trailing newline. See [ADR 0028](docs/decisions/0028-interactive-process-sessions.md).
+
+### Host boundaries
+
+- VBA reserves `Kill` for its file-deletion statement, so a session terminates through
+  `KillProcess`, joining `Connect`, `Disconnect`, `YieldOnce`, `IsIn`, and `SingleItem`.
+- VBA keeps one global casing per identifier, so declaring a lowercase `name` anywhere rewrites
+  every bare `Name` in the project and breaks bang syntax against a case-sensitive column lookup.
+  A source contract now refuses that declaration.
+
 ## 1.7.0 - 2026-07-24
 
 ### Added

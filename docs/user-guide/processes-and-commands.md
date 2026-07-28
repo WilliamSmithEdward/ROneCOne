@@ -45,9 +45,30 @@ Debug.Print results.Item(0).StandardOutput
 Cancellation tokens work too: cancel the token and the runtime terminates the process and
 cleans up after it.
 
+## Hold a conversation
+
+`RunAsync` waits for a command to finish. When you want to keep talking to one process, or watch
+its output arrive, start a session instead:
+
+```vba
+Dim session As ROneCOne
+
+Set session = ROneCOne.Process.StartSession("sort")
+session.WriteLineAsync("banana").Await
+session.WriteLineAsync("apple").Await
+session.CloseInput                              ' sort reads until end of file
+Debug.Print session.ReadLineAsync(4000).Await   ' apple
+Debug.Print session.WaitForExitAsync.Await      ' 0
+```
+
+Standard error stays on its own stream through `ReadErrorLineAsync`. Give a read a timeout in
+milliseconds so it resolves to empty text rather than waiting forever, because a prompt arrives
+with no trailing newline; `ReadAvailable` returns whatever is buffered, prompt included.
+`KillProcess` stops the command (VBA reserves `Kill` for deleting files).
+
 ## Where next
 
-- [Process technical reference](../process.md) defines the transport, decoding, and failure
-  contract exactly.
+- [Process technical reference](../process.md) defines the transport, decoding, sessions, and
+  failure contract exactly.
 - [Tasks and async](tasks-and-async.md) covers the Task surface these results ride on.
 - [Guide index](README.md) returns to the full learning path.
