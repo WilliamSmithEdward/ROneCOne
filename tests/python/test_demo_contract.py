@@ -20,6 +20,7 @@ TEXT_DEMO = DEMO_VBA / "TextDemoUsage.bas"
 DATETIME_DEMO = DEMO_VBA / "DateTimeDemoUsage.bas"
 XML_DEMO = DEMO_VBA / "XmlDemoUsage.bas"
 ZIP_DEMO = DEMO_VBA / "ZipDemoUsage.bas"
+QUERY_DEMO = DEMO_VBA / "QueryDemoUsage.bas"
 CUSTOMER = DEMO_VBA / "DemoCustomer.cls"
 COLLECTIONS_BUILDER = ROOT / "tools" / "build_collections_demo_workbook.cjs"
 CAPABILITY_BUILDER = ROOT / "tools" / "build_capability_demo_workbooks.cjs"
@@ -363,6 +364,39 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("ROneCOne_Zip_Demo.xlsx", builder)
         self.assertIn("RunROneCOneZipDemo", builder)
 
+    def test_query_demo_runs_offline_and_shows_the_generated_sql(self) -> None:
+        source = QUERY_DEMO.read_text(encoding="utf-8")
+        builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")
+
+        self.assertIn("connection.Queryable(", source)
+        self.assertIn(".ToSqlString", source)
+        self.assertIn(".ToDataTable", source)
+        self.assertIn("SelectColumns(", source)
+        self.assertIn("ROneCOne.QueryError", source)
+        # The injection-shaped value and the null comparison are the two
+        # properties worth demonstrating rather than merely asserting.
+        self.assertIn("x' OR '1'='1", source)
+        self.assertIn('EqualTo(Null)', source)
+        # ACE against a closed workbook keeps the demo offline and serverless.
+        self.assertIn("Microsoft.ACE.OLEDB.12.0", source)
+        self.assertNotIn("ROneCOne.HttpClient()", source)
+        self.assertNotIn("http://", source)
+        self.assertNotIn("https://", source)
+        self.assertIn('"query"', builder)
+        self.assertIn("ROneCOne_Query_Demo.xlsx", builder)
+        self.assertIn("RunROneCOneQueryDemo", builder)
+
+    def test_process_demo_shows_an_interactive_session(self) -> None:
+        source = PROCESS_DEMO.read_text(encoding="utf-8")
+
+        self.assertIn("ROneCOne.Process.StartSession(", source)
+        self.assertIn(".WriteLineAsync(", source)
+        self.assertIn(".CloseInput", source)
+        self.assertIn(".ReadLineAsync(", source)
+        self.assertIn(".WaitForExitAsync", source)
+        # Every read carries a deadline, because a prompt has no newline.
+        self.assertIn("ReadLineAsync(4000)", source)
+
     def test_data_demo_leads_with_typed_data_and_provider_sugar(self) -> None:
         source = DATA_DEMO.read_text(encoding="utf-8")
 
@@ -391,6 +425,7 @@ class DemoContractTests(unittest.TestCase):
             "ROneCOne_DateTime_Demo",
             "ROneCOne_Xml_Demo",
             "ROneCOne_Zip_Demo",
+            "ROneCOne_Query_Demo",
         ):
             self.assertIn(name, builder)
             self.assertIn(name, packager)

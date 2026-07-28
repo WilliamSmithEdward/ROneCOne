@@ -101,8 +101,69 @@ Private Sub WriteProcessExamples()
             "apple") < InStr(1, ROneCOne.Process.RunAsync("sort", , , _
             "banana" & vbCrLf & "apple" & vbCrLf).Await.StandardOutput, _
             "banana"))
+        ' Step 7: a session is a conversation. One process stays alive and
+        ' answers twice, which RunAsync cannot do because it waits for the
+        ' command to finish before you see anything.
+        .Range("E15").Value2 = SessionConversation()
+        ' Step 8: sort reads until end of input, so CloseInput is what lets
+        ' it finish and report its exit code.
+        .Range("E16").Value2 = SessionSortedFirstLine()
     End With
 End Sub
+
+Private Function SessionConversation() As String
+    Dim first As String
+    Dim second As String
+    Dim session As ROneCOne
+
+    Set session = ROneCOne.Process.StartSession("echo ready")
+    session.WriteLineAsync("echo alpha").Await
+    first = SessionLineWith(session, "alpha")
+    session.WriteLineAsync("echo beta").Await
+    second = SessionLineWith(session, "beta")
+    session.WriteLineAsync("exit 0").Await
+    session.WaitForExitAsync.Await
+    If Len(first) > 0 And Len(second) > 0 Then
+        SessionConversation = first & " then " & second
+    Else
+        SessionConversation = "the session did not answer twice"
+    End If
+End Function
+
+Private Function SessionSortedFirstLine() As String
+    Dim session As ROneCOne
+
+    Set session = ROneCOne.Process.StartSession("sort")
+    session.WriteLineAsync("banana").Await
+    session.WriteLineAsync("apple").Await
+    session.CloseInput
+    SessionSortedFirstLine = SessionLineWith(session, "apple")
+    session.WaitForExitAsync.Await
+End Function
+
+' Reads bounded lines until the wanted word appears. A prompt arrives with
+' no trailing newline, so every read carries a deadline and resolves to
+' empty text rather than waiting on a line that will never come. cmd.exe
+' prints its prompt ahead of the answer on the same line, so the match is
+' returned from the fragment rather than as the whole line.
+Private Function SessionLineWith( _
+    ByVal session As ROneCOne, _
+    ByVal fragment As String _
+) As String
+    Dim attempt As Long
+    Dim lineText As String
+    Dim position As Long
+
+    For attempt = 1 To 12
+        lineText = session.ReadLineAsync(4000).Await
+        position = InStr(1, lineText, fragment)
+        If position > 0 Then
+            SessionLineWith = Trim$(Mid$(lineText, position))
+            Exit Function
+        End If
+        If Len(lineText) = 0 And session.HasExited Then Exit For
+    Next attempt
+End Function
 
 Private Sub RunProcessBenchmark()
     Dim elapsed As Double
