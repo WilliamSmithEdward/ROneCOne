@@ -2767,6 +2767,56 @@ Attribute Deserialize.VB_Description = "Parses JSON text into dictionaries, list
     End If
 End Function
 
+Public Function DeserializeOnly( _
+    ByVal jsonText As String, _
+    ByVal paths As Variant _
+) As Variant
+Attribute DeserializeOnly.VB_Description = "Parses only the named paths, skipping everything else."
+    Dim entry As Variant
+    Dim reader As JsonReader
+    Dim stepSets As Collection
+
+    ' A fat API response can be almost entirely members you will never read.
+    ' This walks the document once and materializes only what you asked for,
+    ' stepping over the rest, and the result is a true subset of the source
+    ' so navigation is identical to Deserialize.
+    RequireJsonFactory "DeserializeOnly"
+    Set stepSets = New Collection
+    If IsArray(paths) Then
+        For Each entry In paths
+            stepSets.Add JsonSplitPath(CStr(entry))
+        Next entry
+    Else
+        stepSets.Add JsonSplitPath(CStr(paths))
+    End If
+    If stepSets.Count = 0 Then
+        RaiseJsonError "DeserializeOnly requires at least one path."
+    End If
+    JsonReaderInit reader, jsonText
+    AssignVariant DeserializeOnly, JsonReadFiltered(reader, stepSets)
+    JsonSkipWhitespace reader
+    If reader.pos <= reader.textLen Then
+        RaiseJsonError "Unexpected trailing characters at position " & _
+            CStr(reader.pos)
+    End If
+End Function
+
+Public Function DeserializeAt( _
+    ByVal jsonText As String, _
+    ByVal path As String _
+) As Variant
+Attribute DeserializeAt.VB_Description = "Parses just the value one path addresses."
+    Dim reader As JsonReader
+
+    ' Unlike DeserializeOnly, which omits a missing path silently because an
+    ' allowlist over a varying API should, this raises: asking for one value
+    ' and getting nothing back is a question that deserves an answer.
+    RequireJsonFactory "DeserializeAt"
+    JsonReaderInit reader, jsonText
+    AssignVariant DeserializeAt, _
+        JsonReadAtPath(reader, JsonSplitPath(path), path)
+End Function
+
 Public Function DeserializeTable( _
     ByVal text As String, _
     Optional ByVal tableName As String = vbNullString, _
@@ -2792,8 +2842,10 @@ Attribute DeserializeTable.VB_Description = "Parses JSON, CSV, or XML text into 
     End If
     RequireJsonFactory "DeserializeTable"
     If Len(tableName) = 0 Then tableName = "Json"
+    ' arrayPath selects during the scan, so an envelope's other members are
+    ' skipped rather than materialized and then discarded.
     Set DeserializeTable = BuildTableFromJsonArray( _
-        ResolveJsonArray(Deserialize(text), arrayPath), tableName)
+        ResolveJsonArray(DeserializeAt(text, arrayPath), "$"), tableName)
 End Function
 
 Public Function DeserializeInto( _
@@ -2827,7 +2879,9 @@ Attribute DeserializeObjects.VB_Description = "Parses a JSON array into factory-
 
     RequireJsonFactory "DeserializeObjects"
     ValidateJsonObjectFactory factory, "DeserializeObjects"
-    Set rows = ResolveJsonArray(Deserialize(jsonText), arrayPath)
+    ' The path now selects during the scan instead of after a full parse, so
+    ' an envelope's unrelated members are stepped over rather than built.
+    Set rows = ResolveJsonArray(DeserializeAt(jsonText, arrayPath), "$")
     Set result = Nothing
     For Each element In rows
         RequireJsonObjectValue element, "DeserializeObjects"
@@ -13215,6 +13269,115 @@ Private Function JsonReadArray(ByRef reader As JsonReader) As ROneCOne
     Set JsonReadArray = result
 End Function
 
+' Advances the reader past one complete value without building anything.
+' This is what makes a partial read cheap: the members a caller did not ask
+' for are stepped over instead of materialized.
+Private Sub JsonSkipValue(ByRef reader As JsonReader)
+    JsonSkipWhitespace reader
+    Select Case JsonCodeAt(reader)
+        Case 34
+            JsonSkipString reader
+        Case 116
+            JsonExpectLiteral reader, "true"
+        Case 102
+            JsonExpectLiteral reader, "false"
+        Case 110
+            JsonExpectLiteral reader, "null"
+        Case 45, 48 To 57
+            JsonSkipNumber reader
+        Case 91
+            JsonSkipArray reader
+        Case 123
+            JsonSkipObject reader
+        Case Else
+            RaiseJsonError "Unexpected token at position " & CStr(reader.pos)
+    End Select
+End Sub
+
+Private Sub JsonSkipString(ByRef reader As JsonReader)
+    Dim code As Long
+
+    reader.pos = reader.pos + 1
+    Do
+        code = JsonCodeAt(reader)
+        If code = -1 Then RaiseJsonError "Unterminated string"
+        reader.pos = reader.pos + 1
+        If code = 92 Then
+            If JsonCodeAt(reader) = -1 Then RaiseJsonError "Unterminated string"
+            reader.pos = reader.pos + 1
+        ElseIf code = 34 Then
+            Exit Do
+        End If
+    Loop
+End Sub
+
+Private Sub JsonSkipNumber(ByRef reader As JsonReader)
+    Dim code As Long
+
+    Do
+        code = JsonCodeAt(reader)
+        Select Case code
+            Case 43, 45, 46, 69, 101, 48 To 57
+                reader.pos = reader.pos + 1
+            Case Else
+                Exit Do
+        End Select
+    Loop
+End Sub
+
+Private Sub JsonSkipArray(ByRef reader As JsonReader)
+    reader.pos = reader.pos + 1
+    JsonSkipWhitespace reader
+    If JsonCodeAt(reader) = 93 Then
+        reader.pos = reader.pos + 1
+        Exit Sub
+    End If
+    Do
+        JsonSkipValue reader
+        JsonSkipWhitespace reader
+        Select Case JsonCodeAt(reader)
+            Case 44
+                reader.pos = reader.pos + 1
+            Case 93
+                reader.pos = reader.pos + 1
+                Exit Do
+            Case Else
+                RaiseJsonError "Expected ',' or ']' at position " & _
+                    CStr(reader.pos)
+        End Select
+    Loop
+End Sub
+
+Private Sub JsonSkipObject(ByRef reader As JsonReader)
+    reader.pos = reader.pos + 1
+    JsonSkipWhitespace reader
+    If JsonCodeAt(reader) = 125 Then
+        reader.pos = reader.pos + 1
+        Exit Sub
+    End If
+    Do
+        JsonSkipWhitespace reader
+        If JsonCodeAt(reader) <> 34 Then
+            RaiseJsonError "Expected a quoted member name at position " & _
+                CStr(reader.pos)
+        End If
+        JsonSkipString reader
+        JsonExpectChar reader, 58, ":"
+        JsonSkipValue reader
+        JsonSkipWhitespace reader
+        Select Case JsonCodeAt(reader)
+            Case 44
+                reader.pos = reader.pos + 1
+            Case 125
+                reader.pos = reader.pos + 1
+                Exit Do
+            Case Else
+                RaiseJsonError "Expected ',' or '}' at position " & _
+                    CStr(reader.pos)
+        End Select
+    Loop
+End Sub
+
 Private Function JsonReadObject(ByRef reader As JsonReader) As ROneCOne
     Dim key As String
     Dim result As ROneCOne
@@ -13877,6 +14040,293 @@ Private Function JsonIndent(ByVal depth As Long) As String
     JsonIndent = String$(depth * 2, " ")
 End Function
 
+' Splits "$.a.b[0]" into a Collection of step strings. An index step keeps
+' its brackets so the walker can tell it from a member of the same name.
+Private Function JsonSplitPath(ByVal path As String) As Collection
+    Dim cursor As Long
+    Dim segment As String
+    Dim steps As Collection
+    Dim stepChar As String
+    Dim trimmed As String
+
+    Set steps = New Collection
+    trimmed = Trim$(path)
+    If Len(trimmed) = 0 Then RaiseJsonError "The path cannot be empty."
+    If Left$(trimmed, 1) <> "$" Then
+        RaiseJsonError "The path must begin with '$'."
+    End If
+    cursor = 2
+    Do While cursor <= Len(trimmed)
+        stepChar = Mid$(trimmed, cursor, 1)
+        If stepChar = "." Then
+            cursor = cursor + 1
+            segment = vbNullString
+            Do While cursor <= Len(trimmed)
+                stepChar = Mid$(trimmed, cursor, 1)
+                If stepChar = "." Or stepChar = "[" Then Exit Do
+                segment = segment & stepChar
+                cursor = cursor + 1
+            Loop
+            If Len(segment) = 0 Then
+                RaiseJsonError "The path '" & path & _
+                    "' contains an empty member step."
+            End If
+            steps.Add segment
+        ElseIf stepChar = "[" Then
+            cursor = cursor + 1
+            segment = vbNullString
+            Do While cursor <= Len(trimmed)
+                stepChar = Mid$(trimmed, cursor, 1)
+                If stepChar = "]" Then Exit Do
+                segment = segment & stepChar
+                cursor = cursor + 1
+            Loop
+            If cursor > Len(trimmed) Then
+                RaiseJsonError "The path '" & path & "' is missing ']'."
+            End If
+            cursor = cursor + 1
+            If Not IsNumeric(segment) Then
+                RaiseJsonError "The path index '" & segment & _
+                    "' must be a number."
+            End If
+            steps.Add "[" & CStr(CLng(segment)) & "]"
+        Else
+            RaiseJsonError "The path '" & path & _
+                "' has an unexpected character at " & CStr(cursor) & "."
+        End If
+    Loop
+    Set JsonSplitPath = steps
+End Function
+
+' Each entry of stepSets is a Collection of remaining steps for one path.
+' Returns the entries whose next step matches, with that step consumed;
+' matchedWhole reports that some path ends here, meaning keep everything.
+Private Function JsonMatchStep( _
+    ByVal stepSets As Collection, _
+    ByVal stepText As String, _
+    ByRef matchedWhole As Boolean _
+) As Collection
+    Dim remaining As Collection
+    Dim result As Collection
+    Dim stepSet As Collection
+    Dim index As Long
+
+    matchedWhole = False
+    Set result = New Collection
+    For Each stepSet In stepSets
+        If stepSet.Count > 0 Then
+            If StrComp(CStr(stepSet.Item(1)), stepText, vbBinaryCompare) = 0 Then
+                If stepSet.Count = 1 Then
+                    matchedWhole = True
+                Else
+                    Set remaining = New Collection
+                    For index = 2 To stepSet.Count
+                        remaining.Add stepSet.Item(index)
+                    Next index
+                    result.Add remaining
+                End If
+            End If
+        End If
+    Next stepSet
+    Set JsonMatchStep = result
+End Function
+
+' Reads one value keeping only what the remaining steps ask for. Everything
+' else is skipped, so the shape that comes back is a true subset of the
+' source document and navigation is identical to a full Deserialize.
+Private Function JsonReadFiltered( _
+    ByRef reader As JsonReader, _
+    ByVal stepSets As Collection _
+) As Variant
+    Dim elementIndex As Long
+    Dim keptList As ROneCOne
+    Dim keptObject As ROneCOne
+    Dim key As String
+    Dim matched As Collection
+    Dim matchedWhole As Boolean
+    Dim value As Variant
+
+    JsonSkipWhitespace reader
+    Select Case JsonCodeAt(reader)
+        Case 123
+            reader.pos = reader.pos + 1
+            Set keptObject = ROneCOne.OrderedDictionaryOf(vbString, vbVariant)
+            JsonSkipWhitespace reader
+            If JsonCodeAt(reader) = 125 Then
+                reader.pos = reader.pos + 1
+                Set JsonReadFiltered = keptObject
+                Exit Function
+            End If
+            Do
+                JsonSkipWhitespace reader
+                If JsonCodeAt(reader) <> 34 Then
+                    RaiseJsonError "Expected a quoted member name at " & _
+                        "position " & CStr(reader.pos)
+                End If
+                key = JsonReadString(reader)
+                JsonExpectChar reader, 58, ":"
+                Set matched = JsonMatchStep(stepSets, key, matchedWhole)
+                If matchedWhole Then
+                    AssignVariant value, JsonReadValue(reader)
+                    keptObject.Item(key) = value
+                ElseIf matched.Count > 0 Then
+                    AssignVariant value, JsonReadFiltered(reader, matched)
+                    keptObject.Item(key) = value
+                Else
+                    JsonSkipValue reader
+                End If
+                JsonSkipWhitespace reader
+                Select Case JsonCodeAt(reader)
+                    Case 44
+                        reader.pos = reader.pos + 1
+                    Case 125
+                        reader.pos = reader.pos + 1
+                        Exit Do
+                    Case Else
+                        RaiseJsonError "Expected ',' or '}' at position " & _
+                            CStr(reader.pos)
+                End Select
+            Loop
+            Set JsonReadFiltered = keptObject
+        Case 91
+            reader.pos = reader.pos + 1
+            Set keptList = ROneCOne.ListOf(vbVariant)
+            JsonSkipWhitespace reader
+            If JsonCodeAt(reader) = 93 Then
+                reader.pos = reader.pos + 1
+                Set JsonReadFiltered = keptList
+                Exit Function
+            End If
+            Do
+                Set matched = JsonMatchStep( _
+                    stepSets, "[" & CStr(elementIndex) & "]", matchedWhole)
+                If matchedWhole Then
+                    AssignVariant value, JsonReadValue(reader)
+                    keptList.Add value
+                ElseIf matched.Count > 0 Then
+                    AssignVariant value, JsonReadFiltered(reader, matched)
+                    keptList.Add value
+                Else
+                    JsonSkipValue reader
+                End If
+                elementIndex = elementIndex + 1
+                JsonSkipWhitespace reader
+                Select Case JsonCodeAt(reader)
+                    Case 44
+                        reader.pos = reader.pos + 1
+                    Case 93
+                        reader.pos = reader.pos + 1
+                        Exit Do
+                    Case Else
+                        RaiseJsonError "Expected ',' or ']' at position " & _
+                            CStr(reader.pos)
+                End Select
+            Loop
+            Set JsonReadFiltered = keptList
+        Case Else
+            ' A path continues past a scalar, so nothing below it exists.
+            JsonSkipValue reader
+            JsonReadFiltered = Null
+    End Select
+End Function
+
+' Reads the single value a path addresses, skipping every sibling on the
+' way down. Raises when the path is absent, mirroring GetAttribute.
+Private Function JsonReadAtPath( _
+    ByRef reader As JsonReader, _
+    ByVal steps As Collection, _
+    ByVal path As String _
+) As Variant
+    Dim elementIndex As Long
+    Dim found As Boolean
+    Dim key As String
+    Dim remaining As Collection
+    Dim index As Long
+    Dim stepText As String
+    Dim value As Variant
+
+    If steps.Count = 0 Then
+        AssignVariant JsonReadAtPath, JsonReadValue(reader)
+        Exit Function
+    End If
+    stepText = CStr(steps.Item(1))
+    Set remaining = New Collection
+    For index = 2 To steps.Count
+        remaining.Add steps.Item(index)
+    Next index
+
+    JsonSkipWhitespace reader
+    If Left$(stepText, 1) = "[" Then
+        If JsonCodeAt(reader) <> 91 Then
+            RaiseJsonError "The path step '" & stepText & _
+                "' requires a JSON array."
+        End If
+        reader.pos = reader.pos + 1
+        JsonSkipWhitespace reader
+        If JsonCodeAt(reader) = 93 Then
+            RaiseJsonError "The path '" & path & "' was not found."
+        End If
+        Do
+            If stepText = "[" & CStr(elementIndex) & "]" Then
+                AssignVariant value, JsonReadAtPath(reader, remaining, path)
+                AssignVariant JsonReadAtPath, value
+                Exit Function
+            End If
+            JsonSkipValue reader
+            elementIndex = elementIndex + 1
+            JsonSkipWhitespace reader
+            Select Case JsonCodeAt(reader)
+                Case 44
+                    reader.pos = reader.pos + 1
+                Case 93
+                    RaiseJsonError "The path '" & path & "' was not found."
+                Case Else
+                    RaiseJsonError "Expected ',' or ']' at position " & _
+                        CStr(reader.pos)
+            End Select
+        Loop
+    End If
+
+    If JsonCodeAt(reader) <> 123 Then
+        RaiseJsonError "The path step '" & stepText & _
+            "' requires a JSON object."
+    End If
+    reader.pos = reader.pos + 1
+    JsonSkipWhitespace reader
+    If JsonCodeAt(reader) = 125 Then
+        RaiseJsonError "The path '" & path & "' was not found."
+    End If
+    Do
+        JsonSkipWhitespace reader
+        If JsonCodeAt(reader) <> 34 Then
+            RaiseJsonError "Expected a quoted member name at position " & _
+                CStr(reader.pos)
+        End If
+        key = JsonReadString(reader)
+        JsonExpectChar reader, 58, ":"
+        If StrComp(key, stepText, vbBinaryCompare) = 0 Then
+            AssignVariant value, JsonReadAtPath(reader, remaining, path)
+            AssignVariant JsonReadAtPath, value
+            found = True
+            Exit Function
+        End If
+        JsonSkipValue reader
+        JsonSkipWhitespace reader
+        Select Case JsonCodeAt(reader)
+            Case 44
+                reader.pos = reader.pos + 1
+            Case 125
+                Exit Do
+            Case Else
+                RaiseJsonError "Expected ',' or '}' at position " & _
+                    CStr(reader.pos)
+        End Select
+    Loop
+    If Not found Then
+        RaiseJsonError "The path '" & path & "' was not found."
+    End If
+End Function
+
 Private Function ResolveJsonArray( _
     ByVal root As Variant, _
     ByVal arrayPath As String _
@@ -14044,14 +14494,20 @@ Private Sub BindJsonObjectInto(ByVal instance As Object, ByVal source As Variant
     Dim value As Variant
 
     ' Scalar members bind by name; null, object, and array members are left
-    ' for the caller, mirroring a flat DTO bind.
+    ' for the caller, mirroring a flat DTO bind. A member the target does
+    ' not expose is skipped rather than raising, matching how
+    ' System.Text.Json ignores unknown members: a real API response carries
+    ' far more than any one class models.
     Set tree = source
     For pairIndex = 1 To tree.InternalPairCount
         AssignVariant value, tree.InternalPairValue(pairIndex)
         If Not IsObject(value) Then
             If Not IsNull(value) Then
+                On Error Resume Next
                 CallByName instance, tree.InternalPairKeyText(pairIndex), _
                     VbLet, value
+                If Err.Number <> 0 Then Err.Clear
+                On Error GoTo 0
             End If
         End If
     Next pairIndex

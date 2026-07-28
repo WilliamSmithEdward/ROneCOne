@@ -785,6 +785,28 @@ class SourceContractTests(unittest.TestCase):
         # Extraction must route every entry name through the escape guard.
         self.assertIn("SafeRelativeEntryPath(CStr(rawEntry(0)))", self.source)
 
+    def test_json_partial_read_surface_skips_instead_of_parsing(self) -> None:
+        for member in (
+            "Public Function DeserializeOnly(",
+            "Public Function DeserializeAt(",
+            "Private Sub JsonSkipValue(",
+            "Private Sub JsonSkipString(",
+            "Private Sub JsonSkipNumber(",
+            "Private Sub JsonSkipArray(",
+            "Private Sub JsonSkipObject(",
+            "Private Function JsonReadFiltered(",
+            "Private Function JsonReadAtPath(",
+            "Private Function JsonSplitPath(",
+        ):
+            self.assertIn(member, self.source)
+        # Unrequested members must be stepped over, never materialized.
+        self.assertIn("JsonSkipValue reader", self.source)
+        # The table and object bridges select during the scan rather than
+        # parsing the whole document and navigating the result.
+        self.assertNotIn("ResolveJsonArray(Deserialize(", self.source)
+        self.assertIn('DeserializeAt(text, arrayPath), "$"', self.source)
+        self.assertIn('DeserializeAt(jsonText, arrayPath), "$"', self.source)
+
     def test_process_session_surface_is_present_and_nonblocking(self) -> None:
         for member in (
             "Public Function StartSession(",

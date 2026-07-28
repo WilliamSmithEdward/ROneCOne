@@ -385,6 +385,101 @@ Private Sub TestJsonSurface()
     AssertEqual "table to objects round trip", 36&, mapped.Item(0).Age
     AssertTrue "table to objects typed list", InStr(1, _
         mapped.GenericTypeName, "GenericCustomer") > 0
+
+    TestJsonPartialReads factory
+End Sub
+
+Private Sub TestJsonPartialReads(ByVal factory As ROneCOne)
+    Dim big As String
+    Dim bound As GenericCustomer
+    Dim builder As ROneCOne
+    Dim fat As String
+    Dim index As Long
+    Dim missingError As Long
+    Dim objects As ROneCOne
+    Dim partialSeconds As Double
+    Dim slim As ROneCOne
+    Dim started As Double
+    Dim value As Variant
+    Dim wholeSeconds As Double
+
+    ' A response where the wanted members are a tiny share of the bytes,
+    ' which is the shape this exists for.
+    mCurrentTest = "TestJsonSurface.PartialReads"
+    fat = "{""id"":25,""name"":""pikachu""," & _
+        """moves"":[{""m"":1},{""m"":2},{""m"":3}]," & _
+        """sprites"":{""front_default"":""front.png""," & _
+        """versions"":{""a"":{""b"":""junk""}}}," & _
+        """types"":[""electric""]}"
+
+    ' Only the requested paths come back, and the shape is preserved: the
+    ' sprites object survives holding just the one member asked for.
+    Set slim = ROneCOne.Json.DeserializeOnly(fat, Array( _
+        "$.id", "$.name", "$.types", "$.sprites.front_default"))
+    AssertEqual "partial keeps requested count", 4&, slim.Count
+    AssertEqual "partial keeps scalar", "pikachu", CStr(slim.Item("name"))
+    AssertEqual "partial keeps nested member", "front.png", _
+        CStr(slim.Item("sprites").Item("front_default"))
+    AssertEqual "partial prunes siblings", 1&, slim.Item("sprites").Count
+    AssertEqual "partial keeps whole subtree", 1&, slim.Item("types").Count
+    AssertTrue "partial drops unrequested members", _
+        Not slim.ContainsKey("moves")
+    ' An absent path is simply omitted, which is what an allowlist over a
+    ' varying API should do.
+    Set slim = ROneCOne.Json.DeserializeOnly(fat, _
+        Array("$.id", "$.not_there"))
+    AssertEqual "partial omits a missing path", 1&, slim.Count
+
+    ' DeserializeAt returns the bare value, and raises when it is absent.
+    AssertEqual "path read scalar", "pikachu", _
+        CStr(ROneCOne.Json.DeserializeAt(fat, "$.name"))
+    AssertEqual "path read nested", "front.png", CStr( _
+        ROneCOne.Json.DeserializeAt(fat, "$.sprites.front_default"))
+    value = ROneCOne.Json.DeserializeAt(fat, "$.moves[1].m")
+    AssertEqual "path read through an index", 2&, CLng(value)
+    missingError = 0
+    On Error Resume Next
+    ROneCOne.Json.DeserializeAt fat, "$.nope"
+    missingError = Err.Number
+    On Error GoTo 0
+    AssertEqual "path read raises when absent", ROneCOne.JsonError, _
+        missingError
+
+    ' Binding ignores members the target does not model, matching
+    ' System.Text.Json. Before this, an unknown member raised.
+    Set bound = New GenericCustomer
+    ROneCOne.Json.DeserializeInto _
+        "{""CustomerName"":""Ada"",""Age"":36,""Unmodeled"":""ignored""}", _
+        bound
+    AssertEqual "bind skips unmodeled members", "Ada", bound.CustomerName
+    AssertEqual "bind still fills known members", 36&, bound.Age
+    Set objects = ROneCOne.Json.DeserializeObjects( _
+        "{""rows"":[{""CustomerName"":""Cy"",""Extra"":1}]," & _
+        """noise"":{""deep"":[1,2,3]}}", factory, "$.rows")
+    AssertEqual "objects through a path", 1&, objects.Count
+    AssertEqual "objects skip envelope noise", "Cy", _
+        objects.Item(0).CustomerName
+
+    ' The saving is real work avoided, not a smaller answer: a document
+    ' whose bulk is one unwanted member reads faster when it is skipped.
+    Set builder = ROneCOne.StringBuilder()
+    builder.Append "{""keep"":1,""bulk"":["
+    For index = 1 To 4000
+        If index > 1 Then builder.Append ","
+        builder.Append "{""a"":""" & CStr(index) & """,""b"":[1,2,3]}"
+    Next index
+    builder.Append "]}"
+    big = builder.ToString
+
+    started = Timer
+    ROneCOne.Json.Deserialize big
+    wholeSeconds = ElapsedSecondsSince(started)
+    started = Timer
+    Set slim = ROneCOne.Json.DeserializeOnly(big, Array("$.keep"))
+    partialSeconds = ElapsedSecondsSince(started)
+    AssertEqual "partial read still answers", 1&, CLng(slim.Item("keep"))
+    AssertTrue "partial read beats a whole parse", _
+        partialSeconds < wholeSeconds
 End Sub
 
 Public Function NewGenericCustomer() As GenericCustomer
