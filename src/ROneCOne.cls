@@ -103,6 +103,108 @@ Private Declare PtrSafe Function TzSpecificLocalTimeToSystemTime Lib "kernel32" 
     ByVal timeZonePointer As LongPtr, ByRef localTime As SYSTEMTIME, _
     ByRef universalTime As SYSTEMTIME) As Long
 
+' Interactive process sessions. Standard output and standard error ride
+' anonymous pipes that PeekNamedPipe inspects without ever blocking.
+' Standard input rides an overlapped named pipe, so even a payload larger
+' than the pipe buffer pends instead of freezing Excel while the child
+' catches up.
+Private Declare PtrSafe Function CreatePipe Lib "kernel32" ( _
+    ByRef readPipe As LongPtr, ByRef writePipe As LongPtr, _
+    ByRef pipeAttributes As SECURITY_ATTRIBUTES, ByVal size As Long) As Long
+Private Declare PtrSafe Function CreateNamedPipeW Lib "kernel32" ( _
+    ByVal pipeName As LongPtr, ByVal openMode As Long, _
+    ByVal pipeMode As Long, ByVal maxInstances As Long, _
+    ByVal outBufferSize As Long, ByVal inBufferSize As Long, _
+    ByVal defaultTimeOut As Long, _
+    ByRef securityAttributes As SECURITY_ATTRIBUTES) As LongPtr
+Private Declare PtrSafe Function CreateFileW Lib "kernel32" ( _
+    ByVal fileName As LongPtr, ByVal desiredAccess As Long, _
+    ByVal shareMode As Long, _
+    ByRef securityAttributes As SECURITY_ATTRIBUTES, _
+    ByVal creationDisposition As Long, ByVal flagsAndAttributes As Long, _
+    ByVal templateFile As LongPtr) As LongPtr
+Private Declare PtrSafe Function ConnectNamedPipe Lib "kernel32" ( _
+    ByVal namedPipe As LongPtr, ByVal overlapped As LongPtr) As Long
+Private Declare PtrSafe Function CreateProcessW Lib "kernel32" ( _
+    ByVal applicationName As LongPtr, ByVal commandLine As LongPtr, _
+    ByVal processAttributes As LongPtr, ByVal threadAttributes As LongPtr, _
+    ByVal inheritHandles As Long, ByVal creationFlags As Long, _
+    ByVal environment As LongPtr, ByVal currentDirectory As LongPtr, _
+    ByRef startupInformation As STARTUPINFOW, _
+    ByRef processInformation As PROCESS_INFORMATION) As Long
+Private Declare PtrSafe Function PeekNamedPipe Lib "kernel32" ( _
+    ByVal namedPipe As LongPtr, ByVal buffer As LongPtr, _
+    ByVal bufferSize As Long, ByVal bytesRead As LongPtr, _
+    ByRef totalBytesAvailable As Long, _
+    ByVal bytesLeftThisMessage As LongPtr) As Long
+Private Declare PtrSafe Function ReadFile Lib "kernel32" ( _
+    ByVal fileHandle As LongPtr, ByVal buffer As LongPtr, _
+    ByVal bytesToRead As Long, ByRef bytesRead As Long, _
+    ByVal overlapped As LongPtr) As Long
+Private Declare PtrSafe Function WriteFileOverlapped Lib "kernel32" _
+    Alias "WriteFile" ( _
+    ByVal fileHandle As LongPtr, ByVal buffer As LongPtr, _
+    ByVal bytesToWrite As Long, ByVal bytesWritten As LongPtr, _
+    ByRef overlapped As OVERLAPPED) As Long
+Private Declare PtrSafe Function GetOverlappedResult Lib "kernel32" ( _
+    ByVal fileHandle As LongPtr, ByRef overlapped As OVERLAPPED, _
+    ByRef bytesTransferred As Long, ByVal waitFlag As Long) As Long
+Private Declare PtrSafe Function CreateEventW Lib "kernel32" ( _
+    ByVal eventAttributes As LongPtr, ByVal manualReset As Long, _
+    ByVal initialState As Long, ByVal eventName As LongPtr) As LongPtr
+Private Declare PtrSafe Function SetHandleInformation Lib "kernel32" ( _
+    ByVal handleValue As LongPtr, ByVal mask As Long, _
+    ByVal flags As Long) As Long
+Private Declare PtrSafe Function GetExitCodeProcess Lib "kernel32" ( _
+    ByVal processHandle As LongPtr, ByRef exitCode As Long) As Long
+Private Declare PtrSafe Function TerminateProcess Lib "kernel32" ( _
+    ByVal processHandle As LongPtr, ByVal exitCode As Long) As Long
+Private Declare PtrSafe Function CloseHandle Lib "kernel32" ( _
+    ByVal handleValue As LongPtr) As Long
+Private Declare PtrSafe Function GetOEMCP Lib "kernel32" () As Long
+
+Private Type SECURITY_ATTRIBUTES
+    nLength As Long
+    lpSecurityDescriptor As LongPtr
+    bInheritHandle As Long
+End Type
+
+Private Type STARTUPINFOW
+    cb As Long
+    lpReserved As LongPtr
+    lpDesktop As LongPtr
+    lpTitle As LongPtr
+    dwX As Long
+    dwY As Long
+    dwXSize As Long
+    dwYSize As Long
+    dwXCountChars As Long
+    dwYCountChars As Long
+    dwFillAttribute As Long
+    dwFlags As Long
+    wShowWindow As Integer
+    cbReserved2 As Integer
+    lpReserved2 As LongPtr
+    hStdInput As LongPtr
+    hStdOutput As LongPtr
+    hStdError As LongPtr
+End Type
+
+Private Type PROCESS_INFORMATION
+    hProcess As LongPtr
+    hThread As LongPtr
+    dwProcessId As Long
+    dwThreadId As Long
+End Type
+
+Private Type OVERLAPPED
+    Internal As LongPtr
+    InternalHigh As LongPtr
+    OffsetLow As Long
+    OffsetHigh As Long
+    hEvent As LongPtr
+End Type
+
 ' MIT License
 '
 ' Copyright (c) 2026 William Smith
@@ -202,6 +304,18 @@ Private Const ROLE_ZIPFILE_FACTORY As Long = 73
 Private Const ROLE_ZIP_ARCHIVE As Long = 74
 Private Const ROLE_ZIP_ENTRY As Long = 75
 Private Const ROLE_QUERYABLE As Long = 76
+Private Const ROLE_PROCESS_SESSION As Long = 77
+
+Private Const STARTF_USESTDHANDLES As Long = &H100&
+Private Const CREATE_NO_WINDOW As Long = &H8000000
+Private Const HANDLE_FLAG_INHERIT As Long = 1
+Private Const STILL_ACTIVE As Long = 259
+Private Const PIPE_ACCESS_OUTBOUND As Long = 2
+Private Const FILE_FLAG_OVERLAPPED As Long = &H40000000
+Private Const GENERIC_READ As Long = &H80000000
+Private Const OPEN_EXISTING As Long = 3
+Private Const ERROR_IO_INCOMPLETE As Long = 996
+Private Const SESSION_PIPE_BYTES As Long = 65536
 
 Private Const QUERY_DIALECT_TSQL As Long = 1
 Private Const QUERY_DIALECT_ACE As Long = 2
@@ -220,6 +334,7 @@ Private Const TASK_HTTP_SEND As Long = 11
 Private Const TASK_DB_ASYNC As Long = 12
 Private Const TASK_PROCESS_RUN As Long = 13
 Private Const TASK_FILE_WATCH As Long = 14
+Private Const TASK_SESSION As Long = 15
 
 ' A watch task rescans its folder at most this often while awaited.
 Private Const WATCH_POLL_INTERVAL_MS As Long = 250
@@ -592,6 +707,31 @@ Private mSqlQueryColumns As Collection
 Private mSqlQueryTake As Long
 Private mSqlQuerySkip As Long
 Private mSqlQueryLastValues As Collection
+Private mSessionProcess As LongPtr
+Private mSessionProcessId As Long
+Private mSessionStdIn As LongPtr
+Private mSessionStdOut As LongPtr
+Private mSessionStdErr As LongPtr
+Private mSessionCharset As String
+Private mSessionExitCode As Long
+Private mSessionExited As Boolean
+Private mSessionInputClosed As Boolean
+Private mSessionOutBytes() As Byte
+Private mSessionOutCount As Long
+Private mSessionOutCursor As Long
+Private mSessionOutDrained As Boolean
+Private mSessionErrBytes() As Byte
+Private mSessionErrCount As Long
+Private mSessionErrCursor As Long
+Private mSessionErrDrained As Boolean
+Private mSessionWriteQueue As Collection
+Private mSessionWriteDone As Long
+Private mSessionWriteNext As Long
+Private mSessionWriteBuffer() As Byte
+Private mSessionWriteActive As Boolean
+Private mSessionWriteOverlapped As OVERLAPPED
+Private mSessionReadOutBusy As Boolean
+Private mSessionReadErrBusy As Boolean
 Private mHttpBaseAddress As String
 Private mHttpTimeoutMs As Long
 Private mHttpHeaderNames As Collection
@@ -3114,8 +3254,114 @@ StartFailed:
         "The process could not start: " & Err.Description
 End Function
 
+Public Function StartSession( _
+    ByVal command As String, _
+    Optional ByVal workingDirectory As String = vbNullString, _
+    Optional ByVal encodingName As String = vbNullString _
+) As ROneCOne
+Attribute StartSession.VB_Description = "Starts a command you can write to and read from."
+    Dim session As ROneCOne
+
+    RequireProcessFactory "StartSession"
+    If Len(Trim$(command)) = 0 Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "StartSession", _
+            "The command cannot be empty."
+    End If
+    Set session = New ROneCOne
+    session.ConfigureProcessSession command, workingDirectory, encodingName
+    Set StartSession = session
+End Function
+
+Public Function WriteAsync( _
+    ByVal text As String, _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute WriteAsync.VB_Description = "Queues text to the session's standard input."
+    Set WriteAsync = SessionQueueWrite(text, cancellationToken, "WriteAsync")
+End Function
+
+Public Function WriteLineAsync( _
+    ByVal text As String, _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute WriteLineAsync.VB_Description = "Queues one line to the session's standard input."
+    Set WriteLineAsync = SessionQueueWrite( _
+        text & vbCrLf, cancellationToken, "WriteLineAsync")
+End Function
+
+Public Sub CloseInput()
+Attribute CloseInput.VB_Description = "Closes standard input so the command sees end of file."
+    RequireProcessSession "CloseInput"
+    If mSessionWriteQueue.Count > 0 Or mSessionWriteActive Then
+        RaiseProcessError "Await every queued write before closing input."
+    End If
+    SessionCloseInputHandle
+End Sub
+
+Public Function ReadLineAsync( _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute ReadLineAsync.VB_Description = "Awaits the next standard output line."
+    Set ReadLineAsync = SessionCreateTask( _
+        "ReadOut", cancellationToken, "ReadLineAsync")
+End Function
+
+Public Function ReadErrorLineAsync( _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute ReadErrorLineAsync.VB_Description = "Awaits the next standard error line."
+    Set ReadErrorLineAsync = SessionCreateTask( _
+        "ReadErr", cancellationToken, "ReadErrorLineAsync")
+End Function
+
+Public Function ReadToEndAsync( _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute ReadToEndAsync.VB_Description = "Awaits exit and resolves to the rest of standard output."
+    Set ReadToEndAsync = SessionCreateTask( _
+        "ReadToEnd", cancellationToken, "ReadToEndAsync")
+End Function
+
+Public Function WaitForExitAsync( _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute WaitForExitAsync.VB_Description = "Awaits exit and resolves to the exit code."
+    Set WaitForExitAsync = SessionCreateTask( _
+        "Exit", cancellationToken, "WaitForExitAsync")
+End Function
+
+Public Sub Kill()
+Attribute Kill.VB_Description = "Terminates the session's command immediately."
+    RequireProcessSession "Kill"
+    If mSessionExited Then Exit Sub
+    TerminateProcess mSessionProcess, 1
+    SessionRefreshExit
+End Sub
+
+Public Property Get HasExited() As Boolean
+Attribute HasExited.VB_Description = "Tests whether the session's command has finished."
+    RequireProcessSession "HasExited"
+    SessionRefreshExit
+    HasExited = mSessionExited
+End Property
+
+Public Property Get ProcessId() As Long
+Attribute ProcessId.VB_Description = "Gets the session's operating system process identifier."
+    RequireProcessSession "ProcessId"
+    ProcessId = mSessionProcessId
+End Property
+
 Public Property Get ExitCode() As Long
 Attribute ExitCode.VB_Description = "Gets a completed process's exit code."
+    If mRole = ROLE_PROCESS_SESSION Then
+        SessionRefreshExit
+        If Not mSessionExited Then
+            RaiseProcessError "The command is still running; await " & _
+                "WaitForExitAsync before reading ExitCode."
+        End If
+        ExitCode = mSessionExitCode
+        Exit Property
+    End If
     RequireProcessResult "ExitCode"
     ExitCode = mProcessExitCode
 End Property
@@ -11830,6 +12076,18 @@ Friend Function InternalQueryDialect() As Long
     End If
 End Function
 
+Friend Sub ConfigureSessionTask( _
+    ByVal session As ROneCOne, _
+    ByVal operationName As String, _
+    ByVal writeSequence As Long, _
+    ByVal cancellationToken As ROneCOne _
+)
+    ConfigureTask TASK_SESSION, Nothing, cancellationToken
+    mMethodName = operationName
+    mExpressionOption = writeSequence
+    Set mSource = session
+End Sub
+
 Friend Sub ConfigureQueryable( _
     ByVal connection As ROneCOne, _
     ByVal tableName As String _
@@ -14628,6 +14886,481 @@ Private Sub RaiseCsvError(ByVal message As String)
     Err.Raise ERROR_CSV_PARSE, "ROneCOne.CsvException", message
 End Sub
 
+Friend Sub ConfigureProcessSession( _
+    ByVal command As String, _
+    ByVal workingDirectory As String, _
+    ByVal encodingName As String _
+)
+    Dim clientInput As LongPtr
+    Dim commandLine As String
+    Dim directoryPointer As LongPtr
+    Dim errWrite As LongPtr
+    Dim outWrite As LongPtr
+    Dim pipeName As String
+    Dim processInformation As PROCESS_INFORMATION
+    Dim security As SECURITY_ATTRIBUTES
+    Dim startupInformation As STARTUPINFOW
+
+    mRole = ROLE_PROCESS_SESSION
+    mName = command
+    mSessionCharset = encodingName
+    If Len(Trim$(mSessionCharset)) = 0 Then
+        mSessionCharset = "IBM" & CStr(GetOEMCP())
+    End If
+    Set mSessionWriteQueue = New Collection
+
+    security.nLength = LenB(security)
+    security.bInheritHandle = 1
+
+    ' Standard input is an overlapped named pipe so a write larger than the
+    ' buffer pends instead of blocking Excel. The child end is inheritable;
+    ' the end this class keeps is not.
+    pipeName = "\\.\pipe\ronecone_" & VBA.Replace(ROneCOne.Guid.NewGuid, "-", "")
+    mSessionStdIn = CreateNamedPipeW(StrPtr(pipeName), _
+        PIPE_ACCESS_OUTBOUND Or FILE_FLAG_OVERLAPPED, 0, 1, _
+        SESSION_PIPE_BYTES, SESSION_PIPE_BYTES, 0, security)
+    If mSessionStdIn = -1 Then
+        mSessionStdIn = 0
+        RaiseProcessError "The input pipe could not be created."
+    End If
+    clientInput = CreateFileW(StrPtr(pipeName), GENERIC_READ, 0, _
+        security, OPEN_EXISTING, 0, 0)
+    If clientInput = -1 Then
+        SessionCloseHandles
+        RaiseProcessError "The input pipe could not be opened."
+    End If
+    SetHandleInformation mSessionStdIn, HANDLE_FLAG_INHERIT, 0
+    ' A client that connected before this call reports ERROR_PIPE_CONNECTED,
+    ' which is success for our purposes.
+    ConnectNamedPipe mSessionStdIn, 0
+
+    If CreatePipe(mSessionStdOut, outWrite, security, SESSION_PIPE_BYTES) = 0 _
+        Then
+        CloseHandle clientInput
+        SessionCloseHandles
+        RaiseProcessError "The output pipe could not be created."
+    End If
+    If CreatePipe(mSessionStdErr, errWrite, security, SESSION_PIPE_BYTES) = 0 _
+        Then
+        CloseHandle clientInput
+        CloseHandle outWrite
+        SessionCloseHandles
+        RaiseProcessError "The error pipe could not be created."
+    End If
+    SetHandleInformation mSessionStdOut, HANDLE_FLAG_INHERIT, 0
+    SetHandleInformation mSessionStdErr, HANDLE_FLAG_INHERIT, 0
+
+    startupInformation.cb = LenB(startupInformation)
+    startupInformation.dwFlags = STARTF_USESTDHANDLES
+    startupInformation.hStdInput = clientInput
+    startupInformation.hStdOutput = outWrite
+    startupInformation.hStdError = errWrite
+
+    ' cmd.exe /q /k keeps the interpreter alive between writes, which is what
+    ' makes the session a conversation instead of a single command.
+    commandLine = "cmd.exe /q /k " & command
+    If Len(workingDirectory) > 0 Then directoryPointer = StrPtr(workingDirectory)
+    If CreateProcessW(0, StrPtr(commandLine), 0, 0, 1, CREATE_NO_WINDOW, _
+        0, directoryPointer, startupInformation, processInformation) = 0 Then
+        CloseHandle clientInput
+        CloseHandle outWrite
+        CloseHandle errWrite
+        SessionCloseHandles
+        RaiseProcessError "The process could not start: " & command
+    End If
+
+    mSessionProcess = processInformation.hProcess
+    mSessionProcessId = processInformation.dwProcessId
+    CloseHandle processInformation.hThread
+    ' The parent must drop the child's ends, or the pipes never report end of
+    ' file once the command exits.
+    CloseHandle clientInput
+    CloseHandle outWrite
+    CloseHandle errWrite
+End Sub
+
+Private Sub RequireProcessSession(ByVal memberName As String)
+    If mRole <> ROLE_PROCESS_SESSION Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires a process session."
+    End If
+End Sub
+
+Private Sub RaiseProcessError(ByVal message As String)
+    Err.Raise ERROR_PROCESS, "ROneCOne.ProcessException", message
+End Sub
+
+Private Function SessionCreateTask( _
+    ByVal operationName As String, _
+    ByVal cancellationToken As ROneCOne, _
+    ByVal memberName As String _
+) As ROneCOne
+    Dim taskValue As ROneCOne
+
+    RequireProcessSession memberName
+    ValidateCancellationToken cancellationToken, memberName
+    If operationName = "ReadOut" Then
+        If mSessionReadOutBusy Then
+            RaiseProcessError "One standard output read may be pending " & _
+                "at a time; await the previous ReadLineAsync."
+        End If
+        mSessionReadOutBusy = True
+    ElseIf operationName = "ReadErr" Then
+        If mSessionReadErrBusy Then
+            RaiseProcessError "One standard error read may be pending " & _
+                "at a time; await the previous ReadErrorLineAsync."
+        End If
+        mSessionReadErrBusy = True
+    End If
+    Set taskValue = New ROneCOne
+    taskValue.ConfigureSessionTask Me, operationName, 0, cancellationToken
+    Set SessionCreateTask = taskValue
+End Function
+
+Private Function SessionQueueWrite( _
+    ByVal text As String, _
+    ByVal cancellationToken As ROneCOne, _
+    ByVal memberName As String _
+) As ROneCOne
+    Dim payload() As Byte
+    Dim taskValue As ROneCOne
+
+    RequireProcessSession memberName
+    ValidateCancellationToken cancellationToken, memberName
+    If mSessionInputClosed Then
+        RaiseProcessError "Standard input is closed for this session."
+    End If
+    ' Zero skip bytes: a console reads raw bytes, so no byte-order mark.
+    payload = IoEncodeText(text, mSessionCharset, 0)
+    mSessionWriteNext = mSessionWriteNext + 1
+    mSessionWriteQueue.Add payload
+    Set taskValue = New ROneCOne
+    taskValue.ConfigureSessionTask Me, "Write", mSessionWriteNext, _
+        cancellationToken
+    Set SessionQueueWrite = taskValue
+End Function
+
+' Returns True when the write identified by targetSequence has landed in the
+' pipe. Only one overlapped write is in flight at a time; the queue drains in
+' order, so a completed counter is enough to resolve every waiting Task.
+Friend Function InternalSessionWritePoll( _
+    ByVal targetSequence As Long _
+) As Boolean
+    Dim transferred As Long
+
+    If mSessionWriteActive Then
+        If GetOverlappedResult(mSessionStdIn, mSessionWriteOverlapped, _
+            transferred, 0) = 0 Then
+            If Err.LastDllError = ERROR_IO_INCOMPLETE Then
+                InternalSessionWritePoll = (mSessionWriteDone >= targetSequence)
+                Exit Function
+            End If
+            ' The pipe broke, which means the command stopped reading. Treat
+            ' the write as finished rather than hanging the Task forever.
+        End If
+        mSessionWriteActive = False
+        If mSessionWriteOverlapped.hEvent <> 0 Then
+            CloseHandle mSessionWriteOverlapped.hEvent
+            mSessionWriteOverlapped.hEvent = 0
+        End If
+        mSessionWriteDone = mSessionWriteDone + 1
+    End If
+
+    Do While Not mSessionWriteActive And mSessionWriteQueue.Count > 0
+        SessionBeginNextWrite
+        If mSessionWriteActive Then
+            If GetOverlappedResult(mSessionStdIn, mSessionWriteOverlapped, _
+                transferred, 0) <> 0 Then
+                mSessionWriteActive = False
+                If mSessionWriteOverlapped.hEvent <> 0 Then
+                    CloseHandle mSessionWriteOverlapped.hEvent
+                    mSessionWriteOverlapped.hEvent = 0
+                End If
+                mSessionWriteDone = mSessionWriteDone + 1
+            End If
+        End If
+    Loop
+    InternalSessionWritePoll = (mSessionWriteDone >= targetSequence)
+End Function
+
+Private Sub SessionBeginNextWrite()
+    Dim payload() As Byte
+
+    payload = mSessionWriteQueue.Item(1)
+    mSessionWriteQueue.Remove 1
+    mSessionWriteBuffer = payload
+    mSessionWriteOverlapped.Internal = 0
+    mSessionWriteOverlapped.InternalHigh = 0
+    mSessionWriteOverlapped.OffsetLow = 0
+    mSessionWriteOverlapped.OffsetHigh = 0
+    mSessionWriteOverlapped.hEvent = CreateEventW(0, 1, 0, 0)
+    If ByteArrayLength(mSessionWriteBuffer) = 0 Then
+        mSessionWriteDone = mSessionWriteDone + 1
+        If mSessionWriteOverlapped.hEvent <> 0 Then
+            CloseHandle mSessionWriteOverlapped.hEvent
+            mSessionWriteOverlapped.hEvent = 0
+        End If
+        Exit Sub
+    End If
+    WriteFileOverlapped mSessionStdIn, VarPtr(mSessionWriteBuffer(0)), _
+        ByteArrayLength(mSessionWriteBuffer), 0, mSessionWriteOverlapped
+    mSessionWriteActive = True
+End Sub
+
+Private Sub SessionCloseInputHandle()
+    If mSessionStdIn <> 0 Then
+        CloseHandle mSessionStdIn
+        mSessionStdIn = 0
+    End If
+    mSessionInputClosed = True
+End Sub
+
+Private Sub SessionRefreshExit()
+    Dim code As Long
+
+    If mSessionExited Or mSessionProcess = 0 Then Exit Sub
+    If GetExitCodeProcess(mSessionProcess, code) = 0 Then Exit Sub
+    If code = STILL_ACTIVE Then Exit Sub
+    mSessionExitCode = code
+    mSessionExited = True
+End Sub
+
+' Drains whatever the pipe holds right now. PeekNamedPipe reports the byte
+' count first, so ReadFile only ever asks for bytes that are already there
+' and never blocks. A broken pipe means the writer is gone for good.
+Private Sub SessionDrain(ByVal useError As Boolean)
+    Dim available As Long
+    Dim buffer() As Byte
+    Dim bytesRead As Long
+    Dim handleValue As LongPtr
+
+    If useError Then
+        handleValue = mSessionStdErr
+        If mSessionErrDrained Then Exit Sub
+    Else
+        handleValue = mSessionStdOut
+        If mSessionOutDrained Then Exit Sub
+    End If
+    If handleValue = 0 Then Exit Sub
+
+    Do
+        available = 0
+        If PeekNamedPipe(handleValue, 0, 0, 0, available, 0) = 0 Then
+            If useError Then
+                mSessionErrDrained = True
+            Else
+                mSessionOutDrained = True
+            End If
+            Exit Sub
+        End If
+        If available <= 0 Then Exit Do
+        ReDim buffer(0 To available - 1)
+        If ReadFile(handleValue, VarPtr(buffer(0)), available, _
+            bytesRead, 0) = 0 Then
+            If useError Then
+                mSessionErrDrained = True
+            Else
+                mSessionOutDrained = True
+            End If
+            Exit Sub
+        End If
+        If bytesRead <= 0 Then Exit Do
+        If useError Then
+            SessionAppendBytes mSessionErrBytes, mSessionErrCount, _
+                buffer, bytesRead
+        Else
+            SessionAppendBytes mSessionOutBytes, mSessionOutCount, _
+                buffer, bytesRead
+        End If
+    Loop
+End Sub
+
+Private Sub SessionAppendBytes( _
+    ByRef target() As Byte, _
+    ByRef targetCount As Long, _
+    ByRef source() As Byte, _
+    ByVal sourceCount As Long _
+)
+    Dim capacity As Long
+    Dim index As Long
+
+    On Error Resume Next
+    capacity = UBound(target) + 1
+    If Err.Number <> 0 Then
+        Err.Clear
+        capacity = 0
+    End If
+    On Error GoTo 0
+    If targetCount + sourceCount > capacity Then
+        capacity = capacity * 2
+        If capacity < targetCount + sourceCount Then
+            capacity = targetCount + sourceCount
+        End If
+        If capacity < 4096 Then capacity = 4096
+        ReDim Preserve target(0 To capacity - 1)
+    End If
+    For index = 0 To sourceCount - 1
+        target(targetCount + index) = source(index)
+    Next index
+    targetCount = targetCount + sourceCount
+End Sub
+
+Private Function SessionText(ByVal useError As Boolean) As String
+    Dim bytes() As Byte
+    Dim count As Long
+    Dim index As Long
+
+    If useError Then
+        count = mSessionErrCount
+    Else
+        count = mSessionOutCount
+    End If
+    If count = 0 Then Exit Function
+    ReDim bytes(0 To count - 1)
+    For index = 0 To count - 1
+        If useError Then
+            bytes(index) = mSessionErrBytes(index)
+        Else
+            bytes(index) = mSessionOutBytes(index)
+        End If
+    Next index
+    SessionText = IoDecodeText(bytes, mSessionCharset)
+End Function
+
+' Resolves the next line, or reports that the stream is finished. Decoding
+' the whole accumulated buffer and tracking a character cursor keeps this
+' correct for multibyte encodings, where a chunk can split one character.
+Friend Function InternalSessionReadPoll( _
+    ByVal useError As Boolean, _
+    ByRef lineText As String, _
+    ByRef finished As Boolean _
+) As Boolean
+    Dim breakIndex As Long
+    Dim cursor As Long
+    Dim fullText As String
+    Dim remaining As String
+
+    SessionDrain useError
+    SessionRefreshExit
+    fullText = SessionText(useError)
+    If useError Then
+        cursor = mSessionErrCursor
+    Else
+        cursor = mSessionOutCursor
+    End If
+    remaining = Mid$(fullText, cursor + 1)
+    breakIndex = InStr(1, remaining, vbLf)
+    If breakIndex > 0 Then
+        lineText = Left$(remaining, breakIndex - 1)
+        If Len(lineText) > 0 Then
+            If Right$(lineText, 1) = vbCr Then
+                lineText = Left$(lineText, Len(lineText) - 1)
+            End If
+        End If
+        If useError Then
+            mSessionErrCursor = cursor + breakIndex
+        Else
+            mSessionOutCursor = cursor + breakIndex
+        End If
+        InternalSessionReadPoll = True
+        Exit Function
+    End If
+
+    If Not mSessionExited Then Exit Function
+    ' After exit, one more drain settles anything still buffered.
+    SessionDrain useError
+    fullText = SessionText(useError)
+    remaining = Mid$(fullText, cursor + 1)
+    breakIndex = InStr(1, remaining, vbLf)
+    If breakIndex > 0 Then
+        lineText = Left$(remaining, breakIndex - 1)
+        If Len(lineText) > 0 Then
+            If Right$(lineText, 1) = vbCr Then
+                lineText = Left$(lineText, Len(lineText) - 1)
+            End If
+        End If
+        If useError Then
+            mSessionErrCursor = cursor + breakIndex
+        Else
+            mSessionOutCursor = cursor + breakIndex
+        End If
+        InternalSessionReadPoll = True
+        Exit Function
+    End If
+    If Len(remaining) > 0 Then
+        lineText = remaining
+        If useError Then
+            mSessionErrCursor = cursor + Len(remaining)
+        Else
+            mSessionOutCursor = cursor + Len(remaining)
+        End If
+        InternalSessionReadPoll = True
+        Exit Function
+    End If
+    finished = True
+    InternalSessionReadPoll = True
+End Function
+
+Friend Function InternalSessionExitPoll() As Boolean
+    SessionDrain False
+    SessionDrain True
+    SessionRefreshExit
+    InternalSessionExitPoll = mSessionExited
+End Function
+
+Friend Function InternalSessionExitCode() As Long
+    InternalSessionExitCode = mSessionExitCode
+End Function
+
+Friend Function InternalSessionRemainingText( _
+    ByVal useError As Boolean _
+) As String
+    Dim cursor As Long
+    Dim fullText As String
+
+    SessionDrain useError
+    fullText = SessionText(useError)
+    If useError Then
+        cursor = mSessionErrCursor
+        mSessionErrCursor = Len(fullText)
+    Else
+        cursor = mSessionOutCursor
+        mSessionOutCursor = Len(fullText)
+    End If
+    InternalSessionRemainingText = Mid$(fullText, cursor + 1)
+End Function
+
+Friend Sub InternalSessionReleaseRead(ByVal useError As Boolean)
+    If useError Then
+        mSessionReadErrBusy = False
+    Else
+        mSessionReadOutBusy = False
+    End If
+End Sub
+
+Private Sub SessionCloseHandles()
+    If mSessionStdIn <> 0 Then
+        CloseHandle mSessionStdIn
+        mSessionStdIn = 0
+    End If
+    If mSessionStdOut <> 0 Then
+        CloseHandle mSessionStdOut
+        mSessionStdOut = 0
+    End If
+    If mSessionStdErr <> 0 Then
+        CloseHandle mSessionStdErr
+        mSessionStdErr = 0
+    End If
+    If mSessionWriteOverlapped.hEvent <> 0 Then
+        CloseHandle mSessionWriteOverlapped.hEvent
+        mSessionWriteOverlapped.hEvent = 0
+    End If
+    If mSessionProcess <> 0 Then
+        CloseHandle mSessionProcess
+        mSessionProcess = 0
+    End If
+End Sub
+
 Private Sub RequireProcessFactory(ByVal memberName As String)
     If mRole <> ROLE_PROCESS_FACTORY Then
         RaiseContractError ERROR_INVALID_OPERATION, memberName, _
@@ -17252,9 +17985,47 @@ Private Sub AdvanceTaskCore()
             Set mTaskResult = CreateObjectResult(mSource)
         Case TASK_FILE_WATCH
             If Not InternalWatchPoll() Then Exit Sub
+        Case TASK_SESSION
+            If Not AdvanceSessionTask() Then Exit Sub
     End Select
     mTaskStatus = TASK_STATUS_COMPLETED
 End Sub
+
+Private Function AdvanceSessionTask() As Boolean
+    Dim finished As Boolean
+    Dim lineText As String
+
+    Select Case mMethodName
+        Case "Write"
+            If Not mSource.InternalSessionWritePoll(mExpressionOption) Then
+                Exit Function
+            End If
+            Set mTaskResult = CreateScalarResult(Empty)
+        Case "ReadOut", "ReadErr"
+            If Not mSource.InternalSessionReadPoll( _
+                mMethodName = "ReadErr", lineText, finished) Then
+                Exit Function
+            End If
+            mSource.InternalSessionReleaseRead mMethodName = "ReadErr"
+            If finished Then
+                Set mTaskResult = CreateScalarResult(vbNullString)
+            Else
+                Set mTaskResult = CreateScalarResult(lineText)
+            End If
+        Case "ReadToEnd"
+            If Not mSource.InternalSessionExitPoll() Then Exit Function
+            Set mTaskResult = CreateScalarResult( _
+                mSource.InternalSessionRemainingText(False))
+        Case "Exit"
+            If Not mSource.InternalSessionExitPoll() Then Exit Function
+            Set mTaskResult = CreateScalarResult( _
+                mSource.InternalSessionExitCode())
+        Case Else
+            RaiseContractError ERROR_INVALID_OPERATION, "SessionTask", _
+                "Unknown process session operation."
+    End Select
+    AdvanceSessionTask = True
+End Function
 
 Private Function WaitForTaskCompletion( _
     ByVal timeoutMilliseconds As Long _
@@ -25136,6 +25907,13 @@ Private Sub Class_Terminate()
     Set mSqlQueryOrderings = Nothing
     Set mSqlQueryColumns = Nothing
     Set mSqlQueryLastValues = Nothing
+    ' A session releases its handles without terminating the command; a
+    ' caller who wants the process gone calls Kill.
+    If mRole = ROLE_PROCESS_SESSION Then SessionCloseHandles
+    Set mSessionWriteQueue = Nothing
+    Erase mSessionOutBytes
+    Erase mSessionErrBytes
+    Erase mSessionWriteBuffer
     Set mTarget = Nothing
     Set mInvocationList = Nothing
     Set mTryBody = Nothing

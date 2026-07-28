@@ -785,6 +785,34 @@ class SourceContractTests(unittest.TestCase):
         # Extraction must route every entry name through the escape guard.
         self.assertIn("SafeRelativeEntryPath(CStr(rawEntry(0)))", self.source)
 
+    def test_process_session_surface_is_present_and_nonblocking(self) -> None:
+        for member in (
+            "Public Function StartSession(",
+            "Public Function WriteAsync(",
+            "Public Function WriteLineAsync(",
+            "Public Sub CloseInput()",
+            "Public Function ReadLineAsync(",
+            "Public Function ReadErrorLineAsync(",
+            "Public Function ReadToEndAsync(",
+            "Public Function WaitForExitAsync(",
+            "Public Sub Kill()",
+            "Public Property Get HasExited()",
+            "Friend Sub ConfigureProcessSession(",
+            "Private Function AdvanceSessionTask()",
+        ):
+            self.assertIn(member, self.source)
+        # Reads must size themselves from PeekNamedPipe so ReadFile only ever
+        # asks for bytes already in the pipe, and writes must be overlapped
+        # so a full pipe pends instead of freezing Excel.
+        self.assertIn("PeekNamedPipe(handleValue, 0, 0, 0, available, 0)", self.source)
+        self.assertIn("WriteFileOverlapped mSessionStdIn", self.source)
+        self.assertIn("FILE_FLAG_OVERLAPPED", self.source)
+        # Teardown releases handles without killing the command.
+        self.assertIn(
+            "If mRole = ROLE_PROCESS_SESSION Then SessionCloseHandles",
+            self.source,
+        )
+
     def test_source_never_declares_a_bang_member_identifier(self) -> None:
         # VBA normalizes identifier casing across the whole project, so a
         # declaration like `ByVal name As String` rewrites every bare Name
