@@ -201,6 +201,10 @@ Private Const ROLE_FILE_CHANGE As Long = 72
 Private Const ROLE_ZIPFILE_FACTORY As Long = 73
 Private Const ROLE_ZIP_ARCHIVE As Long = 74
 Private Const ROLE_ZIP_ENTRY As Long = 75
+Private Const ROLE_QUERYABLE As Long = 76
+
+Private Const QUERY_DIALECT_TSQL As Long = 1
+Private Const QUERY_DIALECT_ACE As Long = 2
 
 Private Const TASK_WORK As Long = 1
 Private Const TASK_COMPLETED As Long = 2
@@ -352,6 +356,7 @@ Private Const ERROR_REGEX As Long = vbObjectError + 4116
 Private Const ERROR_FORMAT As Long = vbObjectError + 4117
 Private Const ERROR_XML As Long = vbObjectError + 4118
 Private Const ERROR_ZIP As Long = vbObjectError + 4119
+Private Const ERROR_QUERY As Long = vbObjectError + 4120
 
 Private Const HTTP_PROG_ID As String = "WinHttp.WinHttpRequest.5.1"
 Private Const HTTP_DEFAULT_TIMEOUT_MS As Long = 30000
@@ -578,6 +583,15 @@ Private mZipEntryCompressedSize As Long
 Private mZipEntrySize As Long
 Private mZipEntryOffset As Long
 Private mZipEntryIsDirectory As Boolean
+Private mSqlQueryConnection As ROneCOne
+Private mSqlQueryTable As String
+Private mSqlQueryDialect As Long
+Private mSqlQueryWheres As Collection
+Private mSqlQueryOrderings As Collection
+Private mSqlQueryColumns As Collection
+Private mSqlQueryTake As Long
+Private mSqlQuerySkip As Long
+Private mSqlQueryLastValues As Collection
 Private mHttpBaseAddress As String
 Private mHttpTimeoutMs As Long
 Private mHttpHeaderNames As Collection
@@ -4807,6 +4821,106 @@ Attribute DbDataAdapter.VB_Description = "Creates a DataAdapter over a select co
     Set DbDataAdapter = adapter
 End Function
 
+Public Function Queryable(ByVal tableName As String) As ROneCOne
+Attribute Queryable.VB_Description = "Creates a deferred SQL query over one table."
+    Dim query As ROneCOne
+
+    RequireDbConnection Me, "Queryable"
+    Set query = New ROneCOne
+    query.ConfigureQueryable Me, tableName
+    Set Queryable = query
+End Function
+
+Public Function SelectColumns(ParamArray columnNames() As Variant) As ROneCOne
+Attribute SelectColumns.VB_Description = "Projects the query onto the named columns."
+    Dim clone As ROneCOne
+    Dim columns As Collection
+    Dim hasAny As Boolean
+    Dim index As Long
+
+    RequireQueryable "SelectColumns"
+    On Error Resume Next
+    hasAny = (UBound(columnNames) >= LBound(columnNames))
+    On Error GoTo 0
+    If Not hasAny Then
+        RaiseQueryError "SelectColumns requires at least one column name."
+    End If
+    Set columns = New Collection
+    For index = LBound(columnNames) To UBound(columnNames)
+        If VarType(columnNames(index)) <> vbString Then
+            RaiseQueryError "SelectColumns takes column names as text."
+        End If
+        columns.Add ValidateQueryIdentifier( _
+            CStr(columnNames(index)), "SelectColumns")
+    Next index
+    Set clone = QueryableClone()
+    clone.InternalQueryableSetColumns columns
+    Set SelectColumns = clone
+End Function
+
+Public Function ToDataTable() As ROneCOne
+Attribute ToDataTable.VB_Description = "Runs the query and lands the rows in a typed DataTable."
+    RequireQueryable "ToDataTable"
+    Set ToDataTable = QueryableExecuteTable()
+End Function
+
+Public Function ToDataTableAsync( _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute ToDataTableAsync.VB_Description = "Starts the query async; the Task result is the table."
+    Dim adapter As ROneCOne
+    Dim arguments As Collection
+    Dim command As ROneCOne
+    Dim pending As ROneCOne
+    Dim table As ROneCOne
+    Dim taskValue As ROneCOne
+
+    RequireQueryable "ToDataTableAsync"
+    ValidateCancellationToken cancellationToken, "ToDataTableAsync"
+    Set command = QueryableBuildCommand(QueryableBuildSql(False))
+    Set adapter = ROneCOne.DbDataAdapter(command)
+    Set table = ROneCOne.DataTable(mSqlQueryTable)
+    Set arguments = New Collection
+    arguments.Add WrapInvocationArgument(adapter)
+    arguments.Add WrapInvocationArgument(table)
+    Set pending = command.InternalBeginAsyncExecute
+    Set taskValue = New ROneCOne
+    taskValue.ConfigureDbAsyncTask pending, "QueryFill", arguments, _
+        cancellationToken
+    Set ToDataTableAsync = taskValue
+End Function
+
+Public Function CountAsync( _
+    Optional ByVal cancellationToken As ROneCOne _
+) As ROneCOne
+Attribute CountAsync.VB_Description = "Starts a server-side COUNT; the Task result is the number."
+    Dim command As ROneCOne
+
+    RequireQueryable "CountAsync"
+    Set command = QueryableBuildCommand(QueryableBuildSql(True))
+    Set CountAsync = command.ExecuteScalarAsync(cancellationToken)
+End Function
+
+Public Function ToSqlString() As String
+Attribute ToSqlString.VB_Description = "Renders the exact SQL this query will send."
+    RequireQueryable "ToSqlString"
+    ToSqlString = QueryableBuildSql(False)
+End Function
+
+Public Function SqlParameterValues() As ROneCOne
+Attribute SqlParameterValues.VB_Description = "Lists the values bound to the ? markers in order."
+    Dim captured As Variant
+    Dim list As ROneCOne
+
+    RequireQueryable "SqlParameterValues"
+    QueryableBuildSql False
+    Set list = ROneCOne.ListOf(vbVariant)
+    For Each captured In mSqlQueryLastValues
+        list.Add captured
+    Next captured
+    Set SqlParameterValues = list
+End Function
+
 Public Sub AddParameter(ByVal parameter As ROneCOne)
 Attribute AddParameter.VB_Description = "Adds a parameter to a database command."
     RequireDbCommand Me, "AddParameter"
@@ -6562,6 +6676,15 @@ Attribute Count.VB_Description = "Counts every element or only predicate matches
     Dim values As Collection
     Dim wrapped As ROneCOne
 
+    If mRole = ROLE_QUERYABLE Then
+        If IsMissing(predicate) Then
+            Count = QueryableExecuteCount()
+        Else
+            Count = QueryableWithPredicate( _
+                RequireROneCOne(predicate, "Count")).Count
+        End If
+        Exit Property
+    End If
     If mRole = ROLE_LIST And IsMissing(predicate) Then
         Count = mItemsCount
         Exit Property
@@ -7834,6 +7957,14 @@ End Function
 
 Public Property Get Element() As ROneCOne
 Attribute Element.VB_Description = "Gets a typed parameter representing each sequence element."
+    If mRole = ROLE_QUERYABLE Then
+        If mElementParameter Is Nothing Then
+            Set mElementParameter = New ROneCOne
+            mElementParameter.ConfigureParameter vbVariant, vbNullString
+        End If
+        Set Element = mElementParameter
+        Exit Property
+    End If
     RequireSequence Me, "Element"
     If mElementParameter Is Nothing Then
         Set mElementParameter = New ROneCOne
@@ -7853,6 +7984,10 @@ Public Function Condition( _
     Optional ByVal returnsObject As Boolean = False _
 ) As ROneCOne
 Attribute Condition.VB_Description = "Creates a reusable sequence-member expression."
+    If mRole = ROLE_QUERYABLE Then
+        Set Condition = BuildMemberPath(memberPath, returnsObject)
+        Exit Function
+    End If
     RequireSequence Me, "Condition"
     Set Condition = BuildMemberPath(memberPath, returnsObject)
 End Function
@@ -7946,6 +8081,25 @@ Attribute Where.VB_Description = "Defers filtering or begins a fluent member con
     Dim builder As ROneCOne
     Dim predicateDelegate As ROneCOne
 
+    If mRole = ROLE_QUERYABLE Then
+        If IsMissing(predicateOrMember) Then
+            Set builder = New ROneCOne
+            builder.ConfigureWhereBuilder Me, vbNullString
+            Set Where = builder
+            Exit Function
+        End If
+        If Not IsObject(predicateOrMember) Then
+            If VarType(predicateOrMember) = vbString Then
+                Set builder = New ROneCOne
+                builder.ConfigureWhereBuilder Me, CStr(predicateOrMember)
+                Set Where = builder
+                Exit Function
+            End If
+        End If
+        Set Where = QueryableWithPredicate( _
+            RequireROneCOne(predicateOrMember, "Where"))
+        Exit Function
+    End If
     RequireSequence Me, "Where"
     If IsMissing(predicateOrMember) Then
         Set builder = New ROneCOne
@@ -8046,6 +8200,17 @@ End Function
 
 Public Function Take(ByVal count As Long) As ROneCOne
 Attribute Take.VB_Description = "Defers taking up to a number of leading elements."
+    Dim clone As ROneCOne
+
+    If mRole = ROLE_QUERYABLE Then
+        If count < 1 Then
+            RaiseQueryError "Take requires a count of at least one."
+        End If
+        Set clone = QueryableClone()
+        clone.InternalQueryableSetTake count
+        Set Take = clone
+        Exit Function
+    End If
     If count < 0 Then count = 0
     Set Take = CreateQuery(QUERY_TAKE, Nothing, Nothing, count, _
         mElementType, mElementObjectType)
@@ -8053,6 +8218,21 @@ End Function
 
 Public Function Skip(ByVal count As Long) As ROneCOne
 Attribute Skip.VB_Description = "Defers bypassing a number of leading elements."
+    Dim clone As ROneCOne
+
+    If mRole = ROLE_QUERYABLE Then
+        If mSqlQueryDialect = QUERY_DIALECT_ACE Then
+            RaiseQueryError "The ACE dialect has no OFFSET clause, " & _
+                "so Skip cannot translate for this connection."
+        End If
+        If count < 0 Then
+            RaiseQueryError "Skip requires a count of zero or more."
+        End If
+        Set clone = QueryableClone()
+        clone.InternalQueryableSetSkip count
+        Set Skip = clone
+        Exit Function
+    End If
     If count < 0 Then count = 0
     Set Skip = CreateQuery(QUERY_SKIP, Nothing, Nothing, count, _
         mElementType, mElementObjectType)
@@ -8253,6 +8433,11 @@ Attribute OrderBy.VB_Description = "Defers stable ascending ordering by a select
     Dim comparerValue As ROneCOne
     Dim selectorDelegate As ROneCOne
 
+    If mRole = ROLE_QUERYABLE Then
+        QueryableRefuseComparer comparer, "OrderBy"
+        Set OrderBy = QueryableOrdered(keySelector, False, False, "OrderBy")
+        Exit Function
+    End If
     Set selectorDelegate = NormalizeContextUnary( _
         keySelector, "OrderBy", False)
     If Not IsMissing(comparer) Then
@@ -8271,6 +8456,12 @@ Attribute OrderByDescending.VB_Description = "Defers stable descending ordering 
     Dim comparerValue As ROneCOne
     Dim selectorDelegate As ROneCOne
 
+    If mRole = ROLE_QUERYABLE Then
+        QueryableRefuseComparer comparer, "OrderByDescending"
+        Set OrderByDescending = QueryableOrdered( _
+            keySelector, True, False, "OrderByDescending")
+        Exit Function
+    End If
     Set selectorDelegate = NormalizeContextUnary( _
         keySelector, "OrderByDescending", False)
     If Not IsMissing(comparer) Then
@@ -8324,6 +8515,11 @@ Attribute ThenBy.VB_Description = "Adds a stable ascending key to an active orde
     Dim comparerValue As ROneCOne
     Dim selectorDelegate As ROneCOne
 
+    If mRole = ROLE_QUERYABLE Then
+        QueryableRefuseComparer comparer, "ThenBy"
+        Set ThenBy = QueryableOrdered(keySelector, False, True, "ThenBy")
+        Exit Function
+    End If
     RequireOrderedQuery Me, "ThenBy"
     Set selectorDelegate = NormalizeContextUnary( _
         keySelector, "ThenBy", False)
@@ -8342,6 +8538,12 @@ Attribute ThenByDescending.VB_Description = "Adds a stable descending key to an 
     Dim comparerValue As ROneCOne
     Dim selectorDelegate As ROneCOne
 
+    If mRole = ROLE_QUERYABLE Then
+        QueryableRefuseComparer comparer, "ThenByDescending"
+        Set ThenByDescending = QueryableOrdered( _
+            keySelector, True, True, "ThenByDescending")
+        Exit Function
+    End If
     RequireOrderedQuery Me, "ThenByDescending"
     Set selectorDelegate = NormalizeContextUnary( _
         keySelector, "ThenByDescending", False)
@@ -8412,10 +8614,21 @@ End Function
 
 Public Function AnyItem(Optional ByVal predicate As Variant) As Boolean
 Attribute AnyItem.VB_Description = "Tests whether any element exists or matches a predicate."
+    Dim filtered As ROneCOne
     Dim predicateValue As ROneCOne
     Dim values As Collection
     Dim wrapped As ROneCOne
 
+    If mRole = ROLE_QUERYABLE Then
+        If IsMissing(predicate) Then
+            Set filtered = Me
+        Else
+            Set filtered = QueryableWithPredicate( _
+                RequireROneCOne(predicate, "Any"))
+        End If
+        AnyItem = (filtered.Take(1).Count > 0)
+        Exit Function
+    End If
     Set values = MaterializeWrapped
     If IsMissing(predicate) Then
         AnyItem = (values.Count <> 0)
@@ -8603,10 +8816,27 @@ End Function
 
 Public Function FirstOrDefault(Optional ByVal predicate As Variant) As Variant
 Attribute FirstOrDefault.VB_Description = "Returns the first match or default(T)."
+    Dim filtered As ROneCOne
+    Dim firstRows As ROneCOne
     Dim found As Boolean
     Dim predicateValue As ROneCOne
     Dim wrapped As ROneCOne
 
+    If mRole = ROLE_QUERYABLE Then
+        If IsMissing(predicate) Then
+            Set filtered = Me
+        Else
+            Set filtered = QueryableWithPredicate( _
+                RequireROneCOne(predicate, "FirstOrDefault"))
+        End If
+        Set firstRows = filtered.Take(1).ToDataTable
+        If firstRows.Rows.Count = 0 Then
+            Set FirstOrDefault = Nothing
+        Else
+            Set FirstOrDefault = firstRows.Rows.Item(0)
+        End If
+        Exit Function
+    End If
     If Not IsMissing(predicate) Then
         Set predicateValue = NormalizeContextUnary( _
             predicate, "FirstOrDefault", False)
@@ -9322,6 +9552,541 @@ Private Function RenderExpressionOperator( _
     End Select
 End Function
 
+Private Sub RequireQueryable(ByVal memberName As String)
+    If mRole <> ROLE_QUERYABLE Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " requires a Queryable."
+    End If
+End Sub
+
+Private Sub RaiseQueryError(ByVal message As String)
+    Err.Raise ERROR_QUERY, "ROneCOne.QueryTranslationException", message
+End Sub
+
+Private Function ValidateQueryIdentifier( _
+    ByVal name As String, _
+    ByVal memberName As String _
+) As String
+    Dim code As Long
+    Dim index As Long
+
+    name = Trim$(name)
+    If Len(name) = 0 Or Len(name) > 128 Then
+        RaiseQueryError memberName & _
+            " requires an identifier of 1 to 128 characters."
+    End If
+    For index = 1 To Len(name)
+        code = AscW(Mid$(name, index, 1))
+        If code < 32 Or code = 91 Or code = 93 Then
+            RaiseQueryError memberName & " cannot use the identifier [" & _
+                name & "]; brackets and control characters are refused."
+        End If
+    Next index
+    ValidateQueryIdentifier = name
+End Function
+
+Private Function QueryQuoteIdentifier(ByVal name As String) As String
+    QueryQuoteIdentifier = "[" & name & "]"
+End Function
+
+Private Function QueryableClone() As ROneCOne
+    Dim clone As ROneCOne
+    Dim columns As Collection
+    Dim item As Variant
+    Dim orderings As Collection
+    Dim wheres As Collection
+
+    Set wheres = New Collection
+    For Each item In mSqlQueryWheres
+        wheres.Add item
+    Next item
+    Set orderings = New Collection
+    For Each item In mSqlQueryOrderings
+        orderings.Add item
+    Next item
+    Set columns = New Collection
+    For Each item In mSqlQueryColumns
+        columns.Add item
+    Next item
+    Set clone = New ROneCOne
+    clone.ConfigureQueryableState mSqlQueryConnection, mSqlQueryTable, _
+        mSqlQueryDialect, wheres, orderings, columns, mSqlQueryTake, _
+        mSqlQuerySkip
+    Set QueryableClone = clone
+End Function
+
+Private Function QueryableWithPredicate( _
+    ByVal predicate As ROneCOne _
+) As ROneCOne
+    Dim clone As ROneCOne
+
+    Set clone = QueryableClone()
+    clone.InternalQueryableAddWhere QueryablePredicateBody(predicate)
+    Set QueryableWithPredicate = clone
+End Function
+
+Private Function QueryablePredicateBody( _
+    ByVal predicate As ROneCOne _
+) As ROneCOne
+    If predicate Is Nothing Then
+        RaiseQueryError "The predicate cannot be Nothing."
+    End If
+    Select Case predicate.InternalRole
+        Case ROLE_EXPRESSION
+            Set QueryablePredicateBody = predicate
+        Case ROLE_LAMBDA
+            Set QueryablePredicateBody = predicate.InternalLeft
+        Case ROLE_WHERE_BUILDER
+            RaiseQueryError "Finish the fluent condition, for example " & _
+                "Where(""Total"").AtLeast(100), before it can translate."
+        Case Else
+            RaiseQueryError "Only expression predicates translate to " & _
+                "SQL; method and native delegates carry no expression tree."
+    End Select
+End Function
+
+Private Sub QueryableRefuseComparer( _
+    Optional ByVal comparer As Variant, _
+    Optional ByVal memberName As String = "OrderBy" _
+)
+    If Not IsMissing(comparer) Then
+        RaiseQueryError memberName & " cannot send a comparer to SQL; " & _
+            "order by a column instead."
+    End If
+End Sub
+
+Private Function QueryableOrdered( _
+    ByVal keySelector As Variant, _
+    ByVal descending As Boolean, _
+    ByVal thenBy As Boolean, _
+    ByVal memberName As String _
+) As ROneCOne
+    Dim clone As ROneCOne
+    Dim columnName As String
+
+    columnName = QueryableOrderColumn(keySelector, memberName)
+    If thenBy And mSqlQueryOrderings.Count = 0 Then
+        RaiseQueryError memberName & " requires OrderBy first."
+    End If
+    Set clone = QueryableClone()
+    clone.InternalQueryableOrder columnName, descending, Not thenBy
+    Set QueryableOrdered = clone
+End Function
+
+Private Function QueryableOrderColumn( _
+    ByVal keySelector As Variant, _
+    ByVal memberName As String _
+) As String
+    Dim node As ROneCOne
+
+    If Not IsObject(keySelector) Then
+        If VarType(keySelector) = vbString Then
+            QueryableOrderColumn = ValidateQueryIdentifier( _
+                CStr(keySelector), memberName)
+            Exit Function
+        End If
+    End If
+    Set node = RequireROneCOne(keySelector, memberName)
+    If node.InternalRole = ROLE_EXPRESSION Then
+        If node.InternalOperator = OP_MEMBER_VALUE Then
+            If node.InternalLeft.InternalRole = ROLE_PARAMETER Then
+                QueryableOrderColumn = ValidateQueryIdentifier( _
+                    node.InternalMethodName, memberName)
+                Exit Function
+            End If
+        End If
+    End If
+    RaiseQueryError memberName & " requires a column name or a single " & _
+        "member expression."
+End Function
+
+Private Function QueryableExecuteTable() As ROneCOne
+    Dim command As ROneCOne
+    Dim table As ROneCOne
+
+    Set command = QueryableBuildCommand(QueryableBuildSql(False))
+    Set table = ROneCOne.DataTable(mSqlQueryTable)
+    ROneCOne.DbDataAdapter(command).Fill table
+    Set QueryableExecuteTable = table
+End Function
+
+Private Function QueryableExecuteCount() As Long
+    Dim command As ROneCOne
+
+    Set command = QueryableBuildCommand(QueryableBuildSql(True))
+    QueryableExecuteCount = CLng(command.ExecuteScalar)
+End Function
+
+Private Function QueryableBuildCommand(ByVal sql As String) As ROneCOne
+    Dim command As ROneCOne
+    Dim index As Long
+    Dim value As Variant
+
+    Set command = ROneCOne.DbCommand(sql, mSqlQueryConnection)
+    For Each value In mSqlQueryLastValues
+        index = index + 1
+        command.WithParameter "p" & CStr(index), value
+    Next value
+    Set QueryableBuildCommand = command
+End Function
+
+Private Function QueryableBuildSql(ByVal forCount As Boolean) As String
+    Dim body As ROneCOne
+    Dim columnName As Variant
+    Dim orderText As String
+    Dim ordering As Variant
+    Dim rowsSql As String
+    Dim selectList As String
+    Dim topClause As String
+    Dim values As Collection
+    Dim whereText As String
+
+    Set values = New Collection
+    For Each body In mSqlQueryWheres
+        If Len(whereText) > 0 Then whereText = whereText & " AND "
+        whereText = whereText & QueryableRenderNode(body, values)
+    Next body
+
+    If mSqlQueryColumns.Count = 0 Then
+        selectList = "*"
+    Else
+        For Each columnName In mSqlQueryColumns
+            If Len(selectList) > 0 Then selectList = selectList & ", "
+            selectList = selectList & QueryQuoteIdentifier(CStr(columnName))
+        Next columnName
+    End If
+
+    For Each ordering In mSqlQueryOrderings
+        If Len(orderText) > 0 Then orderText = orderText & ", "
+        orderText = orderText & QueryQuoteIdentifier(CStr(ordering(0)))
+        If ordering(1) Then orderText = orderText & " DESC"
+    Next ordering
+
+    If mSqlQuerySkip >= 0 And Len(orderText) = 0 Then
+        RaiseQueryError "Skip translates to OFFSET, which SQL only " & _
+            "accepts under an ORDER BY; call OrderBy first."
+    End If
+
+    If mSqlQueryTake >= 0 And mSqlQuerySkip < 0 Then
+        If mSqlQueryDialect = QUERY_DIALECT_TSQL Then
+            topClause = "TOP (" & CStr(mSqlQueryTake) & ") "
+        Else
+            topClause = "TOP " & CStr(mSqlQueryTake) & " "
+        End If
+    End If
+
+    rowsSql = "SELECT " & topClause & selectList & " FROM " & _
+        QueryQuoteIdentifier(mSqlQueryTable)
+    If Len(whereText) > 0 Then rowsSql = rowsSql & " WHERE " & whereText
+    If Len(orderText) > 0 Then
+        If Not forCount Or mSqlQueryTake >= 0 Or mSqlQuerySkip >= 0 Then
+            rowsSql = rowsSql & " ORDER BY " & orderText
+        End If
+    End If
+    If mSqlQuerySkip >= 0 Then
+        rowsSql = rowsSql & " OFFSET " & CStr(mSqlQuerySkip) & " ROWS"
+        If mSqlQueryTake >= 0 Then
+            rowsSql = rowsSql & " FETCH NEXT " & CStr(mSqlQueryTake) & _
+                " ROWS ONLY"
+        End If
+    End If
+
+    If forCount Then
+        If mSqlQueryTake >= 0 Or mSqlQuerySkip >= 0 Then
+            QueryableBuildSql = "SELECT COUNT(*) FROM (" & rowsSql & _
+                ") AS [q]"
+        ElseIf Len(whereText) > 0 Then
+            QueryableBuildSql = "SELECT COUNT(*) FROM " & _
+                QueryQuoteIdentifier(mSqlQueryTable) & " WHERE " & whereText
+        Else
+            QueryableBuildSql = "SELECT COUNT(*) FROM " & _
+                QueryQuoteIdentifier(mSqlQueryTable)
+        End If
+    Else
+        QueryableBuildSql = rowsSql
+    End If
+    Set mSqlQueryLastValues = values
+End Function
+
+Private Function QueryableRenderNode( _
+    ByVal node As ROneCOne, _
+    ByVal values As Collection _
+) As String
+    Select Case node.InternalRole
+        Case ROLE_VALUE
+            QueryableRenderNode = QueryableRenderValue(node, values)
+        Case ROLE_PARAMETER
+            RaiseQueryError "The row itself cannot appear in SQL; " & _
+                "select a column with a member path."
+        Case ROLE_EXPRESSION
+            QueryableRenderNode = QueryableRenderOperator(node, values)
+        Case Else
+            RaiseQueryError "This value cannot translate to SQL."
+    End Select
+End Function
+
+Private Function QueryableIsNullValueNode(ByVal node As ROneCOne) As Boolean
+    Dim wrapped As ROneCOne
+
+    If node Is Nothing Then Exit Function
+    If node.InternalRole <> ROLE_VALUE Then Exit Function
+    If node.InternalHasObjectValue Then
+        If node.InternalObjectValue Is Nothing Then
+            QueryableIsNullValueNode = True
+            Exit Function
+        End If
+        If TypeOf node.InternalObjectValue Is ROneCOne Then
+            Set wrapped = node.InternalObjectValue
+            QueryableIsNullValueNode = _
+                (wrapped.InternalRole = ROLE_DB_NULL)
+        End If
+        Exit Function
+    End If
+    QueryableIsNullValueNode = IsNull(node.InternalScalarValue)
+End Function
+
+Private Function QueryableRenderValue( _
+    ByVal node As ROneCOne, _
+    ByVal values As Collection _
+) As String
+    Dim scalarValue As Variant
+
+    If QueryableIsNullValueNode(node) Then
+        RaiseQueryError "A null compares only through EqualTo or " & _
+            "NotEqualTo, which translate to IS NULL and IS NOT NULL."
+    End If
+    If node.InternalHasObjectValue Then
+        RaiseQueryError "An object value cannot become a SQL parameter."
+    End If
+    scalarValue = node.InternalScalarValue
+    If IsEmpty(scalarValue) Then
+        RaiseQueryError "An Empty value cannot become a SQL parameter."
+    End If
+    values.Add scalarValue
+    QueryableRenderValue = "?"
+End Function
+
+Private Function QueryableRenderOperator( _
+    ByVal node As ROneCOne, _
+    ByVal values As Collection _
+) As String
+    Dim beforeCount As Long
+    Dim caseFunction As String
+    Dim leftNull As Boolean
+    Dim leftText As String
+    Dim rightNull As Boolean
+    Dim rightText As String
+
+    Select Case node.InternalOperator
+        Case OP_MEMBER_VALUE
+            If node.InternalLeft.InternalRole <> ROLE_PARAMETER Then
+                RaiseQueryError "Only direct columns of the row " & _
+                    "translate; nested member paths would need a join."
+            End If
+            QueryableRenderOperator = QueryQuoteIdentifier( _
+                ValidateQueryIdentifier(node.InternalMethodName, "Member"))
+            Exit Function
+        Case OP_EQUAL, OP_NOT_EQUAL
+            leftNull = QueryableIsNullValueNode(node.InternalLeft)
+            rightNull = QueryableIsNullValueNode(node.InternalRight)
+            If leftNull And rightNull Then
+                QueryableRenderOperator = IIf( _
+                    node.InternalOperator = OP_EQUAL, "(1 = 1)", "(1 = 0)")
+                Exit Function
+            End If
+            If rightNull Then
+                leftText = QueryableRenderNode(node.InternalLeft, values)
+                QueryableRenderOperator = "(" & leftText & " IS " & IIf( _
+                    node.InternalOperator = OP_EQUAL, "", "NOT ") & "NULL)"
+                Exit Function
+            End If
+            If leftNull Then
+                rightText = QueryableRenderNode(node.InternalRight, values)
+                QueryableRenderOperator = "(" & rightText & " IS " & IIf( _
+                    node.InternalOperator = OP_EQUAL, "", "NOT ") & "NULL)"
+                Exit Function
+            End If
+            leftText = QueryableRenderNode(node.InternalLeft, values)
+            rightText = QueryableRenderNode(node.InternalRight, values)
+            QueryableRenderOperator = "(" & leftText & IIf( _
+                node.InternalOperator = OP_EQUAL, " = ", " <> ") & _
+                rightText & ")"
+            Exit Function
+        Case OP_IN_SEQUENCE, OP_NOT_IN_SEQUENCE
+            QueryableRenderOperator = QueryableRenderIn(node, values)
+            Exit Function
+        Case OP_IS_NOTHING, OP_IS_NOT_NOTHING
+            leftText = QueryableRenderNode(node.InternalLeft, values)
+            QueryableRenderOperator = "(" & leftText & " IS " & IIf( _
+                node.InternalOperator = OP_IS_NOTHING, "", "NOT ") & "NULL)"
+            Exit Function
+        Case OP_IS_NULL_OR_EMPTY
+            beforeCount = values.Count
+            leftText = QueryableRenderNode(node.InternalLeft, values)
+            If values.Count <> beforeCount Then
+                RaiseQueryError "IsNullOrEmpty translates only over a " & _
+                    "plain column."
+            End If
+            QueryableRenderOperator = "(" & leftText & " IS NULL OR " & _
+                leftText & " = '')"
+            Exit Function
+        Case OP_STARTS_WITH, OP_ENDS_WITH, OP_CONTAINS_TEXT
+            QueryableRenderOperator = QueryableRenderLike(node, values)
+            Exit Function
+        Case OP_STRING_EQUAL, OP_STRING_NOT_EQUAL
+            caseFunction = IIf(mSqlQueryDialect = QUERY_DIALECT_TSQL, _
+                "UPPER", "UCASE")
+            leftText = QueryableRenderNode(node.InternalLeft, values)
+            rightText = QueryableRenderNode(node.InternalRight, values)
+            QueryableRenderOperator = "(" & caseFunction & "(" & _
+                leftText & ")" & IIf( _
+                node.InternalOperator = OP_STRING_EQUAL, " = ", " <> ") & _
+                caseFunction & "(" & rightText & "))"
+            Exit Function
+    End Select
+
+    leftText = QueryableRenderNode(node.InternalLeft, values)
+    If node.InternalOperator = OP_NOT Then
+        QueryableRenderOperator = "(NOT " & leftText & ")"
+        Exit Function
+    End If
+    If node.InternalOperator = OP_NEGATE Then
+        QueryableRenderOperator = "(-" & leftText & ")"
+        Exit Function
+    End If
+
+    rightText = QueryableRenderNode(node.InternalRight, values)
+    Select Case node.InternalOperator
+        Case OP_ADD
+            QueryableRenderOperator = "(" & leftText & " + " & rightText & ")"
+        Case OP_SUBTRACT
+            QueryableRenderOperator = "(" & leftText & " - " & rightText & ")"
+        Case OP_MULTIPLY
+            QueryableRenderOperator = "(" & leftText & " * " & rightText & ")"
+        Case OP_DIVIDE
+            QueryableRenderOperator = "(" & leftText & " / " & rightText & ")"
+        Case OP_MODULO
+            QueryableRenderOperator = "(" & leftText & IIf( _
+                mSqlQueryDialect = QUERY_DIALECT_TSQL, " % ", " MOD ") & _
+                rightText & ")"
+        Case OP_CONCAT
+            QueryableRenderOperator = "(" & leftText & IIf( _
+                mSqlQueryDialect = QUERY_DIALECT_TSQL, " + ", " & ") & _
+                rightText & ")"
+        Case OP_LESS_THAN
+            QueryableRenderOperator = "(" & leftText & " < " & rightText & ")"
+        Case OP_LESS_THAN_OR_EQUAL
+            QueryableRenderOperator = "(" & leftText & " <= " & _
+                rightText & ")"
+        Case OP_GREATER_THAN
+            QueryableRenderOperator = "(" & leftText & " > " & rightText & ")"
+        Case OP_GREATER_THAN_OR_EQUAL
+            QueryableRenderOperator = "(" & leftText & " >= " & _
+                rightText & ")"
+        Case OP_AND_ALSO
+            QueryableRenderOperator = "(" & leftText & " AND " & _
+                rightText & ")"
+        Case OP_OR_ELSE
+            QueryableRenderOperator = "(" & leftText & " OR " & _
+                rightText & ")"
+        Case Else
+            RaiseQueryError "SQL cannot express " & _
+                QueryableOperatorLabel(node.InternalOperator) & "."
+    End Select
+End Function
+
+Private Function QueryableRenderLike( _
+    ByVal node As ROneCOne, _
+    ByVal values As Collection _
+) As String
+    Dim leftText As String
+    Dim patternText As String
+    Dim rightNode As ROneCOne
+
+    Set rightNode = node.InternalRight
+    If rightNode.InternalRole <> ROLE_VALUE Or _
+        rightNode.InternalHasObjectValue Or _
+        QueryableIsNullValueNode(rightNode) Then
+        RaiseQueryError "The text argument of StartsWith, EndsWith, and " & _
+            "Contains must be a captured text value."
+    End If
+    patternText = QueryableEscapeLike(CStr(rightNode.InternalScalarValue))
+    Select Case node.InternalOperator
+        Case OP_STARTS_WITH
+            patternText = patternText & "%"
+        Case OP_ENDS_WITH
+            patternText = "%" & patternText
+        Case Else
+            patternText = "%" & patternText & "%"
+    End Select
+    leftText = QueryableRenderNode(node.InternalLeft, values)
+    values.Add patternText
+    QueryableRenderLike = "(" & leftText & " LIKE ?" & IIf( _
+        mSqlQueryDialect = QUERY_DIALECT_TSQL, " ESCAPE '\'", "") & ")"
+End Function
+
+Private Function QueryableEscapeLike(ByVal text As String) As String
+    If mSqlQueryDialect = QUERY_DIALECT_TSQL Then
+        text = VBA.Replace(text, "\", "\\")
+        text = VBA.Replace(text, "%", "\%")
+        text = VBA.Replace(text, "_", "\_")
+        text = VBA.Replace(text, "[", "\[")
+    Else
+        text = VBA.Replace(text, "[", "[[]")
+        text = VBA.Replace(text, "%", "[%]")
+        text = VBA.Replace(text, "_", "[_]")
+    End If
+    QueryableEscapeLike = text
+End Function
+
+Private Function QueryableRenderIn( _
+    ByVal node As ROneCOne, _
+    ByVal values As Collection _
+) As String
+    Dim element As Variant
+    Dim leftText As String
+    Dim markers As String
+    Dim negated As Boolean
+    Dim total As Long
+
+    negated = (node.InternalOperator = OP_NOT_IN_SEQUENCE)
+    If Not node.InternalQueryComparer Is Nothing Then
+        RaiseQueryError "IsIn cannot send a custom comparer to SQL."
+    End If
+    leftText = QueryableRenderNode(node.InternalLeft, values)
+    For Each element In node.InternalQueryValue
+        If IsObject(element) Or IsNull(element) Or IsEmpty(element) Then
+            RaiseQueryError "IsIn candidates must be captured scalar " & _
+                "values; SQL IN never matches NULL."
+        End If
+        values.Add element
+        If Len(markers) > 0 Then markers = markers & ", "
+        markers = markers & "?"
+        total = total + 1
+    Next element
+    If total = 0 Then
+        QueryableRenderIn = IIf(negated, "(1 = 1)", "(1 = 0)")
+        Exit Function
+    End If
+    QueryableRenderIn = "(" & leftText & IIf(negated, " NOT IN (", _
+        " IN (") & markers & "))"
+End Function
+
+Private Function QueryableOperatorLabel(ByVal operatorCode As Long) As String
+    Select Case operatorCode
+        Case OP_MATCHES_PATTERN
+            QueryableOperatorLabel = "a Like pattern"
+        Case OP_ANY_MATCH, OP_ALL_MATCH, OP_NONE_MATCH
+            QueryableOperatorLabel = "a nested quantifier"
+        Case OP_SAFE_MEMBER_VALUE, OP_SAFE_MEMBER_OBJECT
+            QueryableOperatorLabel = "a null-safe member path"
+        Case OP_MEMBER_OBJECT
+            QueryableOperatorLabel = "an object member path"
+        Case Else
+            QueryableOperatorLabel = "this expression"
+    End Select
+End Function
+
 Public Sub ForEach(ByVal action As ROneCOne)
 Attribute ForEach.VB_Description = "Executes an Action once for every sequence element."
     Dim actionDelegate As ROneCOne
@@ -9417,6 +10182,11 @@ End Property
 Public Property Get ZipError() As Long
 Attribute ZipError.VB_Description = "Gets the ROneCOne zip archive error number."
     ZipError = ERROR_ZIP
+End Property
+
+Public Property Get QueryError() As Long
+Attribute QueryError.VB_Description = "Gets the ROneCOne SQL translation error number."
+    QueryError = ERROR_QUERY
 End Property
 
 Public Property Get UnboundParameterError() As Long
@@ -11030,6 +11800,87 @@ Friend Sub ConfigureDbConnection( _
         RaiseContractError ERROR_INVALID_ARGUMENT, "DbConnection", _
             "Provider name must be OLEDB or ODBC."
     End If
+End Sub
+
+Friend Function InternalQueryDialect() As Long
+    Dim probe As String
+
+    probe = UCase$(mConnectionString & ";" & mProviderName)
+    If InStr(1, probe, "ACE.OLEDB") > 0 Or _
+        InStr(1, probe, "JET.OLEDB") > 0 Or _
+        InStr(1, probe, "MICROSOFT ACCESS DRIVER") > 0 Or _
+        InStr(1, probe, "MICROSOFT EXCEL DRIVER") > 0 Then
+        InternalQueryDialect = QUERY_DIALECT_ACE
+    ElseIf InStr(1, probe, "MSOLEDBSQL") > 0 Or _
+        InStr(1, probe, "SQLOLEDB") > 0 Or _
+        InStr(1, probe, "SQLNCLI") > 0 Or _
+        InStr(1, probe, "SQL SERVER") > 0 Then
+        InternalQueryDialect = QUERY_DIALECT_TSQL
+    Else
+        RaiseQueryError "Queryable supports the SQL Server and ACE " & _
+            "dialects; this connection string names neither."
+    End If
+End Function
+
+Friend Sub ConfigureQueryable( _
+    ByVal connection As ROneCOne, _
+    ByVal tableName As String _
+)
+    mRole = ROLE_QUERYABLE
+    Set mSqlQueryConnection = connection
+    mSqlQueryTable = ValidateQueryIdentifier(tableName, "Queryable")
+    mSqlQueryDialect = connection.InternalQueryDialect()
+    Set mSqlQueryWheres = New Collection
+    Set mSqlQueryOrderings = New Collection
+    Set mSqlQueryColumns = New Collection
+    mSqlQueryTake = -1
+    mSqlQuerySkip = -1
+End Sub
+
+Friend Sub ConfigureQueryableState( _
+    ByVal connection As ROneCOne, _
+    ByVal tableName As String, _
+    ByVal dialect As Long, _
+    ByVal wheres As Collection, _
+    ByVal orderings As Collection, _
+    ByVal columns As Collection, _
+    ByVal takeCount As Long, _
+    ByVal skipCount As Long _
+)
+    mRole = ROLE_QUERYABLE
+    Set mSqlQueryConnection = connection
+    mSqlQueryTable = tableName
+    mSqlQueryDialect = dialect
+    Set mSqlQueryWheres = wheres
+    Set mSqlQueryOrderings = orderings
+    Set mSqlQueryColumns = columns
+    mSqlQueryTake = takeCount
+    mSqlQuerySkip = skipCount
+End Sub
+
+Friend Sub InternalQueryableAddWhere(ByVal body As ROneCOne)
+    mSqlQueryWheres.Add body
+End Sub
+
+Friend Sub InternalQueryableSetTake(ByVal count As Long)
+    mSqlQueryTake = count
+End Sub
+
+Friend Sub InternalQueryableSetSkip(ByVal count As Long)
+    mSqlQuerySkip = count
+End Sub
+
+Friend Sub InternalQueryableSetColumns(ByVal columns As Collection)
+    Set mSqlQueryColumns = columns
+End Sub
+
+Friend Sub InternalQueryableOrder( _
+    ByVal columnName As String, _
+    ByVal descending As Boolean, _
+    ByVal replaceExisting As Boolean _
+)
+    If replaceExisting Then Set mSqlQueryOrderings = New Collection
+    mSqlQueryOrderings.Add Array(columnName, descending)
 End Sub
 
 Friend Sub ConfigureDbCommand( _
@@ -16379,6 +17230,11 @@ Private Sub AdvanceTaskCore()
                     Set mTaskResult = CreateScalarResult( _
                         DbAsyncTaskChild(1).InternalFillFromReader( _
                             mSource, DbAsyncTaskChild(2)))
+                Case "QueryFill"
+                    If Not mSource.InternalDbResultPoll Then Exit Sub
+                    DbAsyncTaskChild(1).InternalFillFromReader _
+                        mSource, DbAsyncTaskChild(2)
+                    Set mTaskResult = CreateObjectResult(DbAsyncTaskChild(2))
                 Case Else
                     RaiseContractError ERROR_INVALID_OPERATION, "DbAsyncTask", _
                         "Unknown provider async operation."
@@ -24267,6 +25123,11 @@ Private Sub Class_Terminate()
     Set mWatcherSnapshot = Nothing
     Set mZipEntries = Nothing
     Erase mZipWork
+    Set mSqlQueryConnection = Nothing
+    Set mSqlQueryWheres = Nothing
+    Set mSqlQueryOrderings = Nothing
+    Set mSqlQueryColumns = Nothing
+    Set mSqlQueryLastValues = Nothing
     Set mTarget = Nothing
     Set mInvocationList = Nothing
     Set mTryBody = Nothing

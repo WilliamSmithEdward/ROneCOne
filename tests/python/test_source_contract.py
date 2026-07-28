@@ -785,6 +785,32 @@ class SourceContractTests(unittest.TestCase):
         # Extraction must route every entry name through the escape guard.
         self.assertIn("SafeRelativeEntryPath(CStr(rawEntry(0)))", self.source)
 
+    def test_queryable_surface_is_present_and_parameterized(self) -> None:
+        for member in (
+            "Public Function Queryable(",
+            "Public Function SelectColumns(",
+            "Public Function ToDataTable()",
+            "Public Function ToDataTableAsync(",
+            "Public Function CountAsync(",
+            "Public Function ToSqlString()",
+            "Public Function SqlParameterValues()",
+            "Public Property Get QueryError()",
+            "Private Function QueryableBuildSql(",
+            "Private Function QueryableRenderNode(",
+            "Private Function QueryableEscapeLike(",
+            "Friend Function InternalQueryDialect()",
+        ):
+            self.assertIn(member, self.source)
+        # Every captured constant must leave as a ? marker, and member
+        # names must pass the bracket refusal before they are quoted.
+        self.assertIn('QueryableRenderValue = "?"', self.source)
+        self.assertIn(
+            'ValidateQueryIdentifier(node.InternalMethodName, "Member")',
+            self.source,
+        )
+        # A null constant becomes IS NULL rather than a silent = NULL.
+        self.assertIn("IS NULL", self.source)
+
     def test_xml_surface_is_present_and_secured(self) -> None:
         for member in (
             "Public Property Get Xml()",
