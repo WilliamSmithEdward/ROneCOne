@@ -835,6 +835,26 @@ class SourceContractTests(unittest.TestCase):
             self.source,
         )
 
+    def test_every_array_test_goes_through_the_guarded_helper(self) -> None:
+        # IsArray evaluates its argument in a value context, so a Variant
+        # holding an object is dereferenced through that object's default
+        # member. This class's default member is Run, which rejects the
+        # zero arguments such a dereference hands it, and the raise is
+        # swallowed wherever the caller has On Error Resume Next active,
+        # leaving Err dirty while the call still returns the right answer.
+        # IsArrayValue tests IsObject first, so it is the only legal caller.
+        sites = re.findall(r"^.*\bIsArray\(.*$", self.source, re.MULTILINE)
+        self.assertEqual(
+            ["    IsArrayValue = IsArray(value)"],
+            [site.rstrip() for site in sites],
+        )
+        self.assertIn("Private Function IsArrayValue(", self.source)
+        self.assertIn(
+            "    If IsObject(value) Then Exit Function\n"
+            "    IsArrayValue = IsArray(value)",
+            self.source,
+        )
+
     def test_no_friend_member_is_read_through_a_late_bound_local(self) -> None:
         # VBA keeps Friend members off the IDispatch interface, so reading
         # one through an Object or Variant local compiles clean and then

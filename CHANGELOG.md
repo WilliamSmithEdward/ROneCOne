@@ -10,6 +10,16 @@ checksums for each version are on the
 
 ### Fixed
 
+- `IsArray` left a stray error behind when handed a Variant holding a runtime value, closing
+  [issue #4](https://github.com/WilliamSmithEdward/ROneCOne/issues/4). `IsArray` evaluates its
+  argument in a value context, so VBA dereferenced the object through its default member, `Run`,
+  which rejected the zero arguments that dereference supplies. The raise was swallowed wherever a
+  caller had `On Error Resume Next` active, so calls returned correct answers while leaving `Err`
+  dirty for the caller to trip over later. Every array test now goes through a guarded
+  `IsArrayValue` helper that checks `IsObject` first, and a source contract asserts `IsArray`
+  appears exactly once in the runtime, inside that helper. Two further call sites were exposed to
+  the same hazard, in `DeserializeOnly` and in primary-key argument building.
+
 - `OneOf` given a single ROneCOne sequence raised run-time error 438 instead of building the
   membership condition, closing
   [issue #3](https://github.com/WilliamSmithEdward/ROneCOne/issues/3). `IsSequenceContainer` read

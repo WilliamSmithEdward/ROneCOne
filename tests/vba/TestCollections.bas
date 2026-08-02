@@ -83,8 +83,10 @@ Private Sub TestPredicateSystem()
     Dim ada As GenericCustomer
     Dim allowedCities As ROneCOne
     Dim City As Variant
+    Dim cityList As ROneCOne
     Dim comparer As ROneCOne
     Dim customers As ROneCOne
+    Dim errNumber As Long
     Dim equalityComparer As ROneCOne
     Dim grace As GenericCustomer
     Dim katherine As GenericCustomer
@@ -125,6 +127,18 @@ Private Sub TestPredicateSystem()
     Set result = customers.Where("City") _
         .OneOf(ROneCOne.ListOf(vbString, "London")).ToList
     AssertEqual "OneOf sequence single match", CLng(1), result.Count
+    ' Bare Where() filters on the element itself rather than a member. It
+    ' is the shape that exposed IsArray dereferencing an object through its
+    ' default member, so this asserts the error state and not just the
+    ' answer: the raise was swallowed and only left Err dirty.
+    Set cityList = ROneCOne.ListOf(vbString, "London", "Paris", "Cleveland")
+    Err.Clear
+    On Error Resume Next
+    Set result = cityList.Where().OneOf(allowedCities).ToList
+    errNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "bare Where OneOf leaves Err clean", 0&, errNumber
+    AssertEqual "bare Where OneOf count", CLng(2), result.Count
     Set result = customers.Where(allowedCities.Contains(customers!City)).ToList
     AssertEqual "collection.Contains expression", CLng(2), result.Count
     Set result = customers.Where( _

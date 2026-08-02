@@ -2244,7 +2244,7 @@ Private Sub ReadRangeGrid( _
             "The worksheet range cannot be Nothing."
     End If
     raw = source.Value
-    If IsArray(raw) Then
+    If IsArrayValue(raw) Then
         grid = raw
         rowCount = UBound(raw, 1) - LBound(raw, 1) + 1
         colCount = UBound(raw, 2) - LBound(raw, 2) + 1
@@ -2782,7 +2782,7 @@ Attribute DeserializeOnly.VB_Description = "Parses only the named paths, skippin
     ' so navigation is identical to Deserialize.
     RequireJsonFactory "DeserializeOnly"
     Set stepSets = New Collection
-    If IsArray(paths) Then
+    If IsArrayValue(paths) Then
         For Each entry In paths
             stepSets.Add JsonSplitPath(CStr(entry))
         Next entry
@@ -12799,7 +12799,7 @@ Private Function BuildDynamicArguments(ByVal arguments As Variant) As Collection
             Set BuildDynamicArguments = result
             Exit Function
         End If
-    ElseIf IsArray(arguments) Then
+    ElseIf IsArrayValue(arguments) Then
         For Each rawArgument In arguments
             result.Add WrapInvocationArgument(rawArgument)
         Next rawArgument
@@ -13738,7 +13738,7 @@ Private Sub JsonWriteValue(ByRef builder As JsonTextBuilder, ByVal value As Vari
                     "DataTableFromObjects first."
             End If
         Case Else
-            If IsArray(value) Then
+            If IsArrayValue(value) Then
                 JsonWriteVariantArray builder, value
             Else
                 JsonBuilderAppend builder, """"
@@ -14786,7 +14786,7 @@ Private Function CollectSourceElements( _
             Set CollectSourceElements = elements
             Exit Function
         End If
-    ElseIf IsArray(values) Then
+    ElseIf IsArrayValue(values) Then
         For Each element In values
             elements.Add element
         Next element
@@ -17689,7 +17689,7 @@ Private Function BuildPrimaryKeyArguments( _
     hasSingle = (UBound(keys) = LBound(keys))
     On Error GoTo 0
     If hasSingle Then
-        If IsArray(keys(LBound(keys))) Then
+        If IsArrayValue(keys(LBound(keys))) Then
             For Each rawValue In keys(LBound(keys))
                 result.Add WrapDataValue(rawValue)
             Next rawValue
@@ -18207,7 +18207,7 @@ Private Function CreateTaskCombinator( _
 
     Set taskValue = New ROneCOne
     taskValue.ConfigureTask taskKind, Nothing, Nothing
-    If Not IsArray(tasks) Then
+    If Not IsArrayValue(tasks) Then
         RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
             "Tasks must be supplied directly or as a typed sequence or array."
     End If
@@ -20598,7 +20598,7 @@ Private Function BuildIncomingItems( _
             Set BuildIncomingItems = incoming
             Exit Function
         End If
-    ElseIf IsArray(values) Then
+    ElseIf IsArrayValue(values) Then
         For Each rawValue In values
             incoming.Add WrapElement(rawValue, memberName)
         Next rawValue
@@ -22350,11 +22350,24 @@ Private Function NormalizeMembershipSequence( _
     Set NormalizeMembershipSequence = sequenceValue
 End Function
 
+' The only place the runtime may call VBA's IsArray. IsArray evaluates its
+' argument in a value context, so a Variant holding an object is
+' dereferenced through that object's default member. This class's default
+' member is Run, which rejects the zero arguments such a dereference hands
+' it. The raise is swallowed wherever the caller has On Error Resume Next
+' active, so a call still returns the right answer while leaving Err dirty
+' for the caller to trip over later. An object is never an array, so
+' testing IsObject first costs nothing and removes the hazard.
+Private Function IsArrayValue(ByVal value As Variant) As Boolean
+    If IsObject(value) Then Exit Function
+    IsArrayValue = IsArray(value)
+End Function
+
 Private Function IsSequenceContainer(ByVal value As Variant) As Boolean
     Dim candidate As Object
     Dim sequenceValue As ROneCOne
 
-    If IsArray(value) Then
+    If IsArrayValue(value) Then
         IsSequenceContainer = True
         Exit Function
     End If
