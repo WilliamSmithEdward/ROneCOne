@@ -24,7 +24,7 @@ DATETIME_WORKBOOK = ROOT / "demo" / "ROneCOne_DateTime_Demo.xlsm"
 XML_WORKBOOK = ROOT / "demo" / "ROneCOne_Xml_Demo.xlsm"
 ZIP_WORKBOOK = ROOT / "demo" / "ROneCOne_Zip_Demo.xlsm"
 QUERY_WORKBOOK = ROOT / "demo" / "ROneCOne_Query_Demo.xlsm"
-TABLES_WORKBOOK = ROOT / "demo" / "ROneCOne_Tables_Demo.xlsm"
+LISTOBJECT_WORKBOOK = ROOT / "demo" / "ROneCOne_ListObject_Demo.xlsm"
 
 
 def package_delegates(workbook_path: Path = DELEGATES_WORKBOOK) -> None:
@@ -155,7 +155,7 @@ def parse_args() -> argparse.Namespace:
             "xml",
             "zip",
             "query",
-            "tables",
+            "listobject",
             "all",
         ),
         default="all",
@@ -175,7 +175,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--xml-workbook", type=Path, default=XML_WORKBOOK)
     parser.add_argument("--zip-workbook", type=Path, default=ZIP_WORKBOOK)
     parser.add_argument("--query-workbook", type=Path, default=QUERY_WORKBOOK)
-    parser.add_argument("--tables-workbook", type=Path, default=TABLES_WORKBOOK)
+    parser.add_argument("--listobject-workbook", type=Path, default=LISTOBJECT_WORKBOOK)
     return parser.parse_args()
 
 
@@ -279,11 +279,11 @@ if __name__ == "__main__":
             ROOT / "demo" / "vba" / "QueryDemoUsage.bas",
         )
         print(arguments.query_workbook)
-    if arguments.kind in ("tables", "all"):
+    if arguments.kind in ("listobject", "all"):
         package_capability(
-            arguments.tables_workbook,
-            "TablesDemoUsage",
-            ROOT / "demo" / "vba" / "TablesDemoUsage.bas",
+            arguments.listobject_workbook,
+            "ListObjectDemoUsage",
+            ROOT / "demo" / "vba" / "ListObjectDemoUsage.bas",
             classes=("SalesRow",),
         )
-        print(arguments.tables_workbook)
+        print(arguments.listobject_workbook)

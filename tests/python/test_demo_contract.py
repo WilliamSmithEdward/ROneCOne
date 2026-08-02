@@ -21,7 +21,7 @@ DATETIME_DEMO = DEMO_VBA / "DateTimeDemoUsage.bas"
 XML_DEMO = DEMO_VBA / "XmlDemoUsage.bas"
 ZIP_DEMO = DEMO_VBA / "ZipDemoUsage.bas"
 QUERY_DEMO = DEMO_VBA / "QueryDemoUsage.bas"
-TABLES_DEMO = DEMO_VBA / "TablesDemoUsage.bas"
+LISTOBJECT_DEMO = DEMO_VBA / "ListObjectDemoUsage.bas"
 SALES_ROW = DEMO_VBA / "SalesRow.cls"
 CUSTOMER = DEMO_VBA / "DemoCustomer.cls"
 COLLECTIONS_BUILDER = ROOT / "tools" / "build_collections_demo_workbook.cjs"
@@ -373,61 +373,83 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("ROneCOne.Json.DeserializeAt(", source)
         self.assertIn("FatDocument()", source)
 
-    def test_tables_demo_covers_the_listobject_bridge(self) -> None:
-        source = TABLES_DEMO.read_text(encoding="utf-8")
+    def test_listobject_demo_takes_the_table_directly(self) -> None:
+        source = LISTOBJECT_DEMO.read_text(encoding="utf-8")
         builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")
 
-        # The point of the demo: a ListObject is not a Range, so every
-        # bridge call must go through one of the table's ranges.
+        # The whole point of the demo is that the Table goes in directly.
+        # If any example fell back to passing .Range, the demo would be
+        # teaching the workaround the runtime no longer needs.
         self.assertIn("ListObjects.Add(", source)
-        self.assertIn("DataTableFromRange(salesTable.Range)", source)
-        self.assertIn("salesTable.DataBodyRange, False", source)
-        self.assertIn('salesTable.ListColumns("Amount").DataBodyRange', source)
-        self.assertIn("ROneCOne.DataView(sales)", source)
-        self.assertIn(".ToRange ", source)
-        # The likely first mistake is demonstrated rather than described.
-        self.assertIn("DataTableFromRange(salesTable)", source)
-        self.assertIn("438", source)
+        self.assertIn("ROneCOne.Table(salesTable)", source)
+        self.assertIn("ROneCOne.DataTableFromRange(salesTable)", source)
+        self.assertIn("ROneCOne.DataTableFromRange(salesTable, False)", source)
+        self.assertIn('ROneCOne.ListFromRange(salesTable.ListColumns("Amount"))', source)
+        self.assertIn("typed.LoadFromRange salesTable", source)
+        self.assertNotIn("DataTableFromRange(salesTable.Range)", source)
+        self.assertNotIn("salesTable.DataBodyRange", source)
+        # 438 may only appear as history in the header, never as something
+        # the reader still has to work around.
+        for line in source.splitlines():
+            if "438" in line:
+                self.assertTrue(
+                    line.lstrip().startswith("'"),
+                    f"438 outside a comment: {line.strip()}",
+                )
         # Offline, like every demo but HTTP.
         self.assertNotIn("ROneCOne.HttpClient()", source)
         self.assertNotIn("http://", source)
         self.assertNotIn("https://", source)
-        self.assertIn('"tables"', builder)
-        self.assertIn("ROneCOne_Tables_Demo.xlsx", builder)
-        self.assertIn("RunROneCOneTablesDemo", builder)
+        self.assertIn('"listobject"', builder)
+        self.assertIn("ROneCOne_ListObject_Demo.xlsx", builder)
+        self.assertIn("RunROneCOneListObjectDemo", builder)
 
-    def test_tables_demo_goes_past_reading_into_querying_and_mapping(self) -> None:
-        source = TABLES_DEMO.read_text(encoding="utf-8")
+    def test_listobject_demo_covers_querying_mapping_and_write_back(self) -> None:
+        source = LISTOBJECT_DEMO.read_text(encoding="utf-8")
         packager = PACKAGER.read_text(encoding="utf-8")
 
         # Reading the table is the first step, not the whole story. The
-        # question the demo answers is "and then what", so it has to carry
-        # the LINQ operators, both directions of object mapping, and the
-        # text formats through on the same table.
+        # question the demo answers is "and then what", so it carries the
+        # LINQ operators, both directions of object mapping, the text
+        # formats, and the write-back through on the same table.
         for call in (
-            'sales.Rows.Where(',
+            "sales.Rows.Where(",
+            'sales.Rows.Count(',
             'sales.Rows.OrderByDescending("Amount")',
             '.ThenByDescending("Amount")',
             '.SelectItems("Region", vbString)',
             'sales.Rows.GroupBy("Region")',
+            'sales.Rows.Sum("Amount")',
             'sales.Rows.Average("Amount")',
             'sales.Rows.Max("Amount")',
-            'sales.Rows.FirstOrDefault(',
-            'sales.ToObjects(factory)',
+            "sales.Rows.FirstOrDefault(",
+            "sales.Rows.AnyItem(",
+            "ROneCOne.DataView(sales)",
+            "sales.ToObjects(factory)",
             "ROneCOne.DataTableFromObjects(",
             "sales.Rows.Item(0).ToJson",
             "ROneCOne.Json.DeserializeTable(",
             "sales.ToCsv",
             "ROneCOne.Csv.DeserializeTable(",
-            "salesTable.ListRows.Add",
+            "sales.WriteBack(topWest)",
+            "sales.Refresh",
+            "sales.WriteBack",
+            "salesTable.ShowTotals = True",
         ):
             self.assertIn(call, source)
+
+        # The write-back has to be shown moving the real table in both
+        # directions, and shown cleaning up after the shrink. A demo that
+        # only ever grew would hide the orphaned-cell behavior.
+        self.assertIn("afterShrink = salesTable.ListRows.Count", source)
+        self.assertIn("afterGrow = salesTable.ListRows.Count", source)
+        self.assertIn("vacatedCleared = IsEmpty(", source)
 
         # ToObjects needs a factory, so the demo ships a plain class and a
         # Public function for ROneCOne.Func to resolve by name. The class
         # only reaches the workbook if the packager injects it.
         self.assertIn("Public Function NewSalesRow() As SalesRow", source)
-        self.assertIn('ROneCOne.Func("TablesDemoUsage.NewSalesRow")', source)
+        self.assertIn('ROneCOne.Func("ListObjectDemoUsage.NewSalesRow")', source)
         self.assertTrue(SALES_ROW.exists())
         self.assertIn('classes=("SalesRow",)', packager)
         for member in ("Region", "Rep", "Amount"):
@@ -498,7 +520,7 @@ class DemoContractTests(unittest.TestCase):
             "ROneCOne_Xml_Demo",
             "ROneCOne_Zip_Demo",
             "ROneCOne_Query_Demo",
-            "ROneCOne_Tables_Demo",
+            "ROneCOne_ListObject_Demo",
         ):
             self.assertIn(name, builder)
             self.assertIn(name, packager)

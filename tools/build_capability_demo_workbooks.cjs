@@ -874,26 +874,28 @@ const capabilities = [
     ],
   },
   {
-    key: "tables",
+    key: "listobject",
     title: "ROneCOne Excel Tables",
-    subtitle: "Read, query, map, and write back a ListObject, offline",
-    macro: "RunROneCOneTablesDemo",
-    feature: "Tables",
-    output: "ROneCOne_Tables_Demo.xlsx",
+    subtitle: "Capture a ListObject, query it, map it, and write it back",
+    macro: "RunROneCOneListObjectDemo",
+    feature: "ListObject",
+    exampleLabel: "Excel Table",
+    output: "ROneCOne_ListObject_Demo.xlsx",
     benchmark: "Read, filter, and write back 5,000 table rows",
     benchmarkResult: "Rows kept",
     architecture: [
       ["Single-file core", "ROneCOne.cls", "One import", "ENFORCED", 1, 0],
-      ["A Table is not a Range", "listObject.Range", "Every bridge takes a Range, so pass one of the table's ranges", "ENFORCED", 1, 0],
+      ["The Table goes in directly", "ROneCOne.Table(listObject)", "No .Range, and no 438 to work around", "ENFORCED", 1, 0],
       ["Rows are a sequence", "table.Rows", "Where, OrderBy, GroupBy, and the aggregates all apply", "ENFORCED", 1, 0],
+      ["Write back resizes", "WriteBack", "The Table grows and shrinks to fit, and clears what it vacates", "ENFORCED", 1, 0],
       ["Bulk both ways", "One assignment per direction", "No cell loops in or out", "ENFORCED", 1, 0],
       ["Offline", "Builds its own table", "No network, no external data source", "ENFORCED", 1, 0],
     ],
     examples: [
       [
-        "Read the whole table",
+        "Hand over the Table itself",
         "worksheet.ListObjects[\"Sales\"]",
-        "Set sales = ROneCOne.DataTableFromRange( _\n    sheet.ListObjects(\"Sales\").Range)\nsales.Rows.Count",
+        "Set sales = ROneCOne.Table( _\n    sheet.ListObjects(\"Sales\"))\nsales.Rows.Count",
         5,
       ],
       [
@@ -903,16 +905,40 @@ const capabilities = [
         3,
       ],
       [
+        "The table keeps its own name",
+        "listObject.Name",
+        "sales.TableName",
+        "Sales",
+      ],
+      [
         "Read a cell by column name",
         "row[\"Rep\"]",
         "sales.Rows.Item(0).Item(\"Rep\")",
         "Ada",
       ],
       [
-        "Or skip the header row",
-        "DataBodyRange with headers:=False",
-        "ROneCOne.DataTableFromRange( _\n    listObject.DataBodyRange, False) _\n    .Rows.Item(0).Item(\"Column2\")",
+        "The plain bridge takes it too",
+        "DataTableFromRange(listObject)",
+        "ROneCOne.DataTableFromRange(salesTable) _\n    .Rows.Count",
+        5,
+      ],
+      [
+        "Or ask for the body without headers",
+        "DataBodyRange",
+        "ROneCOne.DataTableFromRange( _\n    salesTable, False) _\n    .Rows.Item(0).Item(\"Column2\")",
         "Ada",
+      ],
+      [
+        "One table column into a typed list",
+        "ListColumns[\"Amount\"]",
+        "ROneCOne.ListFromRange( _\n    salesTable.ListColumns(\"Amount\")).Sum",
+        505,
+      ],
+      [
+        "Load into columns you declared",
+        "DataTable.Load(reader)",
+        "typed.LoadFromRange salesTable\ntyped.Rows.Count",
+        5,
       ],
       [
         "Count the rows that match",
@@ -951,19 +977,25 @@ const capabilities = [
         "West 380",
       ],
       [
-        "Aggregate the whole table",
+        "How many groups there are",
+        "GroupBy(...).Count()",
+        "grouped.Count",
+        3,
+      ],
+      [
+        "Total the whole table",
         "table.AsEnumerable().Sum(...)",
         "sales.Rows.Sum(\"Amount\")",
         505,
       ],
       [
-        "Average and maximum too",
+        "Average across the rows",
         "Average(...)",
         "sales.Rows.Average(\"Amount\")",
         101,
       ],
       [
-        "The largest amount in the table",
+        "The largest amount",
         "Max(...)",
         "sales.Rows.Max(\"Amount\")",
         200,
@@ -973,6 +1005,12 @@ const capabilities = [
         "FirstOrDefault(...)",
         "sales.Rows.FirstOrDefault( _\n    sales.Rows!Rep.EqualTo(\"Cy\")) _\n    .Item(\"Amount\")",
         200,
+      ],
+      [
+        "Ask whether any row qualifies",
+        "Any(...)",
+        "sales.Rows.AnyItem( _\n    sales.Rows!Amount.AtLeast(150))",
+        true,
       ],
       [
         "A view filters without touching cells",
@@ -993,22 +1031,22 @@ const capabilities = [
         380,
       ],
       [
-        "One column into a typed list",
-        "ListColumns[\"Amount\"].DataBodyRange",
-        "ROneCOne.ListFromRange( _\n    listObject.ListColumns(\"Amount\").DataBodyRange).Sum",
-        505,
-      ],
-      [
         "Rows become objects of your own class",
         "rows.Select(r => new SalesRow { ... })",
-        "Set factory = ROneCOne.Func( _\n    \"TablesDemoUsage.NewSalesRow\") _\n    .Takes().Returns(vbObject)\nSet objects = sales.ToObjects(factory)\nTypeName(objects.Item(0))",
+        "Set factory = ROneCOne.Func( _\n    \"ListObjectDemoUsage.NewSalesRow\") _\n    .Takes().Returns(vbObject)\nSet objects = sales.ToObjects(factory)\nTypeName(objects.Item(0))",
         "SalesRow",
       ],
       [
-        "Properties are filled by column name",
+        "Properties fill by matching column name",
         "row.Rep",
         "objects.Item(0).Rep",
         "Ada",
+      ],
+      [
+        "Numbers keep their type",
+        "row.Amount",
+        "objects.Item(2).Amount",
+        200,
       ],
       [
         "Query the objects the same way",
@@ -1017,10 +1055,22 @@ const capabilities = [
         3,
       ],
       [
-        "And map the objects back to a table",
+        "Map the objects back into a table",
         "objects.CopyToDataTable()",
-        "ROneCOne.DataTableFromObjects(objects, _\n    Array(\"Region\", \"Rep\", \"Amount\")) _\n    .Rows.Item(2).Item(\"Rep\")",
+        "Set rebuilt = ROneCOne.DataTableFromObjects( _\n    objects, Array(\"Region\", \"Rep\", \"Amount\"))\nrebuilt.Rows.Count",
+        5,
+      ],
+      [
+        "A cell survives the trip out and back",
+        "round trip",
+        "rebuilt.Rows.Item(2).Item(\"Rep\")",
         "Cy",
+      ],
+      [
+        "And the whole table matches, cell for cell",
+        "SequenceEqual",
+        "rebuilt.ToJson = sales.ToJson",
+        true,
       ],
       [
         "Any row serializes to JSON",
@@ -1035,7 +1085,7 @@ const capabilities = [
         5,
       ],
       [
-        "A view serializes to its filtered rows",
+        "A view serializes its filtered rows",
         "JsonSerializer.Serialize(view)",
         "ROneCOne.Json.DeserializeTable( _\n    topWest.ToJson, \"TopWest\").Rows.Count",
         3,
@@ -1053,22 +1103,58 @@ const capabilities = [
         5,
       ],
       [
-        "The mistake worth recognizing",
-        "a ListObject is not a Range",
-        "On Error Resume Next\nROneCOne.DataTableFromRange(listObject)\nIf Err.Number = 438 Then ...",
-        "438, pass .Range instead",
+        "Write a filtered view into the Table",
+        "no .NET equivalent",
+        "sales.WriteBack(topWest)",
+        3,
       ],
       [
-        "Write the filtered view back out",
-        "view.ToRange(target)",
-        "topWest.ToRange sheet.Range(\"F1\")\nsheet.Range(\"F2\").Value",
-        "West",
+        "The Table on the sheet shrank to fit",
+        "listObject.Resize",
+        "salesTable.ListRows.Count",
+        3,
       ],
       [
-        "Grow the table, then read it again",
-        "listObject.ListRows.Add",
-        "salesTable.ListRows.Add\n' fill the new cells, then\nROneCOne.DataTableFromRange( _\n    salesTable.Range).Rows.Count",
-        6,
+        "The rows it gave up were cleared",
+        "no orphaned cells",
+        "IsEmpty(sheet.Range(\"A6\").Value)",
+        true,
+      ],
+      [
+        "And the sheet now reads in sort order",
+        "written in one bulk call",
+        "sheet.Range(\"B2\").Value",
+        "Cy",
+      ],
+      [
+        "Add rows, write again, the Table grows",
+        "listObject.Resize",
+        "sales.Refresh\nsales.LoadRow Array(\"North\", \"Dee\", 45)\nsales.LoadRow Array(\"South\", \"Fay\", 99)\nsales.WriteBack\nsalesTable.ListRows.Count",
+        5,
+      ],
+      [
+        "The grown row landed in the Table",
+        "one bulk assignment",
+        "sheet.Range(\"B6\").Value",
+        "Fay",
+      ],
+      [
+        "A totals row is not data",
+        "listObject.ShowTotals",
+        "salesTable.ShowTotals = True\nSet sales = ROneCOne.Table(salesTable)\nsales.Rows.Count",
+        5,
+      ],
+      [
+        "Writing back keeps the totals row",
+        "restored after the resize",
+        "sales.WriteBack",
+        5,
+      ],
+      [
+        "Still showing totals afterwards",
+        "listObject.ShowTotals",
+        "salesTable.ShowTotals",
+        true,
       ],
     ],
   },
@@ -1187,7 +1273,7 @@ async function buildCapability(config) {
   start.getRange("6:10").format.rowHeight = 34;
   start.freezePanes.freezeRows(3);
 
-  titleBand(examples, `Live ${config.feature.toLowerCase()} examples`, `Run ${config.macro}; column F validates every result.`, "F");
+  titleBand(examples, `Live ${config.exampleLabel || config.feature.toLowerCase()} examples`, `Run ${config.macro}; column F validates every result.`, "F");
   examples.getRange("A5:F5").values = [[
     "What it does", "C# equivalent (optional)", "ROneCOne VBA", "Expected", "Live result", "Status",
   ]];

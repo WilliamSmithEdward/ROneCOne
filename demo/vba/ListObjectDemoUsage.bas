@@ -1,0 +1,366 @@
+Attribute VB_Name = "ListObjectDemoUsage"
+Option Explicit
+
+' ============================================================================
+' ROneCOne tutorial: Excel Tables (ListObjects), end to end
+' ----------------------------------------------------------------------------
+' This demo never touches the network. It builds a real Excel Table called
+' "Sales" on the "Sales Table" sheet, then does everything to it: reads it,
+' queries it, maps it onto plain objects of your own and back, converts it to
+' JSON and CSV and back, and writes results into the table itself, growing
+' and shrinking it on the sheet. The table is left behind so you can look at
+' what happened.
+'
+' Start here, because it is the thing that trips everyone up first:
+'
+'   Set sales = ROneCOne.Table(Sheet1.ListObjects("Sales"))
+'
+' You hand over the Table. Not a Range, not .Range, the Table. Earlier
+' versions took only a Range and raised error 438 on a ListObject, and the
+' advice was to pass .Range yourself. That is no longer necessary anywhere:
+' DataTableFromRange, ListFromRange, LoadFromRange, and ToRange all take a
+' Table or a single table column directly.
+'
+' ROneCOne.Table goes one step further than the others. The table it returns
+' remembers which Excel Table it came from, so it can Refresh itself from the
+' sheet and WriteBack into it, resizing the real table to fit the rows you
+' give it.
+'
+' Everything in between is ordinary work on a DataTable, which is a typed
+' grid held in memory. Its Rows behave like any other sequence, so Where,
+' OrderBy, GroupBy, Sum, and the rest apply unchanged. Nothing here needs C#.
+'
+' To run it: press Alt+F8, choose RunROneCOneListObjectDemo, and click Run.
+' ============================================================================
+
+Private Const BENCHMARK_ROWS As Long = 5000
+Private Const BENCHMARKS_SHEET As String = "Benchmarks"
+Private Const DATA_SHEET As String = "Sales Table"
+Private Const EXAMPLES_SHEET As String = "Examples"
+Private Const START_SHEET As String = "Start Here"
+Private Const TABLE_NAME As String = "Sales"
+Private Const XL_SRC_RANGE As Long = 1
+Private Const XL_YES As Long = 1
+
+' ToObjects makes one instance per row, so it takes a delegate rather than a
+' class name. This is that delegate's target, and it must be Public for
+' ROneCOne.Func to resolve it by name.
+Public Function NewSalesRow() As SalesRow
+    Set NewSalesRow = New SalesRow
+End Function
+
+Public Sub RunROneCOneListObjectDemo()
+    Dim errorDescription As String
+    Dim errorNumber As Long
+    Dim salesTable As Object
+
+    On Error GoTo DemoFailure
+    Set salesTable = BuildSalesTable()
+    WriteReadingExamples salesTable
+    WriteQueryExamples salesTable
+    WriteMappingExamples salesTable
+    WriteWriteBackExamples salesTable
+    RunListObjectBenchmark
+    MarkDemoPassed
+    Application.Calculate
+    Exit Sub
+
+DemoFailure:
+    errorNumber = Err.Number
+    errorDescription = Err.Description
+    MarkDemoFailed errorNumber, errorDescription
+End Sub
+
+' Creates the Table the rest of the demo works on. Rebuilt every run so the
+' demo is repeatable however the last run left it.
+Private Function BuildSalesTable() As Object
+    Dim created As Object
+    Dim sheet As Worksheet
+
+    Set sheet = EnsureSheet(DATA_SHEET)
+    sheet.Cells.Clear
+    On Error Resume Next
+    sheet.ListObjects(TABLE_NAME).Unlist
+    On Error GoTo 0
+    sheet.Range("A1:C1").Value = Array("Region", "Rep", "Amount")
+    sheet.Range("A2:C2").Value = Array("West", "Ada", 120)
+    sheet.Range("A3:C3").Value = Array("East", "Bo", 80)
+    sheet.Range("A4:C4").Value = Array("West", "Cy", 200)
+    sheet.Range("A5:C5").Value = Array("North", "Dee", 45)
+    sheet.Range("A6:C6").Value = Array("West", "Eve", 60)
+    Set created = sheet.ListObjects.Add( _
+        XL_SRC_RANGE, sheet.Range("A1:C6"), , XL_YES)
+    created.Name = TABLE_NAME
+    created.TableStyle = "TableStyleMedium2"
+    sheet.Columns("A:C").AutoFit
+    Set BuildSalesTable = created
+End Function
+
+Private Function EnsureSheet(ByVal sheetName As String) As Worksheet
+    Dim sheet As Worksheet
+
+    On Error Resume Next
+    Set sheet = ThisWorkbook.Worksheets(sheetName)
+    On Error GoTo 0
+    If sheet Is Nothing Then
+        Set sheet = ThisWorkbook.Worksheets.Add( _
+            After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+        sheet.Name = sheetName
+    End If
+    Set EnsureSheet = sheet
+End Function
+
+' --- Reading -----------------------------------------------------------------
+Private Sub WriteReadingExamples(ByVal salesTable As Object)
+    Dim attached As ROneCOne
+    Dim bodyOnly As ROneCOne
+    Dim direct As ROneCOne
+    Dim oneColumn As ROneCOne
+    Dim typed As ROneCOne
+
+    ' The Table itself goes in. No .Range, no 438.
+    Set attached = ROneCOne.Table(salesTable)
+
+    ' The plain bridge takes it too, when you do not need the attachment.
+    Set direct = ROneCOne.DataTableFromRange(salesTable)
+
+    ' Ask for the body instead of the whole table and the header row is left
+    ' out, so the columns are named Column1, Column2, Column3.
+    Set bodyOnly = ROneCOne.DataTableFromRange(salesTable, False)
+
+    ' A single table column reads into a typed list.
+    Set oneColumn = ROneCOne.ListFromRange(salesTable.ListColumns("Amount"))
+
+    ' Or load into a table whose columns you declared yourself.
+    Set typed = ROneCOne.DataTable("Typed")
+    typed.Column "Region", vbVariant
+    typed.Column "Rep", vbVariant
+    typed.Column "Amount", vbVariant
+    typed.LoadFromRange salesTable
+
+    With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
+        .Range("E6").Value2 = attached.Rows.Count
+        .Range("E7").Value2 = attached.Columns.Count
+        .Range("E8").Value2 = attached.TableName
+        .Range("E9").Value2 = CStr(attached.Rows.Item(0).Item("Rep"))
+        .Range("E10").Value2 = direct.Rows.Count
+        .Range("E11").Value2 = CStr(bodyOnly.Rows.Item(0).Item("Column2"))
+        .Range("E12").Value2 = oneColumn.Sum
+        .Range("E13").Value2 = typed.Rows.Count
+    End With
+End Sub
+
+' --- Querying ----------------------------------------------------------------
+Private Sub WriteQueryExamples(ByVal salesTable As Object)
+    Dim Amount As Variant
+    Dim grouped As ROneCOne
+    Dim Region As Variant
+    Dim Rep As Variant
+    Dim sales As ROneCOne
+    Dim topWest As ROneCOne
+
+    Set sales = ROneCOne.Table(salesTable)
+
+    ' Rows is a sequence, so every LINQ-shaped operator applies to it. The
+    ' bang syntax sales.Rows!Region is a readable way to name a column when
+    ' building a condition; it means the same as .Condition("Region").
+    Set grouped = sales.Rows.GroupBy("Region")
+
+    ' A DataView is the sheet-oriented alternative: a live filtered and
+    ' sorted window that knows how to write itself back.
+    Set topWest = ROneCOne.DataView(sales) _
+        .WithFilter(sales.Rows!Region.EqualTo("West")) _
+        .WithSort("Amount", True)
+
+    With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
+        .Range("E14").Value2 = sales.Rows.Count( _
+            sales.Rows!Region.EqualTo("West"))
+        .Range("E15").Value2 = sales.Rows.Where( _
+            sales.Rows!Amount.AtLeast(100)).OrderBy("Rep").JoinText(", ", "Rep")
+        .Range("E16").Value2 = sales.Rows.OrderByDescending("Amount") _
+            .Take(2).Sum("Amount")
+        .Range("E17").Value2 = sales.Rows.OrderBy("Region") _
+            .ThenByDescending("Amount").JoinText(">", "Rep")
+        .Range("E18").Value2 = sales.Rows.SelectItems("Region", vbString) _
+            .Distinct.Order.JoinText(", ")
+        .Range("E19").Value2 = CStr(grouped.First.Key) & " " & _
+            CStr(grouped.First.Sum("Amount"))
+        .Range("E20").Value2 = grouped.Count
+        .Range("E21").Value2 = sales.Rows.Sum("Amount")
+        .Range("E22").Value2 = sales.Rows.Average("Amount")
+        .Range("E23").Value2 = sales.Rows.Max("Amount")
+        .Range("E24").Value2 = CStr(sales.Rows.FirstOrDefault( _
+            sales.Rows!Rep.EqualTo("Cy")).Item("Amount"))
+        .Range("E25").Value2 = sales.Rows.AnyItem( _
+            sales.Rows!Amount.AtLeast(150))
+        .Range("E26").Value2 = topWest.Count
+        .Range("E27").Value2 = CStr(topWest.Item(0).Item("Rep"))
+        .Range("E28").Value2 = topWest.Sum("Amount")
+    End With
+End Sub
+
+' --- Mapping to your own objects, and to text --------------------------------
+Private Sub WriteMappingExamples(ByVal salesTable As Object)
+    Dim factory As ROneCOne
+    Dim objects As ROneCOne
+    Dim rebuilt As ROneCOne
+    Dim Region As Variant
+    Dim sales As ROneCOne
+    Dim topWest As ROneCOne
+
+    Set sales = ROneCOne.Table(salesTable)
+
+    ' The property names on SalesRow match the column headers, and that match
+    ' is the entire mapping rule. ROneCOne.Func names the factory that makes
+    ' each instance.
+    Set factory = ROneCOne.Func("ListObjectDemoUsage.NewSalesRow") _
+        .Takes().Returns(vbObject)
+    Set objects = sales.ToObjects(factory)
+
+    ' And back the other way: you list the properties to read, and each one
+    ' becomes a column of the new table.
+    Set rebuilt = ROneCOne.DataTableFromObjects( _
+        objects, Array("Region", "Rep", "Amount"), "Rebuilt")
+
+    Set topWest = ROneCOne.DataView(sales) _
+        .WithFilter(sales.Rows!Region.EqualTo("West"))
+
+    With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
+        .Range("E29").Value2 = TypeName(objects.Item(0))
+        .Range("E30").Value2 = CStr(objects.Item(0).Rep)
+        .Range("E31").Value2 = objects.Item(2).Amount
+        .Range("E32").Value2 = objects.Where( _
+            objects.Condition("Region").EqualTo("West")).Count
+        .Range("E33").Value2 = rebuilt.Rows.Count
+        .Range("E34").Value2 = CStr(rebuilt.Rows.Item(2).Item("Rep"))
+        .Range("E35").Value2 = CBool(rebuilt.ToJson = sales.ToJson)
+        .Range("E36").Value2 = sales.Rows.Item(0).ToJson
+        .Range("E37").Value2 = ROneCOne.Json.DeserializeTable( _
+            sales.ToJson, "FromJson").Rows.Count
+        .Range("E38").Value2 = ROneCOne.Json.DeserializeTable( _
+            topWest.ToJson, "TopWest").Rows.Count
+        .Range("E39").Value2 = Split(sales.ToCsv, vbCrLf)(0)
+        .Range("E40").Value2 = ROneCOne.Csv.DeserializeTable( _
+            sales.ToCsv, "FromCsv").Rows.Count
+    End With
+End Sub
+
+' --- Writing back into the Table itself --------------------------------------
+Private Sub WriteWriteBackExamples(ByVal salesTable As Object)
+    Dim afterGrow As Long
+    Dim afterShrink As Long
+    Dim Region As Variant
+    Dim sales As ROneCOne
+    Dim sheet As Worksheet
+    Dim topWest As ROneCOne
+    Dim vacatedCleared As Boolean
+    Dim writtenBack As Long
+
+    Set sheet = ThisWorkbook.Worksheets(DATA_SHEET)
+    Set sales = ROneCOne.Table(salesTable)
+
+    ' Keep only the West rows, biggest first, and push that into the Table.
+    ' The Table shrinks from five rows to three, and the two rows it gave up
+    ' are cleared rather than left sitting under the table.
+    Set topWest = ROneCOne.DataView(sales) _
+        .WithFilter(sales.Rows!Region.EqualTo("West")) _
+        .WithSort("Amount", True)
+    writtenBack = sales.WriteBack(topWest)
+    afterShrink = salesTable.ListRows.Count
+    vacatedCleared = IsEmpty(sheet.Range("A6").Value)
+
+    ' Refresh re-reads the sheet in place, so the same variable now sees the
+    ' three rows that are actually there.
+    sales.Refresh
+
+    ' Add two rows in memory and write again: the Table grows to match.
+    sales.LoadRow Array("North", "Dee", 45)
+    sales.LoadRow Array("South", "Fay", 99)
+    sales.WriteBack
+    afterGrow = salesTable.ListRows.Count
+
+    ' A totals row is not data. It stays out of Rows, and it survives a
+    ' write back even though resizing a table has to switch it off first.
+    salesTable.ShowTotals = True
+    Set sales = ROneCOne.Table(salesTable)
+
+    With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
+        .Range("E41").Value2 = writtenBack
+        .Range("E42").Value2 = afterShrink
+        .Range("E43").Value2 = vacatedCleared
+        .Range("E44").Value2 = CStr(sheet.Range("B2").Value)
+        .Range("E45").Value2 = afterGrow
+        .Range("E46").Value2 = CStr(sheet.Range("B6").Value)
+        .Range("E47").Value2 = sales.Rows.Count
+        .Range("E48").Value2 = sales.WriteBack
+        .Range("E49").Value2 = CBool(salesTable.ShowTotals)
+    End With
+
+    salesTable.ShowTotals = False
+    sheet.Columns("A:C").AutoFit
+End Sub
+
+' Five thousand rows out of a real Table, filtered, and written straight back
+' into it. Each direction is one bulk call, and the Table is resized to fit
+' rather than overwritten in place.
+Private Sub RunListObjectBenchmark()
+    Dim benchSheet As Worksheet
+    Dim benchTable As Object
+    Dim elapsed As Double
+    Dim index As Long
+    Dim kept As ROneCOne
+    Dim loaded As ROneCOne
+    Dim started As Double
+    Dim values() As Variant
+
+    Set benchSheet = EnsureSheet("Benchmark Data")
+    benchSheet.Cells.Clear
+    On Error Resume Next
+    benchSheet.ListObjects("Benchmark").Unlist
+    On Error GoTo 0
+    benchSheet.Range("A1:B1").Value = Array("Id", "Amount")
+    ReDim values(1 To BENCHMARK_ROWS, 1 To 2)
+    For index = 1 To BENCHMARK_ROWS
+        values(index, 1) = index
+        values(index, 2) = index * 2
+    Next index
+    benchSheet.Range("A2").Resize(BENCHMARK_ROWS, 2).Value = values
+    Set benchTable = benchSheet.ListObjects.Add(XL_SRC_RANGE, _
+        benchSheet.Range("A1").Resize(BENCHMARK_ROWS + 1, 2), , XL_YES)
+    benchTable.Name = "Benchmark"
+
+    started = Timer
+    Set loaded = ROneCOne.Table(benchTable)
+    Set kept = ROneCOne.DataView(loaded) _
+        .WithFilter(loaded.Rows.Condition("Amount").AtLeast(BENCHMARK_ROWS))
+    loaded.WriteBack kept
+    elapsed = ElapsedSeconds(started)
+
+    benchSheet.Visible = 0
+    With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
+        .Range("B6").Value2 = BENCHMARK_ROWS
+        .Range("C6").Value2 = elapsed
+        .Range("D6").Value2 = benchTable.ListRows.Count
+    End With
+End Sub
+
+Private Sub MarkDemoPassed()
+    With ThisWorkbook.Worksheets(START_SHEET)
+        .Range("B12").Value2 = Now
+        .Range("B13").Value2 = "PASS"
+        .Range("B14").ClearContents
+    End With
+End Sub
+
+Private Sub MarkDemoFailed(ByVal errorNumber As Long, ByVal description As String)
+    With ThisWorkbook.Worksheets(START_SHEET)
+        .Range("B12").Value2 = Now
+        .Range("B13").Value2 = "ERROR"
+        .Range("B14").Value2 = CStr(errorNumber) & ": " & description
+    End With
+End Sub
+
+Private Function ElapsedSeconds(ByVal started As Double) As Double
+    ElapsedSeconds = Timer - started
+    If ElapsedSeconds < 0 Then ElapsedSeconds = ElapsedSeconds + 86400#
+End Function
