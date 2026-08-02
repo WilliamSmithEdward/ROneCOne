@@ -1,87 +1,92 @@
 # Excel Tables (ListObjects)
 
-An Excel Table is a `ListObject`, and a `ListObject` is not a `Range`. Every ROneCOne bridge takes
-a `Range`, so you never hand over the table itself. You hand over one of its ranges.
-
-That single fact is the whole obstacle. Pass the table directly and you get run-time error 438,
-"Object doesn't support this property or method", which reads like ROneCOne rejecting your table
-when it is really VBA rejecting the type.
+Hand over the Table.
 
 ```vba
 Dim sales As ROneCOne
 
-' Wrong: raises 438
-Set sales = ROneCOne.DataTableFromRange(Sheet1.ListObjects("Sales"))
-
-' Right: hand over a range belonging to the table
-Set sales = ROneCOne.DataTableFromRange(Sheet1.ListObjects("Sales").Range)
+Set sales = ROneCOne.Table(Sheet1.ListObjects("Sales"))
+sales.Rows.Count
 ```
 
-## The three ranges you will use
+Not `.Range`, not `.DataBodyRange`. The `ListObject` itself. Every worksheet
+entry point takes one now: `DataTableFromRange`, `ListFromRange`,
+`LoadFromRange`, and `ToRange`. A single table column works too, so
+`ListFromRange(salesTable.ListColumns("Amount"))` reads that column into a list.
 
-| Range | What it covers | Use it when |
-|---|---|---|
-| `listObject.Range` | Header row plus all data rows | You want the headers to become column names |
-| `listObject.DataBodyRange` | Data rows only | You will supply names yourself, or there are none |
-| `listObject.ListColumns("Amount").DataBodyRange` | One column of data | You want a single typed list |
+`ROneCOne.Table` does one thing the others do not: the table it hands back
+remembers which Excel Table it came from, so it can re-read itself and write
+itself back.
+
+> Before 1.9.0 these bridges took only a `Range`, and passing a `ListObject`
+> raised run-time error 438. If you are reading older code that calls
+> `DataTableFromRange(lo.Range)`, that still works; it is just no longer
+> necessary.
+
+## Reading
 
 ```vba
-Dim amounts As ROneCOne
-Dim bodyOnly As ROneCOne
 Dim salesTable As ListObject
 
 Set salesTable = Sheet1.ListObjects("Sales")
-Set sales = ROneCOne.DataTableFromRange(salesTable.Range)
-Set bodyOnly = ROneCOne.DataTableFromRange(salesTable.DataBodyRange, False)
-Set amounts = ROneCOne.ListFromRange(salesTable.ListColumns("Amount").DataBodyRange)
+
+' Attached: can Refresh and WriteBack
+Set sales = ROneCOne.Table(salesTable)
+
+' Detached: an ordinary snapshot
+Set sales = ROneCOne.DataTableFromRange(salesTable)
+
+' Body only, so the columns are named Column1, Column2, ...
+Set body = ROneCOne.DataTableFromRange(salesTable, False)
+
+' One column into a typed list
+Set amounts = ROneCOne.ListFromRange(salesTable.ListColumns("Amount"))
+
+' Or into columns you declared yourself
+typed.LoadFromRange salesTable
 ```
 
-With `headers:=False` there are no names to read, so the columns are called `Column1`, `Column2`,
-and so on.
+A totals row is not data. It stays out of `Rows` and out of the column reads,
+so turning totals on does not change what you get back.
 
-## After that it is an ordinary table
+## Querying
 
-Once the data is in a `DataTable`, nothing about it is table-specific any more. `Rows` is a
-sequence, so every operator that works on a list works here.
+`Rows` is an ordinary sequence, so the whole operator set applies.
 
 ```vba
 Dim byRegion As ROneCOne
 
-' Filter, sort, and project
-sales.Rows.Where(sales.Rows!Amount.AtLeast(100)) _
-    .OrderBy("Rep").JoinText(", ", "Rep")
-
-' Sort by two keys, then keep the top few
-sales.Rows.OrderBy("Region").ThenByDescending("Amount").Take(3)
-
-' Aggregate the whole table, or only the matching rows
-sales.Rows.Sum("Amount")
 sales.Rows.Count(sales.Rows!Region.EqualTo("West"))
+sales.Rows.Where(sales.Rows!Amount.AtLeast(100)).OrderBy("Rep").JoinText(", ", "Rep")
+sales.Rows.OrderByDescending("Amount").Take(2).Sum("Amount")
+sales.Rows.OrderBy("Region").ThenByDescending("Amount")
+sales.Rows.SelectItems("Region", vbString).Distinct.Order
+sales.Rows.Sum("Amount")
+sales.Rows.Average("Amount")
+sales.Rows.FirstOrDefault(sales.Rows!Rep.EqualTo("Cy"))
+sales.Rows.AnyItem(sales.Rows!Amount.AtLeast(150))
 
-' Group, then total each group
 Set byRegion = sales.Rows.GroupBy("Region")
 byRegion.First.Key & " " & byRegion.First.Sum("Amount")
 ```
 
-`sales.Rows!Region` is bang syntax, a readable way to name a column when building a condition. It
-means the same thing as `sales.Rows.Condition("Region")`.
+`sales.Rows!Region` is bang syntax, a readable way to name a column when
+building a condition. It means the same as `sales.Rows.Condition("Region")`.
 
-A `DataView` is the sheet-oriented alternative. It stays attached to the table and knows how to
-write itself back to cells.
+A `DataView` is the sheet-oriented alternative: a live filtered and sorted
+window that knows how to write itself back.
 
 ```vba
-Dim topWest As ROneCOne
-
 Set topWest = ROneCOne.DataView(sales) _
     .WithFilter(sales.Rows!Region.EqualTo("West")) _
     .WithSort("Amount", True)
-topWest.ToRange Sheet2.Range("A1")
 ```
 
-## Map rows onto your own class
+## Mapping to your own objects
 
-Give ROneCOne a factory that makes one empty instance, and it fills the properties whose names
-match your column headers. Matching is case-insensitive.
+Give ROneCOne a factory that makes one empty instance, and it fills the
+properties whose names match your column headers. Matching is
+case-insensitive.
 
 ```vba
 ' In a standard module, Public so ROneCOne.Func can resolve it by name
@@ -101,14 +106,16 @@ Set objects = sales.ToObjects(factory)
 objects.Item(0).Rep                                   ' "Ada", a real SalesRow
 objects.Where(objects.Condition("Region").EqualTo("West")).Count
 
-' And back the other way: name the properties to read
+' And back: name the properties to read, each becomes a column
 Set rebuilt = ROneCOne.DataTableFromObjects( _
     objects, Array("Region", "Rep", "Amount"), "Rebuilt")
 ```
 
+The trip is lossless. `rebuilt.ToJson = sales.ToJson` is `True`.
+
 ## JSON and CSV
 
-Tables, single rows, and views all serialize.
+Tables, single rows, and views all serialize, in both directions.
 
 ```vba
 sales.ToJson                          ' the whole table as a JSON array
@@ -121,30 +128,54 @@ Set sales = ROneCOne.Json.DeserializeTable(jsonText, "Sales")
 Set sales = ROneCOne.Csv.DeserializeTable(csvText, "Sales")
 ```
 
-## Writing back and growing the table
+## Writing back
 
-`ToRange` writes headers plus rows in one bulk assignment, so a few thousand cells cost a fraction
-of a cell loop.
-
-Growing the table is Excel's job. Add the row through the `ListObject`, fill the new cells, then
-read the table again. A `DataTable` is a snapshot taken when you read it, not a live link, so an
-instance you already hold will not notice the new row.
+`WriteBack` puts rows into the Excel Table the value came from and resizes the
+table to fit. It returns the number of rows written.
 
 ```vba
-salesTable.ListRows.Add
-With salesTable.DataBodyRange
-    .Cells(salesTable.ListRows.Count, 1).Value = "South"
-    .Cells(salesTable.ListRows.Count, 2).Value = "Fay"
-    .Cells(salesTable.ListRows.Count, 3).Value = 99
-End With
-Set sales = ROneCOne.DataTableFromRange(salesTable.Range)
+' Keep only the West rows, biggest first, and make the sheet match
+sales.WriteBack topWest
+
+' Or write the table's own rows after changing them
+sales.LoadRow Array("South", "Fay", 99)
+sales.WriteBack
+
+' Re-read the sheet in place, in case something else changed it
+sales.Refresh
 ```
+
+`ToRange` accepts a Table as its target and does exactly the same thing, so a
+view can drive the write without going through the attached table:
+
+```vba
+topWest.ToRange salesTable
+```
+
+Four behaviors are worth knowing, because Excel makes them awkward and
+ROneCOne handles them for you:
+
+- **Shrinking clears up after itself.** Excel leaves the vacated cells
+  populated underneath a table that got smaller. `WriteBack` clears them.
+- **Writing no rows empties the table.** Excel refuses to resize a table to
+  its header alone, so the body is deleted instead. The table and its headers
+  survive.
+- **A totals row survives.** Excel places it inconsistently across a grow and
+  a shrink, so totals are switched off around the resize and restored after.
+- **Name, style, and headers are preserved** across every resize.
+
+The column count has to match. Writing a five-column table into a
+three-column Excel Table raises rather than silently truncating.
+
+`Refresh` and `WriteBack` need a table that came from `ROneCOne.Table`, since
+that is what remembers the origin. On any other table they raise and tell you
+so.
 
 ## See it running
 
-The Excel Tables demo workbook builds a real table, then works through every step above with the
-live result next to the expected one. Download it from the
-[release page](https://github.com/WilliamSmithEdward/ROneCOne/releases/latest).
+The Excel Tables demo workbook builds a real table and works through all of
+the above, live, with the result next to what was expected. Download it from
+the [release page](https://github.com/WilliamSmithEdward/ROneCOne/releases/latest).
 
 ## Related
 

@@ -6,18 +6,33 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
-## Unreleased
+## 1.9.0 - 2026-08-02
 
 ### Added
 
-- An Excel Tables demo workbook and an [Excel Tables guide](docs/user-guide/excel-tables.md).
-  Nothing in the documentation mentioned `ListObject`, so the one fact that blocks every first
-  attempt went unsaid: a Table is a `ListObject`, a `ListObject` is not a `Range`, and every
-  bridge takes a `Range`. Passing the table directly raises run-time error 438. The demo builds a
-  real table and works through 30 examples on it: the three ranges worth knowing, the LINQ
-  operators over its rows, mapping to and from a plain class of your own, JSON and CSV in both
-  directions, writing a filtered view back to cells, and growing the table. It demonstrates the
-  438 mistake on purpose rather than describing it.
+- Excel Tables are a first-class input. `DataTableFromRange`, `ListFromRange`, `LoadFromRange`,
+  and `ToRange` all accept a `ListObject` or a single `ListColumn` directly. Previously they took
+  only a `Range`, so passing a Table raised run-time error 438 and the workaround was to pass
+  `listObject.Range` yourself. The runtime had never heard of the type: searching the source for
+  `ListObject` returned nothing, and neither did the documentation. With headers wanted the slice
+  stops after the last body row, so a totals row is never read as data, and an empty Table yields
+  its columns with no rows rather than failing.
+
+- `ROneCOne.Table(listObject)` reads a Table that stays attached to where it came from.
+  `Refresh` re-reads it in place, and `WriteBack` writes rows into the Table and resizes it to
+  fit. `ToRange` given a Table as its target performs the same write, so a `DataView` can drive
+  it. Excel makes this awkward in four specific ways, all measured live before anything was
+  written: it refuses to resize a Table to its header alone, it leaves the vacated cells
+  populated when a Table shrinks, it places a totals row inside the requested range on a grow and
+  outside it on a shrink, and it preserves name, style, and headers throughout. `WriteBack`
+  handles the first three and relies on the fourth. See
+  [ADR 0030](docs/decisions/0030-excel-table-surface.md).
+
+- A dedicated Excel Table demo workbook and an
+  [Excel Tables guide](docs/user-guide/excel-tables.md). Forty-four examples take the Table
+  through reading, the full LINQ set over its rows, mapping out to instances of your own class
+  and back with the round trip proved, JSON and CSV in both directions, and writing back into the
+  Table while it grows and shrinks on the sheet.
 
 ### Fixed
 
@@ -33,14 +48,23 @@ checksums for each version are on the
   checks `IsObject` first, and a source contract asserts `VarType` appears exactly once in the
   runtime, inside that helper. The guard also removes an accidental dependency: the runtime reached
   its object branches only because the default member happened to fail, which would not hold for a
-  foreign object whose default member succeeds.
+  foreign object whose default member succeeds. One behavior changes as a result, in favour of the
+  documented contract: `Json.Serialize(someRange)` used to serialize the cell's value and now
+  raises, as the docs have always said it would.
 
 - `ToJson(True)` ignored indentation for tables, rows, and views, contradicting the documented
   promise that indented output is available for every serializable value. Only dictionaries and
   sequences carried line structure; the data roles fell through to the compact writer and returned
-  text identical to `ToJson()`. The indented writer now covers them, and the live suite checks that
-  the indented form of a table breaks lines, indents its rows, and parses back to the same
-  document.
+  text identical to `ToJson()`. The indented writer now covers them.
+
+### Changed
+
+- The source contract that pins `Friend` member access now rejects any `.Item(...).Member` chain
+  reaching a `Friend` member, not only reads through a declared `Object` or `Variant` local. Both
+  `Collection.Item` and this class's own `Item` return a `Variant`, so such a chain binds late and
+  raises 438 at run time with no late-bound declaration in sight. That is exactly how the defect
+  from [issue #3](https://github.com/WilliamSmithEdward/ROneCOne/issues/3) reappeared inside the
+  new write-back path during development, and the analyzer rather than the contract caught it.
 
 ## 1.8.1 - 2026-08-01
 

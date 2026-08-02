@@ -24,10 +24,19 @@ Range parameters are late-bound `Object` values, so the runtime keeps no compile
 reference. Values move through `Range.Value`, preserving dates, currency, and Booleans across a
 round trip.
 
-An Excel Table is a `ListObject`, which is not a `Range` and has no `Value`, so passing one to any
-of these entry points raises run-time error 438. Pass `listObject.Range`,
-`listObject.DataBodyRange`, or `listObject.ListColumns(name).DataBodyRange` instead. The
-[Excel Tables guide](user-guide/excel-tables.md) works through the whole path.
+Every entry point also accepts an Excel Table directly, as a `ListObject` or a single
+`ListColumn`, resolved to the right range on the way in. With headers wanted the slice stops
+after the last body row, so a totals row is never read as data, and an empty table yields its
+columns with no rows rather than failing.
+
+- `ROneCOne.Table(listObject)` reads a table that stays attached to its origin.
+- `DataTable.Refresh()` re-reads that table in place.
+- `DataTable.WriteBack(source)` writes rows into the Excel Table and resizes it to fit,
+  clearing the cells a shrink vacates and preserving name, style, and any totals row.
+  `ToRange(listObject)` performs the same write, so a DataView can drive it.
+
+See [ADR 0030](decisions/0030-excel-table-surface.md) for the Excel behaviors this works
+around, and the [Excel Tables guide](user-guide/excel-tables.md) for the whole path.
 
 ## In-memory data
 
