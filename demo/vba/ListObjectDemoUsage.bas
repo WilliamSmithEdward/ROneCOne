@@ -2,33 +2,24 @@ Attribute VB_Name = "ListObjectDemoUsage"
 Option Explicit
 
 ' ============================================================================
-' ROneCOne tutorial: Excel Tables (ListObjects), end to end
+' ROneCOne tutorial: Excel Tables, queried and written back in place
 ' ----------------------------------------------------------------------------
-' This demo never touches the network. It builds a real Excel Table called
-' "Sales" on the "Sales Table" sheet, then does everything to it: reads it,
-' queries it, maps it onto plain objects of your own and back, converts it to
-' JSON and CSV and back, and writes results into the table itself, growing
-' and shrinking it on the sheet. The table is left behind so you can look at
-' what happened.
+' This demo never touches the network. It builds one Excel Table called
+' "Sales" on the "Sales Table" sheet and works only on that, leaving it there
+' at the end so the write-back is visible. The point is that the ListObject is
+' the input: ROneCOne.Table takes the Table rather than one of its ranges, and
+' the table it returns remembers where it came from, so it can re-read that
+' sheet and resize it to fit whatever rows you hand back.
 '
-' Start here, because it is the thing that trips everyone up first:
+' The surface mirrors what C# programmers know from System.Data: a DataTable
+' whose Rows you can query, and a DataView that filters and sorts without
+' copying. Rows is an ordinary sequence, so Where, OrderBy, GroupBy, and the
+' aggregates apply unchanged, and ToObjects maps rows onto instances of your
+' own class.
 '
-'   Set sales = ROneCOne.Table(Sheet1.ListObjects("Sales"))
-'
-' You hand over the Table. Not a Range, not .Range, the Table. Earlier
-' versions took only a Range and raised error 438 on a ListObject, and the
-' advice was to pass .Range yourself. That is no longer necessary anywhere:
-' DataTableFromRange, ListFromRange, LoadFromRange, and ToRange all take a
-' Table or a single table column directly.
-'
-' ROneCOne.Table goes one step further than the others. The table it returns
-' remembers which Excel Table it came from, so it can Refresh itself from the
-' sheet and WriteBack into it, resizing the real table to fit the rows you
-' give it.
-'
-' Everything in between is ordinary work on a DataTable, which is a typed
-' grid held in memory. Its Rows behave like any other sequence, so Where,
-' OrderBy, GroupBy, Sum, and the rest apply unchanged. Nothing here needs C#.
+' One property is worth watching for below. WriteBack owns the Table's extent:
+' fewer rows shrinks it and clears the cells it gave up, more rows grows it,
+' and a totals row survives either way. Excel does none of that on its own.
 '
 ' To run it: press Alt+F8, choose RunROneCOneListObjectDemo, and click Run.
 ' ============================================================================
@@ -118,7 +109,8 @@ Private Sub WriteReadingExamples(ByVal salesTable As Object)
     Dim oneColumn As ROneCOne
     Dim typed As ROneCOne
 
-    ' The Table itself goes in. No .Range, no 438.
+    ' The Table itself is the argument, and this is the form that stays
+    ' attached to it.
     Set attached = ROneCOne.Table(salesTable)
 
     ' The plain bridge takes it too, when you do not need the attachment.
