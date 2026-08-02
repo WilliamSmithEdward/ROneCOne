@@ -24,6 +24,7 @@ DATETIME_WORKBOOK = ROOT / "demo" / "ROneCOne_DateTime_Demo.xlsm"
 XML_WORKBOOK = ROOT / "demo" / "ROneCOne_Xml_Demo.xlsm"
 ZIP_WORKBOOK = ROOT / "demo" / "ROneCOne_Zip_Demo.xlsm"
 QUERY_WORKBOOK = ROOT / "demo" / "ROneCOne_Query_Demo.xlsm"
+TABLES_WORKBOOK = ROOT / "demo" / "ROneCOne_Tables_Demo.xlsm"
 
 
 def package_delegates(workbook_path: Path = DELEGATES_WORKBOOK) -> None:
@@ -98,42 +99,38 @@ def package_capability(
     workbook_path: Path,
     module_name: str,
     source_path: Path,
-    include_customer: bool = False,
+    classes: tuple[str, ...] = (),
 ) -> None:
+    """Inject the runtime, any plain classes the demo needs, and the demo."""
     runtime_source = prepare_class_source(ROOT / "src" / "ROneCOne.cls")
     demo_source = read_vba(source_path)
-    customer_source = (
-        prepare_class_source(ROOT / "demo" / "vba" / "DemoCustomer.cls")
-        if include_customer
-        else None
-    )
+    class_sources = {
+        name: prepare_class_source(ROOT / "demo" / "vba" / f"{name}.cls")
+        for name in classes
+    }
 
     with ExcelFile(workbook_path) as workbook:
         project = workbook.vba_project()
         existing = set(workbook.module_names())
-        for name in ("Module1", "ROneCOne", "DemoCustomer", module_name):
+        for name in ("Module1", "ROneCOne", module_name, *class_sources):
             if name in existing:
                 project.delete_module(name)
         project.add_module("ROneCOne", runtime_source, kind=VBAModuleKind.other)
-        if customer_source is not None:
-            project.add_module(
-                "DemoCustomer", customer_source, kind=VBAModuleKind.other
-            )
+        for name, source in class_sources.items():
+            project.add_module(name, source, kind=VBAModuleKind.other)
         project.add_module(module_name, demo_source, kind=VBAModuleKind.standard)
         workbook.save()
 
     with ExcelFile(workbook_path) as verification:
-        expected = {"ROneCOne", module_name}
-        if customer_source is not None:
-            expected.add("DemoCustomer")
+        expected = {"ROneCOne", module_name, *class_sources}
         missing = expected - set(verification.module_names())
         if missing:
             raise RuntimeError(f"Demo workbook is missing modules: {sorted(missing)}")
         if verification.get_module("ROneCOne") != runtime_source:
             raise RuntimeError("Capability demo runtime did not round-trip")
-        if customer_source is not None:
-            if verification.get_module("DemoCustomer") != customer_source:
-                raise RuntimeError("Capability DemoCustomer did not round-trip")
+        for name, source in class_sources.items():
+            if verification.get_module(name) != source:
+                raise RuntimeError(f"Capability {name} did not round-trip")
         if verification.get_module(module_name) != demo_source:
             raise RuntimeError(f"{module_name} did not round-trip")
 
@@ -158,6 +155,7 @@ def parse_args() -> argparse.Namespace:
             "xml",
             "zip",
             "query",
+            "tables",
             "all",
         ),
         default="all",
@@ -177,6 +175,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--xml-workbook", type=Path, default=XML_WORKBOOK)
     parser.add_argument("--zip-workbook", type=Path, default=ZIP_WORKBOOK)
     parser.add_argument("--query-workbook", type=Path, default=QUERY_WORKBOOK)
+    parser.add_argument("--tables-workbook", type=Path, default=TABLES_WORKBOOK)
     return parser.parse_args()
 
 
@@ -228,7 +227,7 @@ if __name__ == "__main__":
             arguments.json_workbook,
             "JsonDemoUsage",
             ROOT / "demo" / "vba" / "JsonDemoUsage.bas",
-            include_customer=True,
+            classes=("DemoCustomer",),
         )
         print(arguments.json_workbook)
     if arguments.kind in ("files", "all"):
@@ -280,3 +279,11 @@ if __name__ == "__main__":
             ROOT / "demo" / "vba" / "QueryDemoUsage.bas",
         )
         print(arguments.query_workbook)
+    if arguments.kind in ("tables", "all"):
+        package_capability(
+            arguments.tables_workbook,
+            "TablesDemoUsage",
+            ROOT / "demo" / "vba" / "TablesDemoUsage.bas",
+            classes=("SalesRow",),
+        )
+        print(arguments.tables_workbook)

@@ -22,6 +22,7 @@ Start here if you write workbook code and want results quickly. The
 | [Delegates and expressions](user-guide/delegates-and-expressions.md) | Build reusable behavior |
 | [Events and exceptions](user-guide/events-and-exceptions.md) | Coordinate changes and failures |
 | [Tasks and async](user-guide/tasks-and-async.md) | Coordinate work, cancellation, and progress |
+| [Excel Tables](user-guide/excel-tables.md) | Capture a ListObject and query, map, and write it back |
 | [Data and providers](user-guide/data-and-providers.md) | Model, query, and load tabular data |
 | [HTTP and web data](user-guide/http-and-web.md) | Call web APIs with awaitable requests |
 | [JSON and typed objects](user-guide/json-and-objects.md) | Parse, serialize, and bind JSON |

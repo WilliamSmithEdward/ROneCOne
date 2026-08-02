@@ -13,6 +13,7 @@ class module, and copy the smallest example that solves your problem.
 | [Delegates and expressions](delegates-and-expressions.md) | Build reusable behavior | 10 minutes |
 | [Events and exceptions](events-and-exceptions.md) | Coordinate changes and failures | 10 minutes |
 | [Tasks and async](tasks-and-async.md) | Coordinate work, cancellation, and progress | 10 minutes |
+| [Excel Tables](excel-tables.md) | Capture a ListObject and query, map, and write it back | 10 minutes |
 | [Data and providers](data-and-providers.md) | Model, query, and load tabular data | 15 minutes |
 | [HTTP and web data](http-and-web.md) | Call web APIs with awaitable requests | 10 minutes |
 | [JSON and typed objects](json-and-objects.md) | Parse, serialize, and bind JSON | 10 minutes |

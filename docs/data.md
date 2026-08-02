@@ -24,6 +24,11 @@ Range parameters are late-bound `Object` values, so the runtime keeps no compile
 reference. Values move through `Range.Value`, preserving dates, currency, and Booleans across a
 round trip.
 
+An Excel Table is a `ListObject`, which is not a `Range` and has no `Value`, so passing one to any
+of these entry points raises run-time error 438. Pass `listObject.Range`,
+`listObject.DataBodyRange`, or `listObject.ListColumns(name).DataBodyRange` instead. The
+[Excel Tables guide](user-guide/excel-tables.md) works through the whole path.
+
 ## In-memory data
 
 - `DataTable`, `DataColumn`, `Column`, `Row`, `NewRow`, `LoadRow`, `SelectRows`, `CloneTable`,

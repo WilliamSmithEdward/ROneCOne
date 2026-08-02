@@ -26,6 +26,9 @@ single row or column into a list. `ToRange` writes a table, a filtered and sorte
 any scalar sequence back to the sheet in one assignment. Every path uses one bulk call, so a few
 thousand cells cost a fraction of what a cell loop would.
 
+Every bridge takes a `Range`. An Excel Table is a `ListObject` rather than a `Range`, so pass one
+of its ranges instead: see [Excel Tables](excel-tables.md).
+
 ## Build a typed table
 
 ```vba

@@ -21,6 +21,8 @@ DATETIME_DEMO = DEMO_VBA / "DateTimeDemoUsage.bas"
 XML_DEMO = DEMO_VBA / "XmlDemoUsage.bas"
 ZIP_DEMO = DEMO_VBA / "ZipDemoUsage.bas"
 QUERY_DEMO = DEMO_VBA / "QueryDemoUsage.bas"
+TABLES_DEMO = DEMO_VBA / "TablesDemoUsage.bas"
+SALES_ROW = DEMO_VBA / "SalesRow.cls"
 CUSTOMER = DEMO_VBA / "DemoCustomer.cls"
 COLLECTIONS_BUILDER = ROOT / "tools" / "build_collections_demo_workbook.cjs"
 CAPABILITY_BUILDER = ROOT / "tools" / "build_capability_demo_workbooks.cjs"
@@ -371,6 +373,69 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("ROneCOne.Json.DeserializeAt(", source)
         self.assertIn("FatDocument()", source)
 
+    def test_tables_demo_covers_the_listobject_bridge(self) -> None:
+        source = TABLES_DEMO.read_text(encoding="utf-8")
+        builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")
+
+        # The point of the demo: a ListObject is not a Range, so every
+        # bridge call must go through one of the table's ranges.
+        self.assertIn("ListObjects.Add(", source)
+        self.assertIn("DataTableFromRange(salesTable.Range)", source)
+        self.assertIn("salesTable.DataBodyRange, False", source)
+        self.assertIn('salesTable.ListColumns("Amount").DataBodyRange', source)
+        self.assertIn("ROneCOne.DataView(sales)", source)
+        self.assertIn(".ToRange ", source)
+        # The likely first mistake is demonstrated rather than described.
+        self.assertIn("DataTableFromRange(salesTable)", source)
+        self.assertIn("438", source)
+        # Offline, like every demo but HTTP.
+        self.assertNotIn("ROneCOne.HttpClient()", source)
+        self.assertNotIn("http://", source)
+        self.assertNotIn("https://", source)
+        self.assertIn('"tables"', builder)
+        self.assertIn("ROneCOne_Tables_Demo.xlsx", builder)
+        self.assertIn("RunROneCOneTablesDemo", builder)
+
+    def test_tables_demo_goes_past_reading_into_querying_and_mapping(self) -> None:
+        source = TABLES_DEMO.read_text(encoding="utf-8")
+        packager = PACKAGER.read_text(encoding="utf-8")
+
+        # Reading the table is the first step, not the whole story. The
+        # question the demo answers is "and then what", so it has to carry
+        # the LINQ operators, both directions of object mapping, and the
+        # text formats through on the same table.
+        for call in (
+            'sales.Rows.Where(',
+            'sales.Rows.OrderByDescending("Amount")',
+            '.ThenByDescending("Amount")',
+            '.SelectItems("Region", vbString)',
+            'sales.Rows.GroupBy("Region")',
+            'sales.Rows.Average("Amount")',
+            'sales.Rows.Max("Amount")',
+            'sales.Rows.FirstOrDefault(',
+            'sales.ToObjects(factory)',
+            "ROneCOne.DataTableFromObjects(",
+            "sales.Rows.Item(0).ToJson",
+            "ROneCOne.Json.DeserializeTable(",
+            "sales.ToCsv",
+            "ROneCOne.Csv.DeserializeTable(",
+            "salesTable.ListRows.Add",
+        ):
+            self.assertIn(call, source)
+
+        # ToObjects needs a factory, so the demo ships a plain class and a
+        # Public function for ROneCOne.Func to resolve by name. The class
+        # only reaches the workbook if the packager injects it.
+        self.assertIn("Public Function NewSalesRow() As SalesRow", source)
+        self.assertIn('ROneCOne.Func("TablesDemoUsage.NewSalesRow")', source)
+        self.assertTrue(SALES_ROW.exists())
+        self.assertIn('classes=("SalesRow",)', packager)
+        for member in ("Region", "Rep", "Amount"):
+            self.assertIn(
+                f"Public Property Get {member}()",
+                SALES_ROW.read_text(encoding="utf-8"),
+            )
+
     def test_query_demo_runs_offline_and_shows_the_generated_sql(self) -> None:
         source = QUERY_DEMO.read_text(encoding="utf-8")
         builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")
@@ -433,6 +498,7 @@ class DemoContractTests(unittest.TestCase):
             "ROneCOne_Xml_Demo",
             "ROneCOne_Zip_Demo",
             "ROneCOne_Query_Demo",
+            "ROneCOne_Tables_Demo",
         ):
             self.assertIn(name, builder)
             self.assertIn(name, packager)

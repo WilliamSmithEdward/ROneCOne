@@ -8,6 +8,17 @@ checksums for each version are on the
 
 ## Unreleased
 
+### Added
+
+- An Excel Tables demo workbook and an [Excel Tables guide](docs/user-guide/excel-tables.md).
+  Nothing in the documentation mentioned `ListObject`, so the one fact that blocks every first
+  attempt went unsaid: a Table is a `ListObject`, a `ListObject` is not a `Range`, and every
+  bridge takes a `Range`. Passing the table directly raises run-time error 438. The demo builds a
+  real table and works through 30 examples on it: the three ranges worth knowing, the LINQ
+  operators over its rows, mapping to and from a plain class of your own, JSON and CSV in both
+  directions, writing a filtered view back to cells, and growing the table. It demonstrates the
+  438 mistake on purpose rather than describing it.
+
 ### Fixed
 
 - Every JSON serialization left a stray error behind, closing
