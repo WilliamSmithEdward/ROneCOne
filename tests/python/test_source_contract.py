@@ -855,6 +855,34 @@ class SourceContractTests(unittest.TestCase):
             self.source,
         )
 
+    def test_every_type_test_goes_through_the_guarded_helper(self) -> None:
+        # VarType shares the IsArray hazard: it evaluates its argument in a
+        # value context, so a Variant holding one of these objects fires Run
+        # with no arguments and leaves Err dirty, while the intrinsic still
+        # answers vbObject because that call failed. VarTypeOf answers
+        # vbObject directly, so it is the only legal caller. Without this
+        # guard every JSON serialization dirties Err, because the JSON
+        # writer opens with a VarType test on the value it was handed.
+        sites = re.findall(
+            r"^.*(?<![A-Za-z])VarType\(.*$", self.source, re.MULTILINE
+        )
+        self.assertEqual(
+            ["    VarTypeOf = VarType(value)"],
+            [site.rstrip() for site in sites],
+        )
+        self.assertIn(
+            "Private Function VarTypeOf(ByVal value As Variant) As VbVarType",
+            self.source,
+        )
+        self.assertIn(
+            "    If IsObject(value) Then\n"
+            "        VarTypeOf = vbObject\n"
+            "        Exit Function\n"
+            "    End If\n"
+            "    VarTypeOf = VarType(value)",
+            self.source,
+        )
+
     def test_no_friend_member_is_read_through_a_late_bound_local(self) -> None:
         # VBA keeps Friend members off the IDispatch interface, so reading
         # one through an Object or Variant local compiles clean and then

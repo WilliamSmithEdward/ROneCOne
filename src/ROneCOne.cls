@@ -785,7 +785,7 @@ Attribute ParameterLike.VB_Description = "Creates a parameter typed like an exam
         End If
         node.ConfigureParameter vbObject, TypeName(exampleObject)
     Else
-        node.ConfigureParameter VarType(example), vbNullString
+        node.ConfigureParameter VarTypeOf(example), vbNullString
     End If
     Set ParameterLike = node
 End Function
@@ -894,7 +894,7 @@ Attribute ListLike.VB_Description = "Creates a List<T> typed like an example val
         End If
         listValue.ConfigureList vbObject, TypeName(prototype)
     Else
-        listValue.ConfigureList VarType(example), vbNullString
+        listValue.ConfigureList VarTypeOf(example), vbNullString
     End If
     Set ListLike = listValue
 End Function
@@ -3118,7 +3118,7 @@ End Function
 Public Sub WriteAllBytes(ByVal filePath As String, ByVal bytes As Variant)
 Attribute WriteAllBytes.VB_Description = "Writes a Byte array as a whole file."
     RequireFileFactory "WriteAllBytes"
-    If VarType(bytes) <> (vbArray Or vbByte) Then
+    If VarTypeOf(bytes) <> (vbArray Or vbByte) Then
         RaiseContractError ERROR_INVALID_ARGUMENT, "WriteAllBytes", _
             "WriteAllBytes requires a Byte array."
     End If
@@ -3616,7 +3616,7 @@ End Property
 Public Function ToBase64String(ByVal bytes As Variant) As String
 Attribute ToBase64String.VB_Description = "Encodes a Byte array as base64 text."
     RequireConvertFactory "ToBase64String"
-    If VarType(bytes) <> (vbArray Or vbByte) Then
+    If VarTypeOf(bytes) <> (vbArray Or vbByte) Then
         RaiseContractError ERROR_INVALID_ARGUMENT, "ToBase64String", _
             "ToBase64String requires a Byte array."
     End If
@@ -3635,7 +3635,7 @@ Attribute ToHexString.VB_Description = "Encodes a Byte array as uppercase hexade
     Dim parts() As String
 
     RequireConvertFactory "ToHexString"
-    If VarType(bytes) <> (vbArray Or vbByte) Then
+    If VarTypeOf(bytes) <> (vbArray Or vbByte) Then
         RaiseContractError ERROR_INVALID_ARGUMENT, "ToHexString", _
             "ToHexString requires a Byte array."
     End If
@@ -5164,7 +5164,7 @@ Attribute SelectColumns.VB_Description = "Projects the query onto the named colu
     End If
     Set columns = New Collection
     For index = LBound(columnNames) To UBound(columnNames)
-        If VarType(columnNames(index)) <> vbString Then
+        If VarTypeOf(columnNames(index)) <> vbString Then
             RaiseQueryError "SelectColumns takes column names as text."
         End If
         columns.Add ValidateQueryIdentifier( _
@@ -6395,7 +6395,7 @@ Private Sub AssignInvocationResult( _
         If argumentValues.Count = 1 Then
             Set argumentValue = argumentValues.Item(1)
             If Not argumentValue.InternalHasObjectValue Then
-                If VarType(argumentValue.InternalScalarValue) = vbString Then
+                If VarTypeOf(argumentValue.InternalScalarValue) = vbString Then
                     Set result = Member(CStr(argumentValue.InternalScalarValue))
                     Set destination = result
                     Exit Sub
@@ -6437,7 +6437,7 @@ Private Sub AssignInvocationResult( _
             RaiseContractError ERROR_TYPE_MISMATCH, "Run", _
                 "A sequence index must be numeric or a member name."
         End If
-        If VarType(argumentValue.InternalScalarValue) = vbString Then
+        If VarTypeOf(argumentValue.InternalScalarValue) = vbString Then
             Set result = Condition(CStr(argumentValue.InternalScalarValue))
             Set destination = result
             Exit Sub
@@ -8406,7 +8406,7 @@ Attribute Where.VB_Description = "Defers filtering or begins a fluent member con
             Exit Function
         End If
         If Not IsObject(predicateOrMember) Then
-            If VarType(predicateOrMember) = vbString Then
+            If VarTypeOf(predicateOrMember) = vbString Then
                 Set builder = New ROneCOne
                 builder.ConfigureWhereBuilder Me, CStr(predicateOrMember)
                 Set Where = builder
@@ -8425,7 +8425,7 @@ Attribute Where.VB_Description = "Defers filtering or begins a fluent member con
         Exit Function
     End If
     If Not IsObject(predicateOrMember) Then
-        If VarType(predicateOrMember) = vbString Then
+        If VarTypeOf(predicateOrMember) = vbString Then
             Set builder = New ROneCOne
             builder.ConfigureWhereBuilder Me, CStr(predicateOrMember)
             Set Where = builder
@@ -9763,9 +9763,9 @@ Private Function RenderExpressionLiteral(ByVal node As ROneCOne) As String
     scalarValue = node.InternalScalarValue
     If IsNull(scalarValue) Then
         RenderExpressionLiteral = "Null"
-    ElseIf VarType(scalarValue) = vbString Then
+    ElseIf VarTypeOf(scalarValue) = vbString Then
         RenderExpressionLiteral = """" & CStr(scalarValue) & """"
-    ElseIf VarType(scalarValue) = vbBoolean Then
+    ElseIf VarTypeOf(scalarValue) = vbBoolean Then
         RenderExpressionLiteral = IIf(CBool(scalarValue), "True", "False")
     Else
         RenderExpressionLiteral = CStr(scalarValue)
@@ -10005,7 +10005,7 @@ Private Function QueryableOrderColumn( _
     Dim node As ROneCOne
 
     If Not IsObject(keySelector) Then
-        If VarType(keySelector) = vbString Then
+        If VarTypeOf(keySelector) = vbString Then
             QueryableOrderColumn = ValidateQueryIdentifier( _
                 CStr(keySelector), memberName)
             Exit Function
@@ -12564,7 +12564,7 @@ Private Function CreateCallableDelegate( _
         Exit Function
     End If
 
-    If VarType(callable) <> vbString Then
+    If VarTypeOf(callable) <> vbString Then
         RaiseContractError ERROR_INVALID_ARGUMENT, "Func", _
             "A callable must be an expression, object, or workbook procedure name."
     End If
@@ -13704,7 +13704,7 @@ Private Function JsonBuilderText(ByRef builder As JsonTextBuilder) As String
 End Function
 
 Private Sub JsonWriteValue(ByRef builder As JsonTextBuilder, ByVal value As Variant)
-    Select Case VarType(value)
+    Select Case VarTypeOf(value)
         Case vbString
             JsonBuilderAppend builder, """"
             JsonWriteEscaped builder, CStr(value)
@@ -13757,30 +13757,18 @@ Private Sub JsonWriteRuntimeValue( _
     Dim wrapped As ROneCOne
 
     Select Case value.InternalRole
-        Case ROLE_DATA_TABLE
+        Case ROLE_DATA_TABLE, ROLE_DATA_VIEW
             JsonBuilderAppend builder, "["
             Dim firstRow As Boolean
             firstRow = True
-            For Each row In value.InternalDataRows
-                If row.RowState <> "Deleted" Then
-                    If Not firstRow Then JsonBuilderAppend builder, ","
-                    firstRow = False
-                    JsonWriteDataRow builder, row
-                End If
+            For Each row In JsonDataRowsOf(value)
+                If Not firstRow Then JsonBuilderAppend builder, ","
+                firstRow = False
+                JsonWriteDataRow builder, row
             Next row
             JsonBuilderAppend builder, "]"
         Case ROLE_DATA_ROW
             JsonWriteDataRow builder, value
-        Case ROLE_DATA_VIEW
-            JsonBuilderAppend builder, "["
-            Dim firstViewRow As Boolean
-            firstViewRow = True
-            For Each wrapped In value.MaterializeWrapped
-                If Not firstViewRow Then JsonBuilderAppend builder, ","
-                firstViewRow = False
-                JsonWriteDataRow builder, JsonUnwrapObject(wrapped)
-            Next wrapped
-            JsonBuilderAppend builder, "]"
         Case Else
             If value.IsDictionaryCollection Then
                 JsonBuilderAppend builder, "{"
@@ -13824,6 +13812,27 @@ Private Function JsonUnwrapValue(ByVal wrapped As ROneCOne) As Variant
     Else
         JsonUnwrapValue = wrapped.InternalScalarValue
     End If
+End Function
+
+' The live rows of a table or a view, in the order a reader should see them.
+' A table hides rows marked Deleted; a view has already applied its filter
+' and sort, and hands back wrappers that still need unwrapping.
+Private Function JsonDataRowsOf(ByVal value As ROneCOne) As Collection
+    Dim liveRows As Collection
+    Dim row As ROneCOne
+    Dim wrapped As ROneCOne
+
+    Set liveRows = New Collection
+    If value.InternalRole = ROLE_DATA_VIEW Then
+        For Each wrapped In value.MaterializeWrapped
+            liveRows.Add JsonUnwrapObject(wrapped)
+        Next wrapped
+    Else
+        For Each row In value.InternalDataRows
+            If row.RowState <> "Deleted" Then liveRows.Add row
+        Next row
+    End If
+    Set JsonDataRowsOf = liveRows
 End Function
 
 Private Function JsonUnwrapObject(ByVal wrapped As ROneCOne) As ROneCOne
@@ -13989,6 +13998,15 @@ Private Sub JsonWriteValuePretty( _
         If Not value Is Nothing Then
             If TypeOf value Is ROneCOne Then
                 Set runtimeValue = value
+                Select Case runtimeValue.InternalRole
+                    Case ROLE_DATA_TABLE, ROLE_DATA_VIEW
+                        JsonWriteDataRowsPretty builder, _
+                            JsonDataRowsOf(runtimeValue), depth
+                        Exit Sub
+                    Case ROLE_DATA_ROW
+                        JsonWriteDataRowPretty builder, runtimeValue, depth
+                        Exit Sub
+                End Select
                 If runtimeValue.IsDictionaryCollection Then
                     If runtimeValue.InternalPairCount = 0 Then
                         JsonBuilderAppend builder, "{}"
@@ -14034,6 +14052,63 @@ Private Sub JsonWriteValuePretty( _
         End If
     End If
     JsonWriteValue builder, value
+End Sub
+
+Private Sub JsonWriteDataRowsPretty( _
+    ByRef builder As JsonTextBuilder, _
+    ByVal liveRows As Collection, _
+    ByVal depth As Long _
+)
+    Dim firstRow As Boolean
+    Dim row As ROneCOne
+
+    If liveRows.Count = 0 Then
+        JsonBuilderAppend builder, "[]"
+        Exit Sub
+    End If
+    JsonBuilderAppend builder, "[" & vbLf
+    firstRow = True
+    For Each row In liveRows
+        If Not firstRow Then JsonBuilderAppend builder, "," & vbLf
+        firstRow = False
+        JsonBuilderAppend builder, JsonIndent(depth + 1)
+        JsonWriteDataRowPretty builder, row, depth + 1
+    Next row
+    JsonBuilderAppend builder, vbLf & JsonIndent(depth) & "]"
+End Sub
+
+Private Sub JsonWriteDataRowPretty( _
+    ByRef builder As JsonTextBuilder, _
+    ByVal row As ROneCOne, _
+    ByVal depth As Long _
+)
+    Dim cells As Collection
+    Dim columnIndex As Long
+    Dim columns As Collection
+    Dim table As ROneCOne
+    Dim wrapped As ROneCOne
+
+    Set table = row.InternalSource
+    Set columns = table.InternalDataColumns
+    Set cells = row.InternalDataRows
+    If columns.Count = 0 Then
+        JsonBuilderAppend builder, "{}"
+        Exit Sub
+    End If
+    JsonBuilderAppend builder, "{" & vbLf
+    For columnIndex = 1 To columns.Count
+        If columnIndex > 1 Then JsonBuilderAppend builder, "," & vbLf
+        JsonBuilderAppend builder, JsonIndent(depth + 1) & """"
+        JsonWriteEscaped builder, columns.Item(columnIndex).ColumnName
+        JsonBuilderAppend builder, """: "
+        Set wrapped = cells.Item(columnIndex)
+        If IsNullDataValue(wrapped) Then
+            JsonBuilderAppend builder, "null"
+        Else
+            JsonWriteValuePretty builder, JsonUnwrapValue(wrapped), depth + 1
+        End If
+    Next columnIndex
+    JsonBuilderAppend builder, vbLf & JsonIndent(depth) & "}"
 End Sub
 
 Private Function JsonIndent(ByVal depth As Long) As String
@@ -14614,7 +14689,7 @@ Private Sub MergeJsonColumnType( _
     If IsNull(value) Then
         candidate = 0
     Else
-        candidate = VarType(value)
+        candidate = VarTypeOf(value)
     End If
     If Not columnNames.ContainsKey(columnName) Then
         columnNames.Add columnName, candidate
@@ -14688,7 +14763,7 @@ Private Function BuildTableFromObjects( _
                 value = CallByName(instance, names.Item(columnIndex), VbGet)
                 If Not IsNull(value) And Not IsEmpty(value) And _
                     Not IsObject(value) Then
-                    columnTypes(columnIndex) = VarType(value)
+                    columnTypes(columnIndex) = VarTypeOf(value)
                     columnTyped(columnIndex) = True
                 End If
             End If
@@ -14722,7 +14797,7 @@ Private Function CollectJsonPropertyNames( _
 
     Set names = New Collection
     For Each element In CollectSourceElements(propertyNames, memberName)
-        If IsObject(element) Or VarType(element) <> vbString Then
+        If IsObject(element) Or VarTypeOf(element) <> vbString Then
             RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
                 "Every property name must be text."
         End If
@@ -14827,7 +14902,7 @@ Private Function RequirePathText( _
     ByVal memberName As String _
 ) As String
     If Not IsMissing(value) Then
-        If VarType(value) = vbString Then
+        If VarTypeOf(value) = vbString Then
             If Len(Trim$(CStr(value))) > 0 Then
                 RequirePathText = CStr(value)
                 Exit Function
@@ -16062,9 +16137,9 @@ Private Sub CoerceHashInput( _
 )
     ' Text hashes as its UTF-8 bytes, matching what every other platform
     ' produces for the same string; byte arrays pass through untouched.
-    If VarType(value) = vbString Then
+    If VarTypeOf(value) = vbString Then
         bytes = IoEncodeText(CStr(value), "utf-8", 3)
-    ElseIf VarType(value) = (vbArray Or vbByte) Then
+    ElseIf VarTypeOf(value) = (vbArray Or vbByte) Then
         bytes = value
     Else
         RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
@@ -16374,7 +16449,7 @@ Private Sub CsvWriteCell( _
     ByRef builder As JsonTextBuilder, _
     ByVal value As Variant _
 )
-    Select Case VarType(value)
+    Select Case VarTypeOf(value)
         Case vbString
             JsonBuilderAppend builder, CsvEscapedField(CStr(value))
         Case vbBoolean
@@ -16914,7 +16989,7 @@ Private Function HttpStatusFailureMessage( _
 End Function
 
 Private Function NormalizeHttpBodyBytes(ByVal value As Variant) As Variant
-    If VarType(value) = (vbArray Or vbByte) Then
+    If VarTypeOf(value) = (vbArray Or vbByte) Then
         NormalizeHttpBodyBytes = value
     Else
         NormalizeHttpBodyBytes = EmptyByteArray()
@@ -17027,7 +17102,7 @@ Private Function BuildAdoCommand( _
                 parameter.InternalSourceColumn, parameter.InternalSourceVersion)
         End If
         rawValue = Unwrap(valueWrapped)
-        If VarType(rawValue) = vbString Then valueSize = Len(CStr(rawValue))
+        If VarTypeOf(rawValue) = vbString Then valueSize = Len(CStr(rawValue))
         If parameter.InternalProviderSize > 0 Then
             valueSize = parameter.InternalProviderSize
         ElseIf valueSize < 1 Then
@@ -17204,7 +17279,7 @@ Private Function AdoTypeForValue(ByVal wrapped As ROneCOne) As Long
         AdoTypeForValue = 12
         Exit Function
     End If
-    Select Case VarType(wrapped.InternalScalarValue)
+    Select Case VarTypeOf(wrapped.InternalScalarValue)
         Case vbByte
             AdoTypeForValue = 16
         Case vbInteger
@@ -17512,7 +17587,7 @@ End Function
 Private Function DataRowItem(ByVal index As Variant) As ROneCOne
     Dim columnIndex As Long
 
-    If VarType(index) = vbString Then
+    If VarTypeOf(index) = vbString Then
         Set DataRowItem = DataFieldWrapped(CStr(index))
         Exit Function
     End If
@@ -17552,7 +17627,7 @@ Private Sub SetDataRowItem(ByVal index As Variant, ByVal value As Variant)
     Dim capturedSource As String
 
     RequireDataRow Me, "DataRow.Item"
-    If VarType(index) = vbString Then
+    If VarTypeOf(index) = vbString Then
         columnIndex = FindDataColumnIndex(mSource, CStr(index))
     Else
         columnIndex = CLng(index)
@@ -17837,11 +17912,11 @@ Private Function DataIndexToken(ByVal wrapped As ROneCOne) As String
         DataIndexToken = "NULL"
     ElseIf IsEmpty(scalarValue) Then
         DataIndexToken = "N:0"
-    ElseIf IsNumeric(scalarValue) Or VarType(scalarValue) = vbDate Or _
-        VarType(scalarValue) = vbBoolean Then
+    ElseIf IsNumeric(scalarValue) Or VarTypeOf(scalarValue) = vbDate Or _
+        VarTypeOf(scalarValue) = vbBoolean Then
         DataIndexToken = "N:" & CStr(CDec(scalarValue))
     Else
-        DataIndexToken = CStr(VarType(scalarValue)) & ":" & CStr(scalarValue)
+        DataIndexToken = CStr(VarTypeOf(scalarValue)) & ":" & CStr(scalarValue)
     End If
 End Function
 
@@ -18971,7 +19046,7 @@ Private Function WidenScalarToward( _
     If IsNull(wrapped.InternalScalarValue) Then Exit Function
     If IsEmpty(wrapped.InternalScalarValue) Then Exit Function
     If Not IsLosslessWidening( _
-        VarType(wrapped.InternalScalarValue), expectedType) Then Exit Function
+        VarTypeOf(wrapped.InternalScalarValue), expectedType) Then Exit Function
     Set coerced = New ROneCOne
     coerced.ConfigureScalarValue CoerceScalarToType( _
         wrapped.InternalScalarValue, expectedType)
@@ -19010,7 +19085,7 @@ Private Sub ValidateWrappedType( _
         GoTo TypeFailed
     End If
     If wrapped.InternalHasObjectValue Then GoTo TypeFailed
-    If VarType(wrapped.InternalScalarValue) = expectedType Then Exit Sub
+    If VarTypeOf(wrapped.InternalScalarValue) = expectedType Then Exit Sub
 TypeFailed:
     RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
         "The collection " & valueName & " does not match its generic type."
@@ -19035,10 +19110,10 @@ Private Sub ValidateKeyValue( _
         GoTo TypeFailed
     End If
     If IsObject(value) Then GoTo TypeFailed
-    If VarType(value) = mKeyType Then Exit Sub
+    If VarTypeOf(value) = mKeyType Then Exit Sub
     ' A losslessly widenable key hashes and compares identically to the stored
     ' key of the declared type, so accept it for lookup without ceremony.
-    If IsLosslessWidening(VarType(value), mKeyType) Then Exit Sub
+    If IsLosslessWidening(VarTypeOf(value), mKeyType) Then Exit Sub
 TypeFailed:
     RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
         "The collection key does not match its generic type."
@@ -19738,7 +19813,7 @@ Private Function ValueHashCode(ByVal scalarValue As Variant) As Long
         ValueHashCode = ObjectHashCode(scalarValue)
         Exit Function
     End If
-    scalarType = VarType(scalarValue)
+    scalarType = VarTypeOf(scalarValue)
     If IsNull(scalarValue) Then
         ValueHashCode = HashText("NULL")
     ElseIf IsEmpty(scalarValue) Then
@@ -19749,7 +19824,7 @@ Private Function ValueHashCode(ByVal scalarValue As Variant) As Long
     ElseIf IsNumeric(scalarValue) Or scalarType = vbDate Then
         ValueHashCode = NumericHashCode(scalarValue)
     Else
-        ValueHashCode = HashText(CStr(VarType(scalarValue)) & _
+        ValueHashCode = HashText(CStr(VarTypeOf(scalarValue)) & _
             ":" & CStr(scalarValue))
     End If
 End Function
@@ -19781,7 +19856,7 @@ End Function
 Private Function NumericHashCode(ByVal scalarValue As Variant) As Long
     Dim decimalValue As Variant
 
-    If VarType(scalarValue) = vbDate Then
+    If VarTypeOf(scalarValue) = vbDate Then
         decimalValue = CDec(CDbl(scalarValue))
     Else
         decimalValue = CDec(scalarValue)
@@ -20216,7 +20291,7 @@ Private Sub AssignReferenceWrapped( _
             "The output reference cannot receive an object."
     End If
     scalarValue = wrapped.InternalScalarValue
-    If VarType(scalarValue) <> referenceValue.InternalExpectedType Then
+    If VarTypeOf(scalarValue) <> referenceValue.InternalExpectedType Then
         RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
             "The output reference type does not match the value type."
     End If
@@ -20632,7 +20707,7 @@ Private Sub ValidateElementWrapped( _
     If wrapped.InternalHasObjectValue Then
         RaiseElementTypeMismatch wrapped, memberName
     End If
-    If VarType(wrapped.InternalScalarValue) <> mElementType Then
+    If VarTypeOf(wrapped.InternalScalarValue) <> mElementType Then
         RaiseElementTypeMismatch wrapped, memberName
     End If
 End Sub
@@ -21500,7 +21575,7 @@ Private Function WrappedMatchesType( _
         Exit Function
     End If
     If wrapped.InternalHasObjectValue Then Exit Function
-    WrappedMatchesType = (VarType(wrapped.InternalScalarValue) = expectedType)
+    WrappedMatchesType = (VarTypeOf(wrapped.InternalScalarValue) = expectedType)
 End Function
 
 Private Function ApplySetBy(ByVal sourceValues As Collection) As Collection
@@ -21674,7 +21749,7 @@ Private Function ApplyOrderChain() As Collection
                 End If
                 keyScalars(levelIndex, itemIndex) = key.InternalScalarValue
                 keyTypes(levelIndex, itemIndex) = _
-                    VarType(keyScalars(levelIndex, itemIndex))
+                    VarTypeOf(keyScalars(levelIndex, itemIndex))
             End If
         Next itemIndex
     Next levelIndex
@@ -21921,8 +21996,8 @@ Private Function CompareWrapped( _
         Exit Function
     End If
 
-    leftType = VarType(leftScalar)
-    rightType = VarType(rightScalar)
+    leftType = VarTypeOf(leftScalar)
+    rightType = VarTypeOf(rightScalar)
     If IsOrderingNumericType(leftType) And _
         IsOrderingNumericType(rightType) Then
         CompareWrapped = CompareScalarValues( _
@@ -22088,7 +22163,7 @@ Friend Function NormalizeContextUnary( _
 
     RequireSequence Me, memberName
     If Not IsObject(candidate) Then
-        If VarType(candidate) = vbString Then
+        If VarTypeOf(candidate) = vbString Then
             Set expression = BuildMemberPath(CStr(candidate), returnsObject)
             Set NormalizeContextUnary = NormalizeUnary(expression, memberName)
             Exit Function
@@ -22361,6 +22436,22 @@ End Function
 Private Function IsArrayValue(ByVal value As Variant) As Boolean
     If IsObject(value) Then Exit Function
     IsArrayValue = IsArray(value)
+End Function
+
+' The only place the runtime may call VBA's VarType, for the same reason.
+' VarType also evaluates its argument in a value context, so a Variant
+' holding one of these objects fires Run with no arguments, and the
+' intrinsic reports vbObject only because that call failed. Answering
+' vbObject directly keeps the result identical, drops the dirty Err, and
+' removes the accidental dependency: a foreign object whose default member
+' succeeds would otherwise report the type of that member's value and slip
+' past the object branches the runtime relies on.
+Private Function VarTypeOf(ByVal value As Variant) As VbVarType
+    If IsObject(value) Then
+        VarTypeOf = vbObject
+        Exit Function
+    End If
+    VarTypeOf = VarType(value)
 End Function
 
 Private Function IsSequenceContainer(ByVal value As Variant) As Boolean
@@ -22890,7 +22981,7 @@ Private Sub ValidateParameterValue( _
         RaiseTypeMismatch parameterValue, argumentValue
     End If
 
-    actualType = VarType(argumentValue.InternalScalarValue)
+    actualType = VarTypeOf(argumentValue.InternalScalarValue)
     If actualType <> expectedType Then
         RaiseTypeMismatch parameterValue, argumentValue
     End If
@@ -23212,7 +23303,7 @@ Private Function FinalizeDelegateResult(ByVal result As ROneCOne) As ROneCOne
                 "The delegate result is an object, not a scalar value."
         End If
         Set result = WidenScalarToward(result, mReturnType)
-        actualType = VarType(result.InternalScalarValue)
+        actualType = VarTypeOf(result.InternalScalarValue)
         If actualType <> mReturnType Then
             RaiseContractError ERROR_TYPE_MISMATCH, "Run", _
                 "Expected " & TypeNameForVarType(mReturnType) & ", received " & _
@@ -24716,7 +24807,7 @@ Private Function FormatArgText( _
             "Objects other than ROneCOne values cannot be formatted."
     End If
     If IsEmpty(value) Or IsNull(value) Then Exit Function
-    If VarType(value) = vbDate Then
+    If VarTypeOf(value) = vbDate Then
         MsToClockParts DateToMs(CDate(value)), clockDate, msOfDay
         If Len(formatText) = 0 Then
             FormatArgText = ClockStampText(clockDate, msOfDay)
@@ -24725,7 +24816,7 @@ Private Function FormatArgText( _
         End If
         Exit Function
     End If
-    If VarType(value) = vbBoolean Then
+    If VarTypeOf(value) = vbBoolean Then
         If value Then
             FormatArgText = "True"
         Else
@@ -24733,7 +24824,7 @@ Private Function FormatArgText( _
         End If
         Exit Function
     End If
-    If VarType(value) = vbString Then
+    If VarTypeOf(value) = vbString Then
         ' Strings pass through untouched, exactly as String.Format treats
         ' arguments that do not implement IFormattable.
         FormatArgText = value
@@ -26275,7 +26366,7 @@ Private Function XmlCellText(ByVal value As Variant) As String
     Dim clockDate As Date
     Dim msOfDay As Long
 
-    Select Case VarType(value)
+    Select Case VarTypeOf(value)
         Case vbString
             XmlCellText = XmlEscapeText(CStr(value))
         Case vbBoolean
@@ -26376,7 +26467,7 @@ Private Function CoerceOffsetMinutes( _
     If IsObject(offsetValue) Then
         minutesValue = RequireTimeSpanOperandMs(offsetValue, memberName) / _
             MS_PER_MINUTE
-    ElseIf IsNumeric(offsetValue) And VarType(offsetValue) <> vbString Then
+    ElseIf IsNumeric(offsetValue) And VarTypeOf(offsetValue) <> vbString Then
         minutesValue = CDbl(offsetValue)
     Else
         RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
@@ -26393,7 +26484,7 @@ Private Function RequireIntegralNumber( _
     ByVal value As Variant, _
     ByVal memberName As String _
 ) As Double
-    If IsObject(value) Or VarType(value) = vbString Or Not IsNumeric(value) Then
+    If IsObject(value) Or VarTypeOf(value) = vbString Or Not IsNumeric(value) Then
         RaiseContractError ERROR_TYPE_MISMATCH, memberName, _
             memberName & " requires a whole number."
     End If

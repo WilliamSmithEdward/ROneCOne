@@ -6,6 +6,31 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
+## Unreleased
+
+### Fixed
+
+- Every JSON serialization left a stray error behind, closing
+  [issue #5](https://github.com/WilliamSmithEdward/ROneCOne/issues/5). This is the `IsArray`
+  hazard from #4 in a second intrinsic: `VarType` also evaluates its argument in a value context,
+  so a Variant holding a runtime value was dereferenced through its default member, `Run`, which
+  rejected the zero arguments that dereference supplies. `VarType` then reported `vbObject`
+  precisely because that call failed, so serialization returned the right text while leaving `Err`
+  dirty for any caller running under `On Error Resume Next`. The JSON writer opens with a `VarType`
+  test on the value it was handed, so lists, dictionaries, tables, rows, and views were all
+  affected; `ToCsv` was not. All 52 type tests now go through a guarded `VarTypeOf` helper that
+  checks `IsObject` first, and a source contract asserts `VarType` appears exactly once in the
+  runtime, inside that helper. The guard also removes an accidental dependency: the runtime reached
+  its object branches only because the default member happened to fail, which would not hold for a
+  foreign object whose default member succeeds.
+
+- `ToJson(True)` ignored indentation for tables, rows, and views, contradicting the documented
+  promise that indented output is available for every serializable value. Only dictionaries and
+  sequences carried line structure; the data roles fell through to the compact writer and returned
+  text identical to `ToJson()`. The indented writer now covers them, and the live suite checks that
+  the indented form of a table breaks lines, indents its rows, and parses back to the same
+  document.
+
 ## 1.8.1 - 2026-08-01
 
 ### Fixed

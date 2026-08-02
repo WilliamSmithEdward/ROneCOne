@@ -386,7 +386,90 @@ Private Sub TestJsonSurface()
     AssertTrue "table to objects typed list", InStr(1, _
         mapped.GenericTypeName, "GenericCustomer") > 0
 
+    TestJsonSerializationLeavesErrClean
     TestJsonPartialReads factory
+End Sub
+
+Private Sub TestJsonSerializationLeavesErrClean()
+    Dim errNumber As Long
+    Dim ignoredText As String
+    Dim indented As String
+    Dim map As ROneCOne
+    Dim table As ROneCOne
+    Dim view As ROneCOne
+
+    mCurrentTest = "TestJsonSurface.ErrCleanliness"
+
+    ' VarType evaluates its argument in a value context, so a Variant
+    ' holding one of these objects fires the default member with no
+    ' arguments. The intrinsic still answers vbObject because that call
+    ' failed, so serialization returned the right text while leaving Err
+    ' dirty for any caller running under On Error Resume Next. Every shape
+    ' the JSON writer accepts is checked, because the hazard sits at the
+    ' writer's entry point rather than in one role's branch.
+    Set table = ROneCOne.Json.DeserializeTable( _
+        "[{""Region"":""West"",""Amount"":120}," & _
+        "{""Region"":""East"",""Amount"":80}]", "Sales")
+    Set view = ROneCOne.DataView(table)
+    Set map = ROneCOne.DictionaryOf(vbString, vbLong)
+    map.Add "one", 1
+
+    Err.Clear
+    On Error Resume Next
+    ignoredText = ROneCOne.ListOf(vbString, "a", "b").ToJson
+    errNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "list to json leaves Err clean", 0&, errNumber
+
+    Err.Clear
+    On Error Resume Next
+    ignoredText = map.ToJson
+    errNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "dictionary to json leaves Err clean", 0&, errNumber
+
+    Err.Clear
+    On Error Resume Next
+    ignoredText = table.ToJson
+    errNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "table to json leaves Err clean", 0&, errNumber
+
+    Err.Clear
+    On Error Resume Next
+    ignoredText = table.Rows.Item(0).ToJson
+    errNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "row to json leaves Err clean", 0&, errNumber
+
+    Err.Clear
+    On Error Resume Next
+    ignoredText = view.ToJson
+    errNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "view to json leaves Err clean", 0&, errNumber
+
+    Err.Clear
+    On Error Resume Next
+    ignoredText = table.ToCsv
+    errNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "table to csv leaves Err clean", 0&, errNumber
+
+    ' Indented output covers the data roles too, not only dictionaries and
+    ' lists, and still parses back to the same document.
+    indented = table.ToJson(True)
+    AssertTrue "indented table breaks lines", InStr(1, indented, vbLf) > 0
+    AssertTrue "indented table indents rows", _
+        InStr(1, indented, "[" & vbLf & "  {") > 0
+    AssertTrue "indented table spaces members", _
+        InStr(1, indented, """Region"": ""West""") > 0
+    AssertEqual "indented table round trip", table.ToJson, _
+        ROneCOne.Json.DeserializeTable(indented, "Sales").ToJson
+    AssertTrue "indented row breaks lines", _
+        InStr(1, table.Rows.Item(0).ToJson(True), vbLf) > 0
+    AssertTrue "indented view breaks lines", _
+        InStr(1, view.ToJson(True), vbLf) > 0
 End Sub
 
 Private Sub TestJsonPartialReads(ByVal factory As ROneCOne)

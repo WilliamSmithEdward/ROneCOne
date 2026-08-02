@@ -39,8 +39,9 @@ the scan; the strategy is adapted, with its author's permission, from
 | Any other object | Raises: map it with `DataTableFromObjects` first |
 
 `Serialize(value, True)` and `ToJson(True)` produce two-space-indented output that parses back
-to the identical document. The whole document is written into one pre-allocated buffer;
-escaping copies clean runs in chunks.
+to the identical document. Indentation covers every container the writer accepts, including
+tables, rows, and views. The whole document is written into one pre-allocated buffer; escaping
+copies clean runs in chunks.
 
 ## Tables and objects
 
