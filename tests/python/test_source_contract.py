@@ -963,6 +963,19 @@ class SourceContractTests(unittest.TestCase):
             body.append((line_no, line))
         collect()
 
+        # A typed local is not the only way to bind late. Both Collection.Item
+        # and this class's own Item return Variant, so any `.Item(...).Member`
+        # chain reaching a Friend member has the same defect with no Object
+        # local anywhere in sight. That is how the hazard came back inside
+        # WriteToListObject after #3 was closed.
+        joined = re.sub(r"\s+_\r?\n\s*", " ", source)
+        for line_no, line in enumerate(joined.split("\n"), start=1):
+            for member in re.findall(r"\.Item\([^()]*\)\.(\w+)", line):
+                if member in friend_names:
+                    offenders.append(
+                        f"line {line_no}: .Item(...).{member} binds late"
+                    )
+
         self.assertEqual([], offenders)
 
     def test_source_never_declares_a_bang_member_identifier(self) -> None:

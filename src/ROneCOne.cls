@@ -590,6 +590,7 @@ Private mEnumerationValues As Collection
 Private mElementType As VbVarType
 Private mElementObjectType As String
 Private mSource As ROneCOne
+Private mSourceTable As Object
 Private mQueryDelegate As ROneCOne
 Private mQueryComparer As ROneCOne
 Private mQueryValue As ROneCOne
@@ -1738,6 +1739,56 @@ Attribute DataTable.VB_Description = "Creates an in-memory DataTable."
     Set DataTable = tableValue
 End Function
 
+Public Function Table(ByVal listObject As Object) As ROneCOne
+Attribute Table.VB_Description = _
+    "Reads an Excel Table into a DataTable that stays attached to it."
+    Dim tableValue As ROneCOne
+
+    If Not IsExcelTable(listObject) Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, "Table", _
+            "Table needs an Excel Table, for example " & _
+            "Sheet1.ListObjects(""Sales"")."
+    End If
+    Set tableValue = ROneCOne.DataTableFromRange(listObject, True, listObject.Name)
+    tableValue.AttachSourceTable listObject
+    Set Table = tableValue
+End Function
+
+Public Sub Refresh()
+Attribute Refresh.VB_Description = "Re-reads this table in place from the Excel Table it came from."
+    ' In place rather than returning a copy, so a bare Refresh statement
+    ' cannot silently do nothing.
+    InternalFillFromRange RequireSourceTable("Refresh"), True, "Refresh"
+End Sub
+
+Public Function WriteBack(Optional ByVal source As Variant) As Long
+Attribute WriteBack.VB_Description = _
+    "Writes rows into the Excel Table this came from, resizing it to fit."
+    Dim listObject As Object
+    Dim writer As ROneCOne
+
+    Set listObject = RequireSourceTable("WriteBack")
+    If IsMissing(source) Then
+        Set writer = Me
+    ElseIf IsObject(source) Then
+        Set writer = source
+    Else
+        RaiseContractError ERROR_INVALID_ARGUMENT, "WriteBack", _
+            "WriteBack needs a DataTable or DataView, or no argument to " & _
+            "write this table's own rows."
+    End If
+    WriteBack = writer.ToRange(listObject)
+End Function
+
+Private Function RequireSourceTable(ByVal memberName As String) As Object
+    If mSourceTable Is Nothing Then
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            memberName & " needs a table read with ROneCOne.Table(listObject), " & _
+            "which is what remembers where the rows came from."
+    End If
+    Set RequireSourceTable = mSourceTable
+End Function
+
 Public Function DataColumn( _
     ByVal columnName As String, _
     ByVal typeToken As Variant _
@@ -2122,32 +2173,10 @@ Public Function DataTableFromRange( _
 ) As ROneCOne
 Attribute DataTableFromRange.VB_Description = _
     "Reads a worksheet range into a new DataTable in one bulk call."
-    Dim colCount As Long
-    Dim colIndex As Long
-    Dim columnName As String
-    Dim firstDataRow As Long
-    Dim grid As Variant
-    Dim rowCount As Long
-    Dim rowIndex As Long
     Dim table As ROneCOne
-    Dim values() As Variant
 
-    ReadRangeGrid source, grid, rowCount, colCount, "DataTableFromRange"
     Set table = ROneCOne.DataTable(tableName)
-    For colIndex = 1 To colCount
-        columnName = vbNullString
-        If headers Then columnName = Trim$(CStr(grid(1, colIndex)))
-        If Len(columnName) = 0 Then columnName = "Column" & CStr(colIndex)
-        table.Column columnName, vbVariant
-    Next colIndex
-    firstDataRow = IIf(headers, 2, 1)
-    For rowIndex = firstDataRow To rowCount
-        ReDim values(0 To colCount - 1)
-        For colIndex = 1 To colCount
-            values(colIndex - 1) = grid(rowIndex, colIndex)
-        Next colIndex
-        table.LoadRow values
-    Next rowIndex
+    table.InternalFillFromRange source, headers, "DataTableFromRange"
     Set DataTableFromRange = table
 End Function
 
@@ -2160,7 +2189,8 @@ Attribute ListFromRange.VB_Description = _
     Dim listValue As ROneCOne
     Dim rowCount As Long
 
-    ReadRangeGrid source, grid, rowCount, colCount, "ListFromRange"
+    ReadRangeGrid ResolveTableRange(source, False, "ListFromRange"), _
+        grid, rowCount, colCount, "ListFromRange"
     If rowCount > 1 And colCount > 1 Then
         RaiseContractError ERROR_INVALID_ARGUMENT, "ListFromRange", _
             "ListFromRange needs a single row or column; " & _
@@ -2194,7 +2224,8 @@ Attribute LoadFromRange.VB_Description = _
     Dim rowIndex As Long
 
     RequireDataTable Me, "LoadFromRange"
-    ReadRangeGrid source, grid, rowCount, colCount, "LoadFromRange"
+    ReadRangeGrid ResolveTableRange(source, headers, "LoadFromRange"), _
+        grid, rowCount, colCount, "LoadFromRange"
     If colCount <> mKeysCount Then
         RaiseContractError ERROR_INVALID_ARGUMENT, "LoadFromRange", _
             "The range column count does not match the table column count."
@@ -2216,6 +2247,13 @@ Public Function ToRange( _
 ) As Long
 Attribute ToRange.VB_Description = _
     "Writes a DataTable grid or a scalar sequence to a worksheet range."
+    ' Writing into an Excel Table is a different operation from writing at a
+    ' cell: the table owns its extent, so it is resized to fit rather than
+    ' overwritten in place.
+    If IsExcelTable(target) Then
+        ToRange = WriteToListObject(target, "ToRange")
+        Exit Function
+    End If
     If mRole = ROLE_DATA_TABLE Then
         ToRange = WriteDataTableToRange(target, writeHeaders)
     ElseIf mRole = ROLE_DATA_VIEW Then
@@ -2315,6 +2353,131 @@ Private Function WriteSequenceToRange(ByVal target As Object) As Long
     Next wrapped
     target.Resize(values.Count, 1).Value = output
     WriteSequenceToRange = values.Count
+End Function
+
+' The only two places the runtime recognizes an Excel Table. A ListObject is
+' not a Range and has no Value, so every bridge raised 438 when handed one,
+' which reads as the runtime rejecting the table rather than VBA rejecting
+' the type. A Range passes straight through, so recognition costs one
+' TypeName test on the way in.
+Private Function IsExcelTable(ByVal candidate As Object) As Boolean
+    If candidate Is Nothing Then Exit Function
+    IsExcelTable = (TypeName(candidate) = "ListObject")
+End Function
+
+Private Function ResolveTableRange( _
+    ByVal source As Object, _
+    ByVal wantHeaders As Boolean, _
+    ByVal memberName As String _
+) As Object
+    Dim owner As Object
+    Dim resolved As Object
+
+    If source Is Nothing Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "The worksheet range cannot be Nothing."
+    End If
+    Select Case TypeName(source)
+        Case "ListObject"
+            Set owner = source
+        Case "ListColumn"
+            Set owner = source.Parent
+        Case Else
+            Set ResolveTableRange = source
+            Exit Function
+    End Select
+
+    If wantHeaders Then
+        ' Range spans the totals row when one is showing, and a total is not
+        ' data, so the slice stops after the last body row. An empty table
+        ' still yields its header row, which reads back as columns and no
+        ' rows rather than as a failure.
+        Set resolved = source.Range.Resize(1 + owner.ListRows.Count)
+    Else
+        Set resolved = source.DataBodyRange
+    End If
+    If resolved Is Nothing Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "The Excel Table '" & owner.Name & "' has no data rows."
+    End If
+    Set ResolveTableRange = resolved
+End Function
+
+' Writes this table's rows into an Excel Table, resizing it to fit. Excel
+' refuses to resize a table to nothing and leaves the vacated cells behind
+' when one shrinks, and it places a totals row inconsistently across a grow
+' and a shrink, so totals are switched off for the duration and the old tail
+' is cleared by hand. All three behaviors were measured rather than assumed.
+Private Function WriteToListObject( _
+    ByVal listObject As Object, _
+    ByVal memberName As String _
+) As Long
+    Dim body() As Variant
+    Dim bodyRow As ROneCOne
+    Dim colCount As Long
+    Dim colIndex As Long
+    Dim firstBodyRow As Long
+    Dim firstColumn As Long
+    Dim hadTotals As Boolean
+    Dim liveRows As Collection
+    Dim oldRows As Long
+    Dim rowIndex As Long
+    Dim sheet As Object
+    Dim source As ROneCOne
+
+    If mRole = ROLE_DATA_VIEW Then
+        Set source = ToTable
+    ElseIf mRole = ROLE_DATA_TABLE Then
+        Set source = Me
+    Else
+        RaiseContractError ERROR_INVALID_OPERATION, memberName, _
+            "Writing into an Excel Table requires a DataTable or DataView."
+    End If
+
+    colCount = listObject.ListColumns.Count
+    Set liveRows = source.InternalLiveDataRows
+    If source.Columns.Count <> colCount Then
+        RaiseContractError ERROR_INVALID_ARGUMENT, memberName, _
+            "This value has " & CStr(source.Columns.Count) & _
+            " columns and the Excel Table '" & listObject.Name & "' has " & _
+            CStr(colCount) & "; they must match."
+    End If
+
+    Set sheet = listObject.Parent
+    oldRows = listObject.ListRows.Count
+    firstBodyRow = listObject.Range.Row + 1
+    firstColumn = listObject.Range.Column
+    hadTotals = listObject.ShowTotals
+    listObject.ShowTotals = False
+
+    If liveRows.Count = 0 Then
+        ' Resize refuses to leave a table with no data rows, so the body is
+        ' deleted instead. The header row and the table itself survive.
+        If Not listObject.DataBodyRange Is Nothing Then
+            listObject.DataBodyRange.Delete
+        End If
+    Else
+        listObject.Resize listObject.Range.Resize(1 + liveRows.Count, colCount)
+        ReDim body(1 To liveRows.Count, 1 To colCount)
+        For rowIndex = 1 To liveRows.Count
+            ' The typed local matters. Collection.Item returns a Variant, so
+            ' reading the Friend InternalDataRows straight off it would bind
+            ' late and raise 438 at run time, the defect closed in #3.
+            Set bodyRow = liveRows.Item(rowIndex)
+            For colIndex = 1 To colCount
+                body(rowIndex, colIndex) = RangeCellValue( _
+                    bodyRow.InternalDataRows.Item(colIndex))
+            Next colIndex
+        Next rowIndex
+        listObject.DataBodyRange.Value = body
+    End If
+
+    If oldRows > liveRows.Count Then
+        sheet.Cells(firstBodyRow + liveRows.Count, firstColumn) _
+            .Resize(oldRows - liveRows.Count, colCount).ClearContents
+    End If
+    listObject.ShowTotals = hadTotals
+    WriteToListObject = liveRows.Count
 End Function
 
 Private Function RangeCellValue(ByVal wrapped As ROneCOne) As Variant
@@ -11857,6 +12020,73 @@ Friend Function TryCompletePromise( _
     TryCompletePromise = True
 End Function
 
+' The live rows of a table or a view, in the order a reader should see
+' them. A table hides rows marked Deleted; a view has already applied its
+' filter and sort, and hands back wrappers that still need unwrapping.
+' Friend rather than Private because the JSON writer and the Excel Table
+' writer both ask another instance for its rows, and a Friend member read
+' through a typed local is the one binding VBA honors.
+Friend Function InternalLiveDataRows() As Collection
+    Dim liveRows As Collection
+    Dim row As ROneCOne
+    Dim wrapped As ROneCOne
+
+    Set liveRows = New Collection
+    If mRole = ROLE_DATA_VIEW Then
+        For Each wrapped In MaterializeWrapped
+            If wrapped.InternalHasObjectValue Then
+                liveRows.Add wrapped.InternalObjectValue
+            Else
+                liveRows.Add wrapped
+            End If
+        Next wrapped
+    Else
+        RequireDataTable Me, "InternalLiveDataRows"
+        For Each row In ArrSnapshot(mItems, mItemsCount)
+            If row.RowState <> "Deleted" Then liveRows.Add row
+        Next row
+    End If
+    Set InternalLiveDataRows = liveRows
+End Function
+
+Friend Sub InternalFillFromRange( _
+    ByVal source As Object, _
+    ByVal headers As Boolean, _
+    ByVal memberName As String _
+)
+    Dim colCount As Long
+    Dim colIndex As Long
+    Dim columnName As String
+    Dim firstDataRow As Long
+    Dim grid As Variant
+    Dim rowCount As Long
+    Dim rowIndex As Long
+    Dim values() As Variant
+
+    RequireDataTable Me, memberName
+    ReadRangeGrid ResolveTableRange(source, headers, memberName), _
+        grid, rowCount, colCount, memberName
+    ConfigureDataTable mName
+    For colIndex = 1 To colCount
+        columnName = vbNullString
+        If headers Then columnName = Trim$(CStr(grid(1, colIndex)))
+        If Len(columnName) = 0 Then columnName = "Column" & CStr(colIndex)
+        Column columnName, vbVariant
+    Next colIndex
+    firstDataRow = IIf(headers, 2, 1)
+    For rowIndex = firstDataRow To rowCount
+        ReDim values(0 To colCount - 1)
+        For colIndex = 1 To colCount
+            values(colIndex - 1) = grid(rowIndex, colIndex)
+        Next colIndex
+        LoadRow values
+    Next rowIndex
+End Sub
+
+Friend Sub AttachSourceTable(ByVal listObject As Object)
+    Set mSourceTable = listObject
+End Sub
+
 Friend Sub ConfigureDataTable(ByVal tableName As String)
     mRole = ROLE_DATA_TABLE
     mName = tableName
@@ -13761,7 +13991,7 @@ Private Sub JsonWriteRuntimeValue( _
             JsonBuilderAppend builder, "["
             Dim firstRow As Boolean
             firstRow = True
-            For Each row In JsonDataRowsOf(value)
+            For Each row In value.InternalLiveDataRows
                 If Not firstRow Then JsonBuilderAppend builder, ","
                 firstRow = False
                 JsonWriteDataRow builder, row
@@ -13812,27 +14042,6 @@ Private Function JsonUnwrapValue(ByVal wrapped As ROneCOne) As Variant
     Else
         JsonUnwrapValue = wrapped.InternalScalarValue
     End If
-End Function
-
-' The live rows of a table or a view, in the order a reader should see them.
-' A table hides rows marked Deleted; a view has already applied its filter
-' and sort, and hands back wrappers that still need unwrapping.
-Private Function JsonDataRowsOf(ByVal value As ROneCOne) As Collection
-    Dim liveRows As Collection
-    Dim row As ROneCOne
-    Dim wrapped As ROneCOne
-
-    Set liveRows = New Collection
-    If value.InternalRole = ROLE_DATA_VIEW Then
-        For Each wrapped In value.MaterializeWrapped
-            liveRows.Add JsonUnwrapObject(wrapped)
-        Next wrapped
-    Else
-        For Each row In value.InternalDataRows
-            If row.RowState <> "Deleted" Then liveRows.Add row
-        Next row
-    End If
-    Set JsonDataRowsOf = liveRows
 End Function
 
 Private Function JsonUnwrapObject(ByVal wrapped As ROneCOne) As ROneCOne
@@ -14001,7 +14210,7 @@ Private Sub JsonWriteValuePretty( _
                 Select Case runtimeValue.InternalRole
                     Case ROLE_DATA_TABLE, ROLE_DATA_VIEW
                         JsonWriteDataRowsPretty builder, _
-                            JsonDataRowsOf(runtimeValue), depth
+                            runtimeValue.InternalLiveDataRows, depth
                         Exit Sub
                     Case ROLE_DATA_ROW
                         JsonWriteDataRowPretty builder, runtimeValue, depth
