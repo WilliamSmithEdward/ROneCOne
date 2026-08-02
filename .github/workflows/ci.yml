@@ -28,11 +28,12 @@ jobs:
         with:
           python-version: '3.12'
 
-      # From PyPI, which is the documented install, and pinned so the gate is
-      # reproducible. Bumping the analyzer is a deliberate one-line change
-      # here, reviewed like any other.
-      - name: Install pyVBAanalysis
-        run: python -m pip install pyvbaanalysis==1.3.1
+      # From requirements-dev.txt rather than a version repeated here, so the
+      # gate and a local checkout cannot drift. They already had: the file
+      # said 1.2.0 while this workflow said 1.3.1. Bumping is now one edit in
+      # one place, reviewed like any other.
+      - name: Install analysis tooling
+        run: python -m pip install -r requirements-dev.txt
 
       # Pure stdlib: these read the runtime, demo, and tool sources and pin
       # their shapes. No Excel, no third-party runtime dependency.
