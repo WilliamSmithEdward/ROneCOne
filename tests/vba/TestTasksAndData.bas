@@ -1658,6 +1658,128 @@ Private Sub TestRangeBridge()
     AssertEqual "sequence ToRange first cell", 1&, sheet.Range("P1").Value
 
     sheet.Range("H1:Q100").ClearContents
+    TestExcelTableBridge sheet
+End Sub
+
+Private Sub TestExcelTableBridge(ByVal sheet As Object)
+    Dim Amount As Variant
+    Dim errNumber As Long
+    Dim ignoredCount As Long
+    Dim listObject As Object
+    Dim loose As ROneCOne
+    Dim narrow As ROneCOne
+    Dim sales As ROneCOne
+    Dim typed As ROneCOne
+    Dim view As ROneCOne
+
+    mCurrentTest = "TestRangeBridge.ExcelTable"
+    sheet.Range("H1:Q100").ClearContents
+    On Error Resume Next
+    sheet.ListObjects("SuiteSales").Unlist
+    On Error GoTo 0
+
+    ' A real Excel Table, built the way a user's workbook holds one.
+    sheet.Range("H1:J1").Value = Array("Region", "Rep", "Amount")
+    sheet.Range("H2:J2").Value = Array("West", "Ada", 120)
+    sheet.Range("H3:J3").Value = Array("East", "Bo", 80)
+    sheet.Range("H4:J4").Value = Array("West", "Cy", 200)
+    Set listObject = sheet.ListObjects.Add(1, sheet.Range("H1:J4"), , 1)
+    listObject.Name = "SuiteSales"
+
+    ' Every bridge takes the table itself now. A ListObject has no Value,
+    ' so each of these raised 438 before the type was recognized.
+    Set sales = ROneCOne.DataTableFromRange(listObject)
+    AssertEqual "table direct rows", 3&, sales.Rows.Count
+    AssertEqual "table direct columns", 3&, sales.Columns.Count
+    AssertEqual "table headers became names", "Ada", _
+        CStr(sales.Rows.Item(0).Item("Rep"))
+    AssertEqual "table body only", "Ada", CStr(ROneCOne.DataTableFromRange( _
+        listObject, False).Rows.Item(0).Item("Column2"))
+    AssertEqual "list from a table column", 400#, _
+        ROneCOne.ListFromRange(listObject.ListColumns("Amount")).Sum
+    Set typed = ROneCOne.DataTable("Typed")
+    typed.Column "Region", vbVariant
+    typed.Column "Rep", vbVariant
+    typed.Column "Amount", vbVariant
+    AssertEqual "load from a table", 3&, typed.LoadFromRange(listObject)
+
+    ' The attached surface keeps hold of where the rows came from.
+    Set sales = ROneCOne.Table(listObject)
+    AssertEqual "attached table rows", 3&, sales.Rows.Count
+    AssertEqual "attached table takes its name", "SuiteSales", sales.TableName
+    AssertEqual "attached table aggregates", 400#, sales.Rows.Sum("Amount")
+    AssertEqual "attached table filters", 2&, sales.Rows.Where( _
+        sales.Rows!Amount.AtLeast(100)).Count
+
+    ' WriteBack shrinks the sheet table and clears what it vacated.
+    Set view = ROneCOne.DataView(sales) _
+        .WithFilter(sales.Rows!Amount.AtLeast(100))
+    AssertEqual "write back returns rows written", 2&, sales.WriteBack(view)
+    AssertEqual "sheet table shrank", 2&, listObject.ListRows.Count
+    AssertTrue "vacated cell cleared", IsEmpty(sheet.Range("H4").Value)
+    sales.Refresh
+    AssertEqual "refresh re-reads in place", 2&, sales.Rows.Count
+
+    ' And grows it again, resizing rather than overwriting neighbours.
+    sales.LoadRow Array("North", "Dee", 45)
+    sales.LoadRow Array("South", "Eve", 60)
+    AssertEqual "write back grows the table", 4&, sales.WriteBack
+    AssertEqual "sheet table grew", 4&, listObject.ListRows.Count
+    AssertEqual "grown cell landed", "Eve", CStr(sheet.Range("I5").Value)
+
+    ' ToRange onto a table is the same operation, so a view can drive it.
+    Set view = ROneCOne.DataView(sales).WithSort("Amount", True)
+    AssertEqual "view writes into the table", 4&, view.ToRange(listObject)
+    AssertEqual "view wrote in sort order", "Cy", CStr(sheet.Range("I2").Value)
+
+    ' A totals row is not data: it stays out of the rows and survives a
+    ' write back, which has to switch it off around the resize.
+    listObject.ShowTotals = True
+    Set sales = ROneCOne.Table(listObject)
+    AssertEqual "totals row excluded from rows", 4&, sales.Rows.Count
+    AssertEqual "write back with totals", 4&, sales.WriteBack
+    AssertTrue "totals row restored", listObject.ShowTotals
+    listObject.ShowTotals = False
+
+    ' Guardrails, each asserted on the error rather than the answer.
+    errNumber = 0
+    On Error Resume Next
+    ignoredCount = ROneCOne.Table(sheet.Range("H1")).Rows.Count
+    errNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "Table refuses a plain range", ROneCOne.InvalidArgumentError, _
+        errNumber
+
+    Set narrow = ROneCOne.DataTable("Narrow")
+    narrow.Column "Only", vbVariant
+    narrow.LoadRow Array("x")
+    errNumber = 0
+    On Error Resume Next
+    ignoredCount = narrow.ToRange(listObject)
+    errNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "column count must match", ROneCOne.InvalidArgumentError, _
+        errNumber
+
+    Set loose = ROneCOne.DataTable("Loose")
+    errNumber = 0
+    On Error Resume Next
+    ignoredCount = loose.WriteBack
+    errNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "WriteBack needs an attached table", _
+        ROneCOne.InvalidOperationError, errNumber
+
+    errNumber = 0
+    On Error Resume Next
+    loose.Refresh
+    errNumber = Err.Number
+    On Error GoTo 0
+    AssertEqual "Refresh needs an attached table", _
+        ROneCOne.InvalidOperationError, errNumber
+
+    listObject.Unlist
+    sheet.Range("H1:Q100").ClearContents
 End Sub
 
 Private Sub TestRelationConstraints()
