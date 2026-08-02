@@ -835,6 +835,88 @@ class SourceContractTests(unittest.TestCase):
             self.source,
         )
 
+    def test_no_friend_member_is_read_through_a_late_bound_local(self) -> None:
+        # VBA keeps Friend members off the IDispatch interface, so reading
+        # one through an Object or Variant local compiles clean and then
+        # raises 438 at run time, even from inside this very class. Bind
+        # through a typed ROneCOne local instead. This cost a live 438 in
+        # IsSequenceContainer, reachable from OneOf(sequence).
+        source = self.source
+        raw_lines = source.split("\n")
+        logical: list[tuple[int, str]] = []
+        buffer = ""
+        start = 0
+        for index, raw in enumerate(raw_lines, start=1):
+            line = raw.rstrip("\r")
+            if not buffer:
+                start = index
+            if line.rstrip().endswith(" _"):
+                buffer += line.rstrip()[:-1]
+                continue
+            logical.append((start, buffer + line))
+            buffer = ""
+
+        friend_names = set(
+            re.findall(
+                r"^Friend\s+(?:Property\s+(?:Get|Let|Set)|Function|Sub)\s+(\w+)",
+                source,
+                re.MULTILINE,
+            )
+        )
+        self.assertTrue(friend_names, "expected Friend members to exist")
+
+        proc_start = re.compile(
+            r"^\s*(?:Public\s+|Private\s+|Friend\s+)?(?:Static\s+)?"
+            r"(Sub|Function|Property\s+(?:Get|Let|Set))\s+(\w+)",
+            re.IGNORECASE,
+        )
+        proc_end = re.compile(r"^\s*End\s+(Sub|Function|Property)\b", re.IGNORECASE)
+        late_decl = re.compile(
+            r"\b(?:Dim|Static)\s+(\w+)\s+As\s+(Object|Variant)\b", re.IGNORECASE
+        )
+        late_param = re.compile(
+            r"\b(?:ByVal|ByRef)\s+(\w+)\s+As\s+(Object|Variant)\b", re.IGNORECASE
+        )
+
+        offenders: list[str] = []
+        current: str | None = None
+        late_locals: dict[str, str] = {}
+        body: list[tuple[int, str]] = []
+
+        def collect() -> None:
+            if current is None:
+                return
+            for line_no, line in body:
+                for local_name, kind in late_locals.items():
+                    hits = re.findall(
+                        rf"\b{re.escape(local_name)}\.(\w+)", line, re.IGNORECASE
+                    )
+                    for member in hits:
+                        if member in friend_names:
+                            offenders.append(
+                                f"line {line_no} in {current}: "
+                                f"{local_name} As {kind} -> .{member}"
+                            )
+
+        for line_no, line in logical:
+            if proc_end.match(line):
+                collect()
+                current, late_locals, body = None, {}, []
+                continue
+            match = proc_start.match(line)
+            if match and current is None:
+                current = match.group(2)
+                late_locals = dict(late_param.findall(line))
+                body = []
+                continue
+            if current is None:
+                continue
+            late_locals.update(dict(late_decl.findall(line)))
+            body.append((line_no, line))
+        collect()
+
+        self.assertEqual([], offenders)
+
     def test_source_never_declares_a_bang_member_identifier(self) -> None:
         # VBA normalizes identifier casing across the whole project, so a
         # declaration like `ByVal name As String` rewrites every bare Name

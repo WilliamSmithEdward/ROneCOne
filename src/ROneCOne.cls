@@ -22352,6 +22352,7 @@ End Function
 
 Private Function IsSequenceContainer(ByVal value As Variant) As Boolean
     Dim candidate As Object
+    Dim sequenceValue As ROneCOne
 
     If IsArray(value) Then
         IsSequenceContainer = True
@@ -22361,10 +22362,16 @@ Private Function IsSequenceContainer(ByVal value As Variant) As Boolean
     Set candidate = value
     If candidate Is Nothing Then Exit Function
     If TypeOf candidate Is ROneCOne Then
+        ' The typed local matters. A Friend member is not on the IDispatch
+        ' interface, so reading InternalRole through the Object local would
+        ' compile and then raise 438 at run time, even from inside this very
+        ' class. Declaring candidate As ROneCOne instead is not equivalent:
+        ' Set would then reject a plain Collection before the Else runs.
+        Set sequenceValue = candidate
         IsSequenceContainer = _
-            candidate.InternalRole = ROLE_LIST Or _
-            candidate.InternalRole = ROLE_QUERY Or _
-            IsGenericCollectionRole(candidate.InternalRole)
+            sequenceValue.InternalRole = ROLE_LIST Or _
+            sequenceValue.InternalRole = ROLE_QUERY Or _
+            IsGenericCollectionRole(sequenceValue.InternalRole)
     Else
         IsSequenceContainer = (TypeName(candidate) = "Collection")
     End If

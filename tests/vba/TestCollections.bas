@@ -116,6 +116,15 @@ Private Sub TestPredicateSystem()
     Set result = customers.Where("City") _
         .OneOf(Array("London", "Cleveland")).ToList
     AssertEqual "OneOf array", CLng(2), result.Count
+    ' A single ROneCOne sequence takes the other branch of the argument
+    ' sniff, which used to read a Friend member through an Object local and
+    ' raise 438. Every previous OneOf case passed an array or two scalars,
+    ' so nothing reached it.
+    Set result = customers.Where("City").OneOf(allowedCities).ToList
+    AssertEqual "OneOf sequence", CLng(2), result.Count
+    Set result = customers.Where("City") _
+        .OneOf(ROneCOne.ListOf(vbString, "London")).ToList
+    AssertEqual "OneOf sequence single match", CLng(1), result.Count
     Set result = customers.Where(allowedCities.Contains(customers!City)).ToList
     AssertEqual "collection.Contains expression", CLng(2), result.Count
     Set result = customers.Where( _

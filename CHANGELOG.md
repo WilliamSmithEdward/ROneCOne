@@ -6,6 +6,21 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
+## Unreleased
+
+### Fixed
+
+- `OneOf` given a single ROneCOne sequence raised run-time error 438 instead of building the
+  membership condition, closing
+  [issue #3](https://github.com/WilliamSmithEdward/ROneCOne/issues/3). `IsSequenceContainer` read
+  the Friend `InternalRole` through an `Object` local, and VBA keeps Friend members off the
+  IDispatch interface, so the read compiled clean and failed only when executed, even though the
+  caller is this very class. Binding through a typed `ROneCOne` local fixes it. Every previous
+  `OneOf` test passed an array or two scalars, so nothing reached the branch;
+  `customers.Where("City").OneOf(cities)` now works and is covered live. A source contract sweeps
+  the whole runtime for Friend members read through `Object` or `Variant` locals so the class of
+  defect cannot return.
+
 ## 1.8.0 - 2026-07-28
 
 ### Added
