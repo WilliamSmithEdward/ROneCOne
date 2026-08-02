@@ -6,7 +6,7 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
-## Unreleased
+## 1.8.1 - 2026-08-01
 
 ### Fixed
 
