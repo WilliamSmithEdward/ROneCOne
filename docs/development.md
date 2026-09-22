@@ -141,6 +141,9 @@ Everything else takes a name no reference defines, such as `itemValue`, `idx`, o
 `GUID` and `XML`. The demo modules ship beside the runtime and follow the same rule, spelling
 ROneCOne's members as the runtime does, and the VBA snippets on their worksheets quote those
 names rather than a placeholder such as `path` or `text` that would recase a reader's module.
+The VBA examples in README.md and docs/ follow the same rule, because readers copy them into
+their own modules: no name a library or ROneCOne spells differently, and no variable named like
+the procedure it wraps.
 
 `tests/python/test_casing.py` holds the runtime and the demo modules to one spelling per name
 everywhere, and to the reference spelling where pywin32 can read the registered type libraries,

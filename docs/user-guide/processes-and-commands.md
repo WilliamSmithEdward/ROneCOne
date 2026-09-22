@@ -7,13 +7,13 @@ your workbook stays responsive, and the result carries the exit code and both ou
 ## Run one command
 
 ```vba
-Dim result As ROneCOne
+Dim outcome As ROneCOne
 
-Set result = ROneCOne.Process.RunAsync("git --version").Await
-If result.ExitCode = 0 Then
-    MsgBox result.StandardOutput
+Set outcome = ROneCOne.Process.RunAsync("git --version").Await
+If outcome.ExitCode = 0 Then
+    MsgBox outcome.StandardOutput
 Else
-    MsgBox "Failed: " & result.StandardError
+    MsgBox "Failed: " & outcome.StandardError
 End If
 ```
 
@@ -25,7 +25,7 @@ Pass a working directory as the second argument when the command should run some
 specific:
 
 ```vba
-Set result = ROneCOne.Process.RunAsync("git status --short", "C:\repos\project").Await
+Set outcome = ROneCOne.Process.RunAsync("git status --short", "C:\repos\project").Await
 ```
 
 ## Overlap several commands
@@ -34,12 +34,12 @@ Each `RunAsync` starts its process immediately, so several commands genuinely ru
 time outside Excel while one `WhenAll` collects the results:
 
 ```vba
-Dim results As ROneCOne
+Dim outcomes As ROneCOne
 
-Set results = ROneCOne.Task.WhenAll( _
+Set outcomes = ROneCOne.Task.WhenAll( _
     ROneCOne.Process.RunAsync("ipconfig"), _
     ROneCOne.Process.RunAsync("systeminfo")).Await
-Debug.Print results.Item(0).StandardOutput
+Debug.Print outcomes.Item(0).StandardOutput
 ```
 
 Cancellation tokens work too: cancel the token and the runtime terminates the process and

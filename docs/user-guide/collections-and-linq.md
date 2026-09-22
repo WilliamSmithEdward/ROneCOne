@@ -11,19 +11,19 @@ ROneCOne can infer that concrete class, filter its properties, project names, an
 
 ```vba
 Dim customers As ROneCOne
-Dim names As ROneCOne
+Dim customerNames As ROneCOne
 
 Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 
-Set names = customers _
+Set customerNames = customers _
     .Where("Age").AtLeast(40) _
     .Map("CustomerName", vbString) _
     .Order _
     .ToList
 ```
 
-`customers` behaves as `List<Customer>`. `names` behaves as `List<String>`. No adapter class is
-needed, and the original `Customer` class does not need to know about ROneCOne.
+`customers` behaves as `List<Customer>`. `customerNames` behaves as `List<String>`. No adapter
+class is needed, and the original `Customer` class does not need to know about ROneCOne.
 
 ## Create a typed list
 
@@ -58,11 +58,11 @@ ROneCOne enforces the list's element type before a mutation changes the list.
 ## Use indexed dictionaries and sets
 
 ```vba
-Dim reserved As Long
+Dim allocated As Long
 Dim scoresById As ROneCOne
 
 Set scoresById = ROneCOne.DictionaryOf(vbLong, vbLong)
-reserved = scoresById.EnsureCapacity(10000)
+allocated = scoresById.EnsureCapacity(10000)
 scoresById.Add 101, 95
 
 Debug.Print scoresById.Item(101)
@@ -87,7 +87,7 @@ Set experienced = customers _
 Common conditions read the same way:
 
 ```vba
-Set selected = customers _
+Set found = customers _
     .Where("Age").Between(18, 65) _
     .Where("City").OneOf("London", "Paris") _
     .ToList
@@ -103,12 +103,12 @@ The direct contextual form is the easiest to read:
 
 ```vba
 Dim allowedCities As ROneCOne
-Dim selected As ROneCOne
+Dim found As ROneCOne
 
 Set allowedCities = ROneCOne.ListOf( _
     vbString, "London", "Cleveland")
 
-Set selected = customers _
+Set found = customers _
     .Where("City").IsIn(allowedCities) _
     .ToList
 ```
@@ -116,7 +116,7 @@ Set selected = customers _
 The receiver can also follow the C# shape:
 
 ```vba
-Set selected = customers.Where( _
+Set found = customers.Where( _
     allowedCities.Contains(customers!City)).ToList
 ```
 
@@ -143,13 +143,13 @@ access error.
 Build named conditions when a rule spans more than one property:
 
 ```vba
-Dim predicate As ROneCOne
-Dim selected As ROneCOne
+Dim rule As ROneCOne
+Dim found As ROneCOne
 
-Set predicate = customers.Condition("Age").AtLeast(40) _
+Set rule = customers.Condition("Age").AtLeast(40) _
     .Both(customers.Match("City", "London"))
 
-Set selected = customers.Where(predicate).ToList
+Set found = customers.Where(rule).ToList
 ```
 
 Use `Both` for AND, `Either` for OR, and `Negated` for NOT. `WhereNot` filters the inverse directly.
@@ -178,15 +178,15 @@ The matching forms are `WhereAny`, `WhereAll`, and `WhereNone`.
 `Map` is ROneCOne's concise projection operator because `Select` is reserved by VBA:
 
 ```vba
-Dim names As ROneCOne
+Dim customerNames As ROneCOne
 
-Set names = customers _
+Set customerNames = customers _
     .OrderByDescending("Age") _
     .Map("CustomerName", vbString) _
     .Distinct _
     .ToList
 
-Debug.Print names.JoinText(", ")
+Debug.Print customerNames.JoinText(", ")
 ```
 
 Build a stable multi-key order by starting with `OrderBy` and extending it with `ThenBy`:

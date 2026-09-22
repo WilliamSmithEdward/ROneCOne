@@ -43,20 +43,20 @@ Debug.Print ROneCOne.DateTime.UtcNow.ToUnixTimeMilliseconds
 ## Arithmetic that respects the calendar
 
 ```vba
-Dim due As ROneCOne
+Dim dueAt As ROneCOne
 
-Set due = ROneCOne.DateTime.Parse("2026-01-31T12:00:00Z")
-Debug.Print due.AddMonths(1).ToIsoString   ' 2026-02-28T12:00:00Z, clamped like .NET
-Debug.Print due.AddDays(0.5).ToIsoString   ' fractions welcome
+Set dueAt = ROneCOne.DateTime.Parse("2026-01-31T12:00:00Z")
+Debug.Print dueAt.AddMonths(1).ToIsoString   ' 2026-02-28T12:00:00Z, clamped like .NET
+Debug.Print dueAt.AddDays(0.5).ToIsoString   ' fractions welcome
 ```
 
 Subtracting two instants yields a duration; durations have totals and components:
 
 ```vba
-Dim wait As ROneCOne
+Dim remaining As ROneCOne
 
-Set wait = due.Subtract(ROneCOne.DateTime.UtcNow)
-Debug.Print wait.TotalHours
+Set remaining = dueAt.Subtract(ROneCOne.DateTime.UtcNow)
+Debug.Print remaining.TotalHours
 Debug.Print ROneCOne.TimeSpan.FromMinutes(90).ToString   ' 01:30:00
 ```
 

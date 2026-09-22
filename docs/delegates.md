@@ -15,18 +15,18 @@ The shortest string-free form can build a reusable pricing rule and infer its in
 
 ```vba
 Dim applyDiscount As ROneCOne
-Dim price As ROneCOne
+Dim listPrice As ROneCOne
 
-Set price = ROneCOne.Var(vbDouble)
-Set applyDiscount = price.Multiply(0.9).AsFunc
+Set listPrice = ROneCOne.Var(vbDouble)
+Set applyDiscount = listPrice.Multiply(0.9).AsFunc
 Debug.Print applyDiscount(100)
 ```
 
 The canonical expansion is:
 
 ```vba
-Set price = ROneCOne.Parameter(vbDouble)
-Set applyDiscount = ROneCOne.Lambda(price.Multiply(0.9), price)
+Set listPrice = ROneCOne.Parameter(vbDouble)
+Set applyDiscount = ROneCOne.Lambda(listPrice.Multiply(0.9), listPrice)
 ```
 
 `AsFunc` discovers unique parameters once in left-to-right order. `ROneCOne.Value(capturedValue)`
@@ -39,8 +39,8 @@ adds an immutable captured scalar or object reference to an expression tree.
 | Target | Construction | Dispatch boundary |
 |---|---|---|
 | Expression | `ROneCOne.Func(expression)` | ROneCOne expression evaluator |
-| Object method | `ROneCOne.Func(target, "Transform")` | `CallByName` |
-| Callable object | `ROneCOne.Func(target)` | `target.Run` |
+| Object method | `ROneCOne.Func(transformer, "Transform")` | `CallByName` |
+| Callable object | `ROneCOne.Func(transformer)` | `transformer.Run` |
 | Workbook procedure | `ROneCOne.Func("Module.Transform")` | `Application.Run` |
 | Native address | `ROneCOne.Native(address)` | `DispCallFunc` |
 
@@ -51,7 +51,7 @@ object member name binds `Run`, giving application classes a concise callable-ob
 `Takes` and `Returns` add immutable runtime signature metadata:
 
 ```vba
-Set transform = ROneCOne.Func(target, "Transform") _
+Set transform = ROneCOne.Func(transformer, "Transform") _
     .Takes(vbLong) _
     .Returns(vbString)
 ```
@@ -72,9 +72,9 @@ The default member provides the natural C#-like call form. `Run` is the explicit
 `DynamicInvoke` consumes a VBA array, `Collection`, or ROneCOne sequence.
 
 ```vba
-result = transform(7)
-result = transform.Run(7)
-result = transform.DynamicInvoke(Array(7))
+outcome = transform(7)
+outcome = transform.Run(7)
+outcome = transform.DynamicInvoke(Array(7))
 ```
 
 VBA class modules inherit an `Invoke` dispatch member and reject a public method with that name at
@@ -95,10 +95,10 @@ behavior. `Remove` removes the last matching invocation subsequence and leaves t
 `ROneCOne.Func(existingAction)` and `existingAction.Returns(...)` raise `InvalidOperationError`.
 
 ```vba
-Set notify = ROneCOne.Combine(updateDashboard, writeAudit)
-notify.Execute "Order 1042 approved"
-Set withoutAudit = notify.Remove(writeAudit)
-Set handlers = notify.GetInvocationList
+Set announce = ROneCOne.Combine(dashboard, audit)
+announce.Execute "Order 1042 approved"
+Set withoutAudit = announce.Remove(audit)
+Set handlers = announce.GetInvocationList
 ```
 
 `Execute` is the statement-form invocation surface for Actions. It validates the same signature as
@@ -118,14 +118,14 @@ ROneCOne therefore admits true `ByRef` only for signature-bound native delegates
 a typed reference factory captures the caller's original variable:
 
 ```vba
-Dim increment As ROneCOne
-Dim value As Long
+Dim addOne As ROneCOne
+Dim orderNumber As Long
 
-value = 41
-Set increment = ROneCOne.NativeAction(IncrementLongAddress) _
+orderNumber = 41
+Set addOne = ROneCOne.NativeAction(IncrementLongAddress) _
     .Takes(ROneCOne.RefOf(vbLong))
-increment.Execute ROneCOne.RefLong(value)
-Debug.Print value  ' 42
+addOne.Execute ROneCOne.RefLong(orderNumber)
+Debug.Print orderNumber  ' 42
 ```
 
 Typed variable wrappers are `RefByte`, `RefInteger`, `RefLong`, `RefLongLong`, `RefSingle`,

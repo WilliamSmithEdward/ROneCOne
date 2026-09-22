@@ -5,7 +5,7 @@ read [Data and providers](user-guide/data-and-providers.md).
 
 ## Surface
 
-`connection.Queryable(tableName)` returns a deferred query over one table of an open or lazy
+`conn.Queryable(tableName)` returns a deferred query over one table of an open or lazy
 connection. Every composing member returns a new query, so a base query can be shared safely.
 
 | Member | Behavior |
@@ -25,7 +25,7 @@ connection. Every composing member returns a new query, so a base query can be s
 ```vba
 Dim recent As ROneCOne
 
-Set recent = connection.Queryable("Orders") _
+Set recent = conn.Queryable("Orders") _
     .Where("Total").AtLeast(100) _
     .OrderByDescending("Placed") _
     .Take(50) _
@@ -39,7 +39,7 @@ A value can never be read as SQL, so an injection-shaped string matches literall
 
 ```vba
 ' Finds the one customer actually named this. It cannot widen the result set.
-connection.Queryable("Orders").Where("Customer").EqualTo("x' OR '1'='1").Count
+conn.Queryable("Orders").Where("Customer").EqualTo("x' OR '1'='1").Count
 ```
 
 `ToSqlString` shows the statement with its markers and `SqlParameterValues` lists the values in

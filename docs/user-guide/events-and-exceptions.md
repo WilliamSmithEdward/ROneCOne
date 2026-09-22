@@ -10,9 +10,9 @@ First create compatible handlers:
 
 ```vba
 Dim updateStatus As ROneCOne
-Dim writeAudit As ROneCOne
+Dim audit As ROneCOne
 
-Set writeAudit = ROneCOne.Action("Orders.WriteAudit") _
+Set audit = ROneCOne.Action("Orders.WriteAudit") _
     .Takes(vbString)
 Set updateStatus = ROneCOne.Action("Orders.UpdateDashboard") _
     .Takes(vbString)
@@ -24,7 +24,7 @@ Then subscribe and emit:
 Dim orderStatusChanged As ROneCOne
 
 Set orderStatusChanged = ROneCOne.EventOf(vbString) _
-    .Subscribe(writeAudit) _
+    .Subscribe(audit) _
     .Subscribe(updateStatus)
 
 orderStatusChanged.Emit "Order 1042 shipped"
@@ -40,14 +40,14 @@ before the subscriber list changes.
 Create the three actions that define the flow:
 
 ```vba
-Dim closeFile As ROneCOne
-Dim importSales As ROneCOne
-Dim skipBadRow As ROneCOne
+Dim closeFileAction As ROneCOne
+Dim importWork As ROneCOne
+Dim skipBadRowAction As ROneCOne
 
-Set importSales = ROneCOne.Action("SalesImport.ImportSales")
-Set skipBadRow = ROneCOne.Action("SalesImport.SkipBadRow") _
+Set importWork = ROneCOne.Action("SalesImport.ImportSales")
+Set skipBadRowAction = ROneCOne.Action("SalesImport.SkipBadRow") _
     .Takes(ROneCOne.Exception)
-Set closeFile = ROneCOne.Action("SalesImport.CloseFile")
+Set closeFileAction = ROneCOne.Action("SalesImport.CloseFile")
 ```
 
 Build and execute the operation:
@@ -55,9 +55,9 @@ Build and execute the operation:
 ```vba
 Dim importAttempt As ROneCOne
 
-Set importAttempt = ROneCOne.Try(importSales) _
-    .Catch(INVALID_AMOUNT_ERROR, skipBadRow) _
-    .Finally(closeFile)
+Set importAttempt = ROneCOne.Try(importWork) _
+    .Catch(INVALID_AMOUNT_ERROR, skipBadRowAction) _
+    .Finally(closeFileAction)
 
 importAttempt.Execute
 ```
@@ -94,10 +94,10 @@ that information.
 The two-argument `Catch` form matches an exact VBA error number:
 
 ```vba
-Set importAttempt = ROneCOne.Try(importSales) _
-    .Catch(INVALID_AMOUNT_ERROR, skipBadRow) _
+Set importAttempt = ROneCOne.Try(importWork) _
+    .Catch(INVALID_AMOUNT_ERROR, skipBadRowAction) _
     .Catch(reportUnexpectedError) _
-    .Finally(closeFile)
+    .Finally(closeFileAction)
 ```
 
 Catches are checked in construction order. The one-argument form is the catch-all.

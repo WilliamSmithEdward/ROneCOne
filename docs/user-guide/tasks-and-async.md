@@ -19,17 +19,17 @@ Dim forecastTask As ROneCOne
 Dim forecastWork As ROneCOne
 Dim reorderTask As ROneCOne
 Dim reorderWork As ROneCOne
-Dim results As ROneCOne
+Dim outputs As ROneCOne
 
 Set forecastWork = ROneCOne.Value(125000#).Multiply(1.08).AsFunc
 Set reorderWork = ROneCOne.Value(80#).Multiply(1.65).Add(20#).AsFunc
 
 Set forecastTask = ROneCOne.Task.Run(forecastWork)
 Set reorderTask = ROneCOne.Task.Run(reorderWork)
-Set results = ROneCOne.Task.WhenAll(forecastTask, reorderTask).Await
+Set outputs = ROneCOne.Task.WhenAll(forecastTask, reorderTask).Await
 
-Debug.Print results.Item(0)   ' 135000
-Debug.Print results.Item(1)   ' 152
+Debug.Print outputs.Item(0)   ' 135000
+Debug.Print outputs.Item(1)   ' 152
 ```
 
 In plain language:
@@ -45,13 +45,13 @@ Ordinary VBA functions, workbook objects, and COM calls use the identical shape.
 procedure as a delegate and schedule it:
 
 ```vba
-Dim countOpenOrders As ROneCOne
+Dim openOrderCounter As ROneCOne
 Dim ordersTask As ROneCOne
 
-Set countOpenOrders = ROneCOne.Func( _
+Set openOrderCounter = ROneCOne.Func( _
     "Operations.CountOpenOrders").Takes().Returns(vbLong)
 
-Set ordersTask = ROneCOne.Task.Run(countOpenOrders)
+Set ordersTask = ROneCOne.Task.Run(openOrderCounter)
 Debug.Print ordersTask.Await
 ```
 
@@ -68,7 +68,7 @@ Dim buildSummary As ROneCOne
 Dim summaryTask As ROneCOne
 
 Set buildSummary = ROneCOne.Func( _
-    "Operations.BuildSummary") _
+    "Operations.BuildForecastSummary") _
     .Takes(ROneCOne.Task) _
     .Returns(vbString)
 

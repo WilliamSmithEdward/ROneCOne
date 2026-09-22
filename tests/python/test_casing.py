@@ -6,11 +6,11 @@ declaration anywhere sets it: a parameter named `value` in ROneCOne.cls turns
 every `.Value` in the host's modules into `.value`, which lands as noise in
 every exported diff. The same rule made ROneCOne and ModernJsonInVBA recase
 each other when they shared a project. These tests hold the code tokens of
-the runtime and of the demo modules that ship beside it to one spelling per
-name and to the spelling the default references, or ROneCOne itself, give
-any name they define. The canonical half reads the registered type
-libraries, so it needs Windows and pywin32 and skips elsewhere: CI enforces
-one spelling per name, and a local run enforces both.
+the runtime, of the demo modules that ship beside it, and of the ```vba
+examples readers copy from the documentation to one spelling per name and to
+the spelling the default references, or ROneCOne itself, give any name they
+define. The type-library checks read the registered libraries, so they need
+Windows and pywin32 and skip elsewhere; CI runs everything else.
 tools/run_casing_roundtrip.ps1 checks the outcome directly in Excel.
 """
 
@@ -34,6 +34,15 @@ MEMBER = re.compile(
     r"^\s*(?:Public|Friend)\s+(?:Static\s+)?"
     r"(?:Function|Sub|Property\s+(?:Get|Let|Set))\s+([A-Za-z_][A-Za-z0-9_]*)",
     re.MULTILINE,
+)
+# Readers copy the documentation's examples into their own modules, so the
+# ```vba blocks follow the same rule.
+DOCS = [ROOT / "README.md", *sorted((ROOT / "docs").rglob("*.md"))]
+VBA_BLOCK = re.compile(r"```vba\r?\n(.*?)```", re.S)
+# A "Module.Procedure" argument, as Func, Action, and WhereMethod take, names
+# identifiers in the reader's project even though it is a string here.
+QUALIFIED_ARGUMENT = re.compile(
+    r'\(\s*(?:_\s*\r?\n\s*)?"([A-Za-z][A-Za-z0-9_]*)\.([A-Za-z][A-Za-z0-9_]*)"'
 )
 
 # The references every new Excel VBA project carries, in reference order.
@@ -152,6 +161,10 @@ def runtime_members() -> dict[str, str]:
     return {name.lower(): name for name in MEMBER.findall(text)}
 
 
+def docs_example_blocks(path: Path) -> list[str]:
+    return VBA_BLOCK.findall(path.read_text(encoding="utf-8"))
+
+
 def spellings_by_name(paths: list[Path]) -> dict[str, dict[str, list[str]]]:
     found: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
     for path in paths:
@@ -200,6 +213,41 @@ class CasingTests(unittest.TestCase):
     def test_demos_use_the_library_and_runtime_spelling(self) -> None:
         canon = {**self.library_spellings(), **runtime_members(), **EXEMPT}
         self.assert_canonical(DEMOS, canon)
+
+    def assert_docs_canonical(self, canon: dict[str, str]) -> None:
+        wrong = []
+        for path in DOCS:
+            for block in docs_example_blocks(path):
+                for token in code_tokens(block):
+                    wanted = canon.get(token.lower())
+                    if wanted and wanted != token and token.lower() not in KEYWORDS:
+                        wrong.append(f"{path.relative_to(ROOT).as_posix()}: {token} ({wanted})")
+        self.assertEqual([], sorted(set(wrong)), "copying these examples would recase a name")
+
+    def test_docs_examples_spell_every_name_one_way(self) -> None:
+        # Each page is one project as far as a reader is concerned: a variable
+        # named like the procedure it wraps recases that procedure.
+        split = []
+        for path in DOCS:
+            forms: dict[str, set[str]] = defaultdict(set)
+            for block in docs_example_blocks(path):
+                for token in code_tokens(block):
+                    forms[token.lower()].add(token)
+                for pair in QUALIFIED_ARGUMENT.findall(block):
+                    for token in pair:
+                        forms[token.lower()].add(token)
+            split.extend(
+                f"{path.relative_to(ROOT).as_posix()}: {sorted(names)}"
+                for names in forms.values()
+                if len(names) > 1
+            )
+        self.assertEqual([], split, "copying these examples would recase a reader's own names")
+
+    def test_docs_examples_use_the_runtime_spelling(self) -> None:
+        self.assert_docs_canonical({**runtime_members(), **EXEMPT})
+
+    def test_docs_examples_use_the_type_library_spelling(self) -> None:
+        self.assert_docs_canonical({**self.library_spellings(), **runtime_members(), **EXEMPT})
 
 
 if __name__ == "__main__":

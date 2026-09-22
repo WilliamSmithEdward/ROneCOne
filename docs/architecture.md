@@ -30,10 +30,10 @@ The first slice is an immutable expression-tree interpreter:
 
 ```vba
 Dim applyDiscount As ROneCOne
-Dim price As ROneCOne
+Dim listPrice As ROneCOne
 
-Set price = ROneCOne.Var(vbDouble)
-Set applyDiscount = price.Multiply(0.9).AsFunc
+Set listPrice = ROneCOne.Var(vbDouble)
+Set applyDiscount = listPrice.Multiply(0.9).AsFunc
 
 Debug.Print applyDiscount(100)
 ```
@@ -50,7 +50,7 @@ workbook procedures. Immutable `Takes` and `Returns` descriptors enforce runtime
 delegate representation.
 
 ```vba
-Set transform = ROneCOne.Func(target, "Transform") _
+Set transform = ROneCOne.Func(transformer, "Transform") _
     .Takes(vbLong) _
     .Returns(vbString)
 ```

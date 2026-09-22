@@ -76,11 +76,11 @@ rather than what arrived.
 | `DeserializeAt(json, path)` | Returns the single value one path addresses |
 
 ```vba
-Dim doc As ROneCOne
+Dim pokemon As ROneCOne
 
-Set doc = ROneCOne.Json.DeserializeOnly(payload, Array( _
+Set pokemon = ROneCOne.Json.DeserializeOnly(payload, Array( _
     "$.id", "$.name", "$.types", "$.sprites.front_default"))
-Debug.Print doc.Item("sprites").Item("front_default")
+Debug.Print pokemon.Item("sprites").Item("front_default")
 ```
 
 The result is a true subset of the source document: keeping `"$.sprites.front_default"` returns

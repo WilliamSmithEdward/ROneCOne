@@ -53,6 +53,14 @@ checksums for each version are on the
   `path`, `text`, or `task`, use one that does not. The casing tests and the VBE round trip
   cover the demos beside the runtime, and every demo workbook was rebuilt and rerun.
 
+- The VBA examples in the documentation no longer teach names that recase a reader's project.
+  Copied into a module, `Dim task As ROneCOne` recased ROneCOne's `Task`, `Dim row` recased
+  Excel's `.Row`, and a variable named after the procedure it wraps, such as `skipBadRow` for
+  `SkipBadRow`, recased that procedure. The examples across nineteen pages now use names no
+  library or ROneCOne member defines, matching the demos where an example mirrors one, and prose
+  that names one of those variables follows it. `test_casing.py` checks every example, one
+  spelling per page included.
+
 ## 1.9.0 - 2026-08-02
 
 ### Added

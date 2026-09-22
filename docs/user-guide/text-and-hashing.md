@@ -9,12 +9,12 @@ module. `ROneCOne.Regex`, `ROneCOne.Strings`, `ROneCOne.StringBuilder`, `ROneCOn
 ## Match and extract with regex
 
 ```vba
-Dim email As ROneCOne
+Dim emailRegex As ROneCOne
 Dim hit As ROneCOne
 
-Set email = ROneCOne.Regex("(\w+)@(\w+)\.(\w+)")
-If email.IsMatch(cell) Then
-    Set hit = email.Match(cell)
+Set emailRegex = ROneCOne.Regex("(\w+)@(\w+)\.(\w+)")
+If emailRegex.IsMatch(cell) Then
+    Set hit = emailRegex.Match(cell)
     Debug.Print hit.Value            ' ada@example.com
     Debug.Print hit.Groups.Item(1)   ' ada
 End If
@@ -60,14 +60,14 @@ Concatenating strings in a loop is quadratic in VBA. `StringBuilder` is the line
 the fluent surface you know:
 
 ```vba
-Dim report As ROneCOne
+Dim reportBuilder As ROneCOne
 
-Set report = ROneCOne.StringBuilder()
-For Each row In rows
-    report.AppendFormat "{0,-12}{1,8:N2}", row.Item("name"), row.Item("total")
-    report.AppendLine
-Next row
-Debug.Print report.ToString
+Set reportBuilder = ROneCOne.StringBuilder()
+For Each orderRow In orderRows
+    reportBuilder.AppendFormat "{0,-12}{1,8:N2}", orderRow.Item("name"), orderRow.Item("total")
+    reportBuilder.AppendLine
+Next orderRow
+Debug.Print reportBuilder.ToString
 ```
 
 ## Identify and randomize
@@ -95,11 +95,11 @@ would print. Pass a `Byte` array to hash binary content, such as a file read wit
 `ROneCOne.File.ReadAllBytes`. `HmacSha256(key, message)` signs a request payload:
 
 ```vba
-Dim signature As String
+Dim requestSignature As String
 
-signature = ROneCOne.Convert.ToBase64String( _
+requestSignature = ROneCOne.Convert.ToBase64String( _
     ROneCOne.Hash.HmacSha256(secretKey, requestBody))
-client.DefaultRequestHeader "X-Signature", signature
+client.DefaultRequestHeader "X-Signature", requestSignature
 ```
 
 ## Encode bytes

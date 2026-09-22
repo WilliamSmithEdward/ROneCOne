@@ -7,10 +7,10 @@ codepages, or a FileSystemObject reference. `ROneCOne.File`, `ROneCOne.Directory
 ## Read and write text
 
 ```vba
-Dim report As String
+Dim reportText As String
 
 ROneCOne.File.WriteAllText "C:\data\report.txt", "Total: 42"
-report = ROneCOne.File.ReadAllText("C:\data\report.txt")
+reportText = ROneCOne.File.ReadAllText("C:\data\report.txt")
 ```
 
 UTF-8 is the default and the output carries no byte-order mark, so other tools read it
@@ -21,12 +21,12 @@ legacy consumer demands it.
 Lines work as collections:
 
 ```vba
-Dim lines As ROneCOne
+Dim readBack As ROneCOne
 
 ROneCOne.File.WriteAllLines "C:\data\names.txt", Array("Ada", "Grace")
-Set lines = ROneCOne.File.ReadAllLines("C:\data\names.txt")
-Debug.Print lines.Item(0)                     ' Ada
-Debug.Print lines.Count                       ' 2
+Set readBack = ROneCOne.File.ReadAllLines("C:\data\names.txt")
+Debug.Print readBack.Item(0)                     ' Ada
+Debug.Print readBack.Count                       ' 2
 ```
 
 `ReadAllLines` returns an ordinary `ListOf(vbString)`, so the whole LINQ surface applies.
@@ -50,19 +50,19 @@ message, so `Catch`-style handlers can key on one number.
 Enumerate with patterns, sorted and optionally recursive:
 
 ```vba
-Dim workbooks As ROneCOne
+Dim workbookFiles As ROneCOne
 
-Set workbooks = ROneCOne.Directory.GetFiles("C:\data", "*.xlsx", True)
+Set workbookFiles = ROneCOne.Directory.GetFiles("C:\data", "*.xlsx", True)
 ```
 
 ## Build paths without string surgery
 
 ```vba
-Dim target As String
+Dim outPath As String
 
-target = ROneCOne.Path.Combine(ROneCOne.Path.GetTempPath(), "ronecone", "out.json")
-Debug.Print ROneCOne.Path.GetFileNameWithoutExtension(target)   ' out
-Debug.Print ROneCOne.Path.ChangeExtension(target, "csv")        ' ...\out.csv
+outPath = ROneCOne.Path.Combine(ROneCOne.Path.GetTempPath(), "ronecone", "out.json")
+Debug.Print ROneCOne.Path.GetFileNameWithoutExtension(outPath)   ' out
+Debug.Print ROneCOne.Path.ChangeExtension(outPath, "csv")        ' ...\out.csv
 ```
 
 `Combine` inserts separators only where needed and restarts at a rooted part, so joining user

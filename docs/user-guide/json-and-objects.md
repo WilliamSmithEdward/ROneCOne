@@ -37,11 +37,11 @@ serialize; so do plain VBA Collections and one-dimensional arrays.
 ## JSON into a DataTable
 
 ```vba
-Dim table As ROneCOne
+Dim peopleTable As ROneCOne
 
-Set table = ROneCOne.Json.DeserializeTable( _
+Set peopleTable = ROneCOne.Json.DeserializeTable( _
     "[{""id"":1,""name"":""Ada""},{""id"":2,""name"":""Bo""}]")
-Debug.Print table.Rows.Count             ' 2, with typed Id and Name columns
+Debug.Print peopleTable.Rows.Count             ' 2, with typed Id and Name columns
 ```
 
 Column types are inferred from the values, nested objects become dotted columns
@@ -73,8 +73,8 @@ null, object, and array members are left alone. The same factory idea maps table
 and back:
 
 ```vba
-Set people = table.ToObjects(factory)                       ' rows to instances
-Set table = ROneCOne.DataTableFromObjects(people, _
+Set people = peopleTable.ToObjects(factory)                  ' rows to instances
+Set peopleTable = ROneCOne.DataTableFromObjects(people, _
     Array("CustomerName", "Age", "City"))                    ' instances to rows
 ```
 

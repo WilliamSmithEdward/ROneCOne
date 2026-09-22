@@ -14,18 +14,18 @@ security settings.
 ```vba
 Dim importAttempt As ROneCOne
 
-Set importAttempt = ROneCOne.Try(importSales) _
-    .Catch(INVALID_AMOUNT_ERROR, skipBadRow) _
-    .Finally(closeFile)
+Set importAttempt = ROneCOne.Try(importWork) _
+    .Catch(INVALID_AMOUNT_ERROR, skipBadRowAction) _
+    .Finally(closeFileAction)
 
 importAttempt.Execute
 ```
 
-`importSales` and `closeFile` are zero-argument Actions. A Catch Action may take no argument or one captured
+`importWork` and `closeFileAction` are zero-argument Actions. A Catch Action may take no argument or one captured
 exception. `ROneCOne.Exception` is the readable type prototype for that signature:
 
 ```vba
-Set skipBadRow = ROneCOne.Action("SalesImport.SkipBadRow") _
+Set skipBadRowAction = ROneCOne.Action("SalesImport.SkipBadRow") _
     .Takes(ROneCOne.Exception)
 
 Public Sub SkipBadRow(ByVal errorInfo As Variant)
@@ -47,10 +47,10 @@ automatic run.
 The two-argument form matches an exact VBA error number:
 
 ```vba
-Set importAttempt = ROneCOne.Try(importSales) _
-    .Catch(INVALID_AMOUNT_ERROR, skipBadRow) _
+Set importAttempt = ROneCOne.Try(importWork) _
+    .Catch(INVALID_AMOUNT_ERROR, skipBadRowAction) _
     .Catch(reportUnexpectedError) _
-    .Finally(closeFile)
+    .Finally(closeFileAction)
 ```
 
 Catches are tested in construction order. The one-argument form is catch-all. A filtered miss

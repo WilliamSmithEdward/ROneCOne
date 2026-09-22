@@ -10,16 +10,17 @@ This rule applies a ten percent discount to an order amount:
 
 ```vba
 Dim applyDiscount As ROneCOne
-Dim price As ROneCOne
+Dim listPrice As ROneCOne
 
-Set price = ROneCOne.Var(vbDouble)
-Set applyDiscount = price.Multiply(0.9).AsFunc
+Set listPrice = ROneCOne.Var(vbDouble)
+Set applyDiscount = listPrice.Multiply(0.9).AsFunc
 
 Debug.Print applyDiscount(100)
 ```
 
-The result is `90`. `price` is the input placeholder; `AsFunc` turns the expression into reusable
-work. The rule can now be called directly or passed to collections, Tasks, and other features.
+The result is `90`. `listPrice` is the input placeholder; `AsFunc` turns the expression into
+reusable work. The rule can now be called directly or passed to collections, Tasks, and other
+features.
 
 ## Wrap an existing object method
 
@@ -60,12 +61,12 @@ procedure reference. Expression-based functions remain string-free.
 ## Use actions for work with no return value
 
 ```vba
-Dim writeAudit As ROneCOne
+Dim auditLog As ROneCOne
 
-Set writeAudit = ROneCOne.Action("Audit.WriteEntry") _
+Set auditLog = ROneCOne.Action("Audit.WriteEntry") _
     .Takes(vbString)
 
-writeAudit.Execute "Order 1042 approved"
+auditLog.Execute "Order 1042 approved"
 ```
 
 `Execute` is the statement form for an Action. It validates the same signature as a function call
@@ -76,12 +77,12 @@ and does not require a dummy result variable.
 Compatible delegates form an immutable multicast chain:
 
 ```vba
-Dim notify As ROneCOne
+Dim announce As ROneCOne
 
-Set notify = ROneCOne.Combine(writeAudit, updateStatus)
-notify.Execute "Order 1042 approved"
+Set announce = ROneCOne.Combine(auditLog, updateStatus)
+announce.Execute "Order 1042 approved"
 
-Set notify = notify.Remove(updateStatus)
+Set announce = announce.Remove(updateStatus)
 ```
 
 Actions run in insertion order. Removing a handler returns a new delegate and leaves the original

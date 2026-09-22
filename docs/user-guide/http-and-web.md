@@ -28,9 +28,9 @@ when it arrives. A relative URL rides on `BaseAddress`, so switching servers is 
 ## Just the text
 
 ```vba
-Dim json As String
+Dim dittoJson As String
 
-json = client.GetStringAsync("pokemon/ditto").Await
+dittoJson = client.GetStringAsync("pokemon/ditto").Await
 ```
 
 `GetStringAsync` resolves straight to the body and refuses to return text from a failed
@@ -39,13 +39,13 @@ request: a non-2xx status raises the typed `HttpRequestException` instead.
 ## Overlap several downloads
 
 ```vba
-Dim replies As ROneCOne
+Dim responses As ROneCOne
 
-Set replies = ROneCOne.Task.WhenAll( _
+Set responses = ROneCOne.Task.WhenAll( _
     client.GetAsync("pokemon/bulbasaur"), _
     client.GetAsync("pokemon/charmander"), _
     client.GetAsync("pokemon/squirtle")).Await
-Debug.Print replies.Item(0).StatusCode
+Debug.Print responses.Item(0).StatusCode
 ```
 
 Each `GetAsync` starts its transfer at once, so all three are in flight together and the total
@@ -55,11 +55,11 @@ runs on one thread.
 ## Handle failure like try / await / catch
 
 ```vba
-Dim task As ROneCOne
+Dim pending As ROneCOne
 
-Set task = client.GetStringAsync("pokemon/missingno")
+Set pending = client.GetStringAsync("pokemon/missingno")
 On Error Resume Next
-task.Await
+pending.Await
 If Err.Number = ROneCOne.HttpRequestError Then
     Debug.Print "fell back to cached data"
 End If
@@ -75,14 +75,14 @@ instead. Keep await-and-recover logic at the call site, as above.
 ## Send, post, and cancel
 
 ```vba
-Dim source As ROneCOne
-Dim task As ROneCOne
+Dim cancelSource As ROneCOne
+Dim pending As ROneCOne
 
-Set task = client.PostAsync("collector/notes", "{""note"":1}", "application/json")
+Set pending = client.PostAsync("collector/notes", "{""note"":1}", "application/json")
 
-Set source = ROneCOne.CancellationTokenSource
-Set task = client.GetAsync("pokemon/eevee", source.Token)
-source.Cancel          ' aborts the transfer; the task reports IsCanceled
+Set cancelSource = ROneCOne.CancellationTokenSource
+Set pending = client.GetAsync("pokemon/eevee", cancelSource.Token)
+cancelSource.Cancel          ' aborts the transfer; the task reports IsCanceled
 ```
 
 `PostAsync`, `PutAsync`, `PatchAsync`, and `DeleteAsync` cover the named verbs;

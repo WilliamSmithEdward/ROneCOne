@@ -36,10 +36,10 @@ pretending that a reservation occurred.
 
 ```vba
 Dim scores As ROneCOne
-Dim reserved As Long
+Dim allocated As Long
 
 Set scores = ROneCOne.DictionaryOf(vbLong, vbLong)
-reserved = scores.EnsureCapacity(10000)
+allocated = scores.EnsureCapacity(10000)
 scores.Add 1, 95
 Debug.Print scores.Item(1)
 scores.TrimExcess
@@ -141,15 +141,15 @@ are `Exists`, `AnyItem`, `All`, `None`, `First`,
 `CountBy`, `Aggregate`, `AggregateBy`, `Index`, and `TryGetNonEnumeratedCount`.
 
 ```vba
-Set result = ROneCOne.Range(1, 6) _
+Set topTwo = ROneCOne.Range(1, 6) _
     .Where(x.Modulo(2).EqualTo(0)) _
     .Map(x.Multiply(10), vbLong) _
     .OrderDescending _
     .Take(2) _
     .ToList
 
-Debug.Print result(0)  ' 60
-Debug.Print result(1)  ' 40
+Debug.Print topTwo(0)  ' 60
+Debug.Print topTwo(1)  ' 40
 ```
 
 ## Concise syntax and canonical core
@@ -220,7 +220,7 @@ there is no adapter class, explicit element variable, lambda wrapper, or predica
 
 ```vba
 Set adults = customers.Where("Age").AtLeast(18)
-Set selected = customers _
+Set found = customers _
     .Where("Age").Between(18, 65) _
     .Where("City").OneOf("London", "Paris")
 Set matching = customers.Where("Name").StartsWith("Gr")
@@ -238,9 +238,9 @@ logical AND and retain deferred execution.
 Use `Condition` when a predicate combines multiple members:
 
 ```vba
-Set predicate = customers.Condition("Age").AtLeast(40) _
+Set rule = customers.Condition("Age").AtLeast(40) _
     .Both(customers.Condition("City").EqualTo("London"))
-Set selected = customers.Where(predicate)
+Set found = customers.Where(rule)
 ```
 
 `Both`, `Either`, and `Negated` are concise aliases for the canonical `AndAlso`, `OrElse`, and
@@ -252,7 +252,7 @@ typed parameter and compose as a unary predicate. Dotted paths traverse object-v
 members. The `?.` path operator propagates `Null` when an intermediate object is `Nothing`:
 
 ```vba
-Set selected = customers.Where("Manager?.Age").AtLeast(40)
+Set found = customers.Where("Manager?.Age").AtLeast(40)
 ```
 
 Ordinary `.` access still raises `MemberAccessError` on `Nothing`. Null-safe relational and string
@@ -263,9 +263,9 @@ in that path short-circuits, matching C# null-conditional chaining.
 `Predicate` and `WhereMethod` infer the input descriptor directly from `List<T>`:
 
 ```vba
-Set isExperienced = customers.Predicate("Queries.IsExperienced")
-Debug.Print isExperienced.Signature  ' Func<Customer, Boolean>
-Set selected = customers.WhereMethod("Queries.IsExperienced")
+Set experiencedRule = customers.Predicate("Queries.IsExperienced")
+Debug.Print experiencedRule.Signature  ' Func<Customer, Boolean>
+Set found = customers.WhereMethod("Queries.IsExperienced")
 ```
 
 An object method uses `customers.Predicate(target, "IsExperienced")` or
@@ -277,15 +277,15 @@ Membership is an ordinary expression node, so it can sit anywhere a predicate ca
 contextual form accepts a typed sequence, VBA array, or `Collection`:
 
 ```vba
-Set selected = customers.Where("City").IsIn(allowedCities)
-Set selected = customers.Where("City").IsIn(Array("London", "Paris"))
+Set found = customers.Where("City").IsIn(allowedCities)
+Set found = customers.Where("City").IsIn(Array("London", "Paris"))
 ```
 
 The form closest to C# reverses the receiver and passes the current member expression to the
 collection:
 
 ```vba
-Set selected = customers.Where(allowedCities.Contains(customers!City))
+Set found = customers.Where(allowedCities.Contains(customers!City))
 ```
 
 `List.Contains(literal)` retains normal immediate containment semantics. Passing a ROneCOne value,
@@ -304,9 +304,9 @@ object-valued condition. `WhereAny`, `WhereAll`, and `WhereNone` provide the pri
 form:
 
 ```vba
-Set selected = customers.WhereAny("Reports", reportPredicate)
-Set selected = customers.WhereAll("Reports", reportPredicate)
-Set selected = customers.WhereNone("Reports", reportPredicate)
+Set found = customers.WhereAny("Reports", reportPredicate)
+Set found = customers.WhereAll("Reports", reportPredicate)
+Set found = customers.WhereNone("Reports", reportPredicate)
 ```
 
 As in LINQ, `AllMatch` is True for an empty nested sequence, while `AnyMatch` is False and
@@ -325,9 +325,9 @@ or expression delegate surface. Equality comparers are accepted by `Contains`, `
 Set equality = ROneCOne.EqualityComparer("Queries.TextEqualsIgnoreCase")
 Set ordering = ROneCOne.Comparer("Queries.CompareTextIgnoreCase")
 
-Set unique = names.Distinct(equality)
-Set ordered = names.Order(ordering)
-Debug.Print names.Contains("ada", equality)
+Set distinctNames = customerNames.Distinct(equality)
+Set ordered = customerNames.Order(ordering)
+Debug.Print customerNames.Contains("ada", equality)
 ```
 
 ## LINQ over user-defined classes
@@ -339,12 +339,12 @@ member names are the primary readable surface.
 ```vba
 Dim customers As ROneCOne
 Dim experienced As ROneCOne
-Dim names As ROneCOne
+Dim customerNames As ROneCOne
 Dim firstCustomer As DemoCustomer
 Set customers = ROneCOne.ListFrom(ada, grace, katherine)
 
 Set experienced = customers.Where("Age").AtLeast(40)
-Set names = experienced _
+Set customerNames = experienced _
     .Map("CustomerName", vbString) _
     .Order _
     .ToList
@@ -353,22 +353,22 @@ Set firstCustomer = customers _
     .ThenByDescending("Age") _
     .First
 
-Debug.Print names.GenericTypeName  ' List<String>
+Debug.Print customerNames.GenericTypeName  ' List<String>
 Debug.Print firstCustomer.CustomerName
 ```
 
 The same query expressed through canonical primitives is:
 
 ```vba
-Dim age As ROneCOne
-Dim customer As ROneCOne
-Dim predicate As ROneCOne
+Dim ageExpr As ROneCOne
+Dim customerParam As ROneCOne
+Dim rule As ROneCOne
 
-Set customer = ROneCOne.ParameterLike(ada)
-Set age = customer.Member("Age")
-Set predicate = ROneCOne.Lambda( _
-    age.GreaterThanOrEqual(40), customer)
-Set experienced = customers.Where(predicate)
+Set customerParam = ROneCOne.ParameterLike(ada)
+Set ageExpr = customerParam.Member("Age")
+Set rule = ROneCOne.Lambda( _
+    ageExpr.GreaterThanOrEqual(40), customerParam)
+Set experienced = customers.Where(rule)
 ```
 
 VBA has no `nameof` operator or first-class property reference, so ordinary contextual selectors

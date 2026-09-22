@@ -7,13 +7,13 @@ document type definitions rejected, external references never resolved.
 ## Parse and navigate
 
 ```vba
-Dim doc As ROneCOne
+Dim catalog As ROneCOne
 Dim book As ROneCOne
 
-Set doc = ROneCOne.Xml.Parse( _
+Set catalog = ROneCOne.Xml.Parse( _
     "<catalog><book id=""1""><title>Dune</title></book></catalog>")
-Debug.Print doc.Name                         ' catalog
-For Each book In doc.Elements("book")
+Debug.Print catalog.Name                         ' catalog
+For Each book In catalog.Elements("book")
     Debug.Print book.GetAttribute("id"), book.SelectSingleNode("title").Value
 Next book
 ```
@@ -24,15 +24,15 @@ Next book
 ## XPath does the searching
 
 ```vba
-Debug.Print doc.SelectNodes("//book[@id='1']").Count
-Debug.Print doc.SelectSingleNode("//book[@id='1']/title").Value
+Debug.Print catalog.SelectNodes("//book[@id='1']").Count
+Debug.Print catalog.SelectSingleNode("//book[@id='1']/title").Value
 ```
 
 Documents with a default namespace need a prefix mapping once, at parse time:
 
 ```vba
-Set doc = ROneCOne.Xml.Parse(feedText, "xmlns:a='http://www.w3.org/2005/Atom'")
-Debug.Print doc.SelectNodes("//a:entry").Count
+Set feed = ROneCOne.Xml.Parse(feedText, "xmlns:a='http://www.w3.org/2005/Atom'")
+Debug.Print feed.SelectNodes("//a:entry").Count
 ```
 
 ## Straight to a DataTable
@@ -63,7 +63,7 @@ carrying a `DOCTYPE` is rejected by design.
 
 ```vba
 On Error Resume Next
-Set doc = ROneCOne.Xml.Load(configPath)
+Set configDoc = ROneCOne.Xml.Load(configPath)
 If Err.Number = ROneCOne.XmlError Then Debug.Print Err.Description
 On Error GoTo 0
 ```

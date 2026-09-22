@@ -10,13 +10,13 @@ in a single call in each direction.
 
 ```vba
 Dim sales As ROneCOne
-Dim top As ROneCOne
+Dim topWest As ROneCOne
 
 Set sales = ROneCOne.DataTableFromRange(Sheet1.Range("A1:C500"))
-Set top = ROneCOne.DataView(sales) _
+Set topWest = ROneCOne.DataView(sales) _
     .WithFilter(sales.Rows!Region.EqualTo("West")) _
     .WithSort("Amount", True)
-top.ToRange Sheet2.Range("A1")
+topWest.ToRange Sheet2.Range("A1")
 ```
 
 `DataTableFromRange` reads the block into a new table, using the first row as column names. To
@@ -33,7 +33,7 @@ that can write itself back and resize the table to fit: see [Excel Tables](excel
 
 ```vba
 Dim people As ROneCOne
-Dim row As ROneCOne
+Dim person As ROneCOne
 
 Set people = ROneCOne.DataTable("People")
 people.Column("Id", vbLong).AutoNumber(100, 10).AsPrimaryKey
@@ -41,7 +41,7 @@ people.Column("Name", vbString).WithDefault "Unknown"
 people.Column "Age", vbLong
 people.Column "Note", vbString
 
-Set row = people.Row("Ada", 47, ROneCOne.DBNull).Add
+Set person = people.Row("Ada", 47, ROneCOne.DBNull).Add
 Debug.Print people.Find(100).Item("Name")
 ```
 
@@ -59,9 +59,9 @@ Rows track `Detached`, `Added`, `Unchanged`, `Modified`, and `Deleted` states. `
 ## Query a view
 
 ```vba
-Dim view As ROneCOne
+Dim experienced As ROneCOne
 
-Set view = ROneCOne.DataView(people) _
+Set experienced = ROneCOne.DataView(people) _
     .WithFilter(people.Rows!Age.AtLeast(40)) _
     .WithSort("Name")
 ```
@@ -74,18 +74,18 @@ foreign-key validation.
 
 ```vba
 Dim adapter As ROneCOne
-Dim command As ROneCOne
-Dim connection As ROneCOne
-Dim table As ROneCOne
+Dim cmd As ROneCOne
+Dim conn As ROneCOne
+Dim filled As ROneCOne
 
-Set connection = ROneCOne.DbConnection(connectionString)
-connection.Connect
-Set command = ROneCOne.DbCommand(sql, connection).WithTimeout(30)
-Set adapter = ROneCOne.DbDataAdapter(command)
-Set table = ROneCOne.DataTable("Results")
+Set conn = ROneCOne.DbConnection(connectionText)
+conn.Connect
+Set cmd = ROneCOne.DbCommand(sqlText, conn).WithTimeout(30)
+Set adapter = ROneCOne.DbDataAdapter(cmd)
+Set filled = ROneCOne.DataTable("Results")
 
-Debug.Print adapter.FillAsync(table).Await
-connection.Disconnect
+Debug.Print adapter.FillAsync(filled).Await
+conn.Disconnect
 ```
 
 > [!NOTE]
@@ -98,14 +98,14 @@ reference.
 
 ### Query without writing SQL
 
-`connection.Queryable(tableName)` lets you keep writing LINQ and have it run on the server. The
+`conn.Queryable(tableName)` lets you keep writing LINQ and have it run on the server. The
 same expressions you use over an in-memory list compile to a parameterized statement, so the
 filter happens in the database instead of after loading every row into Excel:
 
 ```vba
 Dim recent As ROneCOne
 
-Set recent = connection.Queryable("Orders") _
+Set recent = conn.Queryable("Orders") _
     .Where("Total").AtLeast(100) _
     .OrderByDescending("Placed") _
     .Take(50) _
@@ -116,7 +116,7 @@ Values always travel as parameters, so a customer name containing a quote is dat
 `ToSqlString` shows exactly what will be sent, which is worth a look the first time:
 
 ```vba
-Debug.Print connection.Queryable("Orders").Where("Total").AtLeast(100).ToSqlString
+Debug.Print conn.Queryable("Orders").Where("Total").AtLeast(100).ToSqlString
 ' SELECT * FROM [Orders] WHERE ([Total] >= ?)
 ```
 
@@ -127,12 +127,12 @@ refuses, and how SQL Server and ACE differ.
 ### Clean up deterministically
 
 For deterministic cleanup around a zero-argument function, use
-`ROneCOne.Using(connection).Run(work)`. Adapter batch updates expose `UseTransaction`,
+`ROneCOne.Using(conn).Run(work)`. Adapter batch updates expose `UseTransaction`,
 `ContinueUpdateOnError`, and `LastUpdateErrors`.
 
 ### Know your provider's limits
 
-`connection.AsyncMode` reports `"Native"`: `OpenAsync`, `ExecuteReaderAsync`,
+`conn.AsyncMode` reports `"Native"`: `OpenAsync`, `ExecuteReaderAsync`,
 `ExecuteScalarAsync`, and `FillAsync` start the operation inside ADO and the returned Task polls
 provider state, so the provider works while Excel stays responsive. `ExecuteNonQueryAsync`,
 `UpdateAsync`, and `ReadAsync` run their work inside one cooperative task step instead, because
@@ -148,7 +148,7 @@ A table becomes RFC 4180 text in one call, and CSV text becomes a typed table in
 ```vba
 Dim orders As ROneCOne
 
-ROneCOne.File.WriteAllText "C:\data\orders.csv", table.ToCsv
+ROneCOne.File.WriteAllText "C:\data\orders.csv", filled.ToCsv
 Set orders = ROneCOne.Csv.DeserializeTable( _
     ROneCOne.File.ReadAllText("C:\data\orders.csv"))
 ```

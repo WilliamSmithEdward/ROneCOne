@@ -13,11 +13,11 @@ technical model follows C# subscription and delivery rules inside the same `ROne
 Dim orderStatusChanged As ROneCOne
 
 Set orderStatusChanged = ROneCOne.EventOf(vbString) _
-    .Subscribe(updateDashboard) _
-    .Subscribe(writeAudit)
+    .Subscribe(dashboard) _
+    .Subscribe(audit)
 
 orderStatusChanged.Emit "Order 1042 shipped"
-orderStatusChanged.Unsubscribe writeAudit
+orderStatusChanged.Unsubscribe audit
 ```
 
 `EventOf` accepts the same primitive and exact-class type tokens as delegate `Takes`. Every handler
