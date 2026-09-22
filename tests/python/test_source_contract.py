@@ -7,8 +7,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "src" / "ROneCOne.cls"
+DEMO_VBA = ROOT / "demo" / "vba"
 BUILD_TOOL = ROOT / "tools" / "build_test_workbook.py"
 GITIGNORE = ROOT / ".gitignore"
+CHANGELOG = ROOT / "CHANGELOG.md"
+LICENSE = ROOT / "LICENSE"
 
 
 class SourceContractTests(unittest.TestCase):
@@ -33,10 +36,34 @@ class SourceContractTests(unittest.TestCase):
         for rule in required_rules:
             self.assertIn(rule, ignored)
 
-    def test_runtime_embeds_the_mit_license(self) -> None:
-        self.assertIn("' MIT License", self.source)
-        self.assertIn("' Copyright (c) 2026 William Smith", self.source)
-        self.assertIn("' THE SOFTWARE IS PROVIDED \"AS IS\"", self.source)
+    def test_every_shipped_module_opens_with_its_release_and_license(self) -> None:
+        # ROneCOne.cls downloaded alone, or a module copied out of a demo
+        # workbook, travels without LICENSE, so each carries the full notice
+        # and the newest dated release in the changelog.
+        # tools/stamp_release_headers.py writes this header.
+        release = re.search(
+            r"^## (\d+\.\d+\.\d+) - (\d{4}-\d{2}-\d{2})$",
+            CHANGELOG.read_text(encoding="utf-8"),
+            re.MULTILINE,
+        )
+        self.assertIsNotNone(release, "CHANGELOG.md needs a dated release heading")
+        version, date = release.groups()
+        notice = LICENSE.read_text(encoding="utf-8").strip().splitlines()
+        expected = [
+            "Option Explicit",
+            "",
+            f"' ROneCOne {version}, released {date}",
+            "'",
+            *(f"' {line}".rstrip() for line in notice),
+            "",
+        ]
+        modules = [SOURCE, *sorted(DEMO_VBA.glob("*.bas")), *sorted(DEMO_VBA.glob("*.cls"))]
+        for module in modules:
+            with self.subTest(module=module.name):
+                lines = module.read_text(encoding="utf-8").splitlines()
+                start = lines.index("Option Explicit")
+                self.assertEqual(expected, lines[start : start + len(expected)])
+                self.assertEqual(1, lines.count("' MIT License"))
 
     def test_runtime_is_one_predeclared_class(self) -> None:
         class_files = sorted((ROOT / "src").glob("*.cls")) if (ROOT / "src").exists() else []

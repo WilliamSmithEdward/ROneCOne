@@ -6,6 +6,18 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
+## Unreleased
+
+### Changed
+
+- Every shipped module now opens with the release it belongs to and the full MIT license, directly
+  below `Option Explicit`. That covers `ROneCOne.cls` and each module packaged into the demo
+  workbooks. A demo module copied out of its workbook used to carry no license and no version,
+  and the runtime's license sat on line 208, below the Windows declarations.
+  `tools/stamp_release_headers.py` writes the header from the newest dated heading in this
+  changelog and from `LICENSE`, and a source contract fails while any module disagrees with
+  either.
+
 ## 1.9.0 - 2026-08-02
 
 ### Added

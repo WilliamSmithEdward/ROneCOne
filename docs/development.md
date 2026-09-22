@@ -294,4 +294,24 @@ member expressions remove the need for a predicate/selector adapter class. The p
 benchmarking, reporting, and helpers are kept in small commented procedures. The delegates demo
 uses the same organization and leads with inferred `AsFunc` expressions.
 
+## Release headers
+
+Every module that ships opens with its release and the full MIT license, directly below
+`Option Explicit`: the runtime and each module the demo workbooks package. `ROneCOne.cls`
+downloaded alone, or a module copied out of a workbook, travels without the repository's
+`LICENSE` file, so the notice travels inside it.
+
+The version and date come from the newest dated heading in `CHANGELOG.md`, and the notice from
+`LICENSE`. After dating a release in the changelog, restamp every module and repackage the
+workbooks:
+
+```powershell
+.venv\Scripts\python.exe tools\stamp_release_headers.py
+.venv\Scripts\python.exe tools\package_demo_workbook.py
+```
+
+The source contract rebuilds the expected header from those two files and fails on any module
+that differs, locally and in CI. The header carries no repository URL, because the offline demo
+contracts reject `https://` anywhere in their source.
+
 [Back to the documentation index](README.md)
