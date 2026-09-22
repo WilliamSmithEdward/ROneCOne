@@ -201,6 +201,12 @@ powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
     -InputPath demo\.working\ROneCOne_Exceptions_Demo.xlsx `
     -OutputPath demo\ROneCOne_Exceptions_Demo.xlsm
 powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
+    -InputPath demo\.working\ROneCOne_Tasks_Demo.xlsx `
+    -OutputPath demo\ROneCOne_Tasks_Demo.xlsm
+powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
+    -InputPath demo\.working\ROneCOne_Data_Demo.xlsx `
+    -OutputPath demo\ROneCOne_Data_Demo.xlsm
+powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
     -InputPath demo\.working\ROneCOne_Http_Demo.xlsx `
     -OutputPath demo\ROneCOne_Http_Demo.xlsm
 powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
@@ -224,6 +230,12 @@ powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
 powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
     -InputPath demo\.working\ROneCOne_Zip_Demo.xlsx `
     -OutputPath demo\ROneCOne_Zip_Demo.xlsm
+powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
+    -InputPath demo\.working\ROneCOne_Query_Demo.xlsx `
+    -OutputPath demo\ROneCOne_Query_Demo.xlsm
+powershell -ExecutionPolicy Bypass -File tools\convert_demo_workbook.ps1 `
+    -InputPath demo\.working\ROneCOne_ListObject_Demo.xlsx `
+    -OutputPath demo\ROneCOne_ListObject_Demo.xlsm
 .venv\Scripts\python.exe tools\package_demo_workbook.py
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
@@ -265,7 +277,13 @@ powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
 powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Zip_Demo.xlsm `
     -MacroName RunROneCOneZipDemo
-powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1
+powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Query_Demo.xlsm `
+    -MacroName RunROneCOneQueryDemo
+powershell -ExecutionPolicy Bypass -File tools\run_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_ListObject_Demo.xlsm `
+    -MacroName RunROneCOneListObjectDemo
+powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 -Clean
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Collections_Demo.xlsm `
     -OutputPrefix collections
@@ -305,6 +323,12 @@ powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
 powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
     -WorkbookPath demo\ROneCOne_Zip_Demo.xlsm `
     -OutputPrefix zip
+powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_Query_Demo.xlsm `
+    -OutputPrefix query
+powershell -ExecutionPolicy Bypass -File tools\render_demo_workbook.ps1 `
+    -WorkbookPath demo\ROneCOne_ListObject_Demo.xlsm `
+    -OutputPrefix listobject
 ```
 
 Development-only VBIDE trust is used once during each conversion to seed an otherwise empty
