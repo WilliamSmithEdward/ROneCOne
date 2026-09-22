@@ -66,7 +66,7 @@ End Function
 
 Public Sub RunROneCOneListObjectDemo()
     Dim errorDescription As String
-    Dim errorNumber As Long
+    Dim errNumber As Long
     Dim salesTable As Object
 
     On Error GoTo DemoFailure
@@ -81,48 +81,48 @@ Public Sub RunROneCOneListObjectDemo()
     Exit Sub
 
 DemoFailure:
-    errorNumber = Err.Number
+    errNumber = Err.Number
     errorDescription = Err.Description
-    MarkDemoFailed errorNumber, errorDescription
+    MarkDemoFailed errNumber, errorDescription
 End Sub
 
 ' Creates the Table the rest of the demo works on. Rebuilt every run so the
 ' demo is repeatable however the last run left it.
 Private Function BuildSalesTable() As Object
     Dim created As Object
-    Dim sheet As Worksheet
+    Dim ws As Worksheet
 
-    Set sheet = EnsureSheet(DATA_SHEET)
-    sheet.Cells.Clear
+    Set ws = EnsureSheet(DATA_SHEET)
+    ws.Cells.Clear
     On Error Resume Next
-    sheet.ListObjects(TABLE_NAME).Unlist
+    ws.ListObjects(TABLE_NAME).Unlist
     On Error GoTo 0
-    sheet.Range("A1:C1").Value = Array("Region", "Rep", "Amount")
-    sheet.Range("A2:C2").Value = Array("West", "Ada", 120)
-    sheet.Range("A3:C3").Value = Array("East", "Bo", 80)
-    sheet.Range("A4:C4").Value = Array("West", "Cy", 200)
-    sheet.Range("A5:C5").Value = Array("North", "Dee", 45)
-    sheet.Range("A6:C6").Value = Array("West", "Eve", 60)
-    Set created = sheet.ListObjects.Add( _
-        XL_SRC_RANGE, sheet.Range("A1:C6"), , XL_YES)
+    ws.Range("A1:C1").Value = Array("Region", "Rep", "Amount")
+    ws.Range("A2:C2").Value = Array("West", "Ada", 120)
+    ws.Range("A3:C3").Value = Array("East", "Bo", 80)
+    ws.Range("A4:C4").Value = Array("West", "Cy", 200)
+    ws.Range("A5:C5").Value = Array("North", "Dee", 45)
+    ws.Range("A6:C6").Value = Array("West", "Eve", 60)
+    Set created = ws.ListObjects.Add( _
+        XL_SRC_RANGE, ws.Range("A1:C6"), , XL_YES)
     created.Name = TABLE_NAME
     created.TableStyle = "TableStyleMedium2"
-    sheet.Columns("A:C").AutoFit
+    ws.Columns("A:C").AutoFit
     Set BuildSalesTable = created
 End Function
 
 Private Function EnsureSheet(ByVal sheetName As String) As Worksheet
-    Dim sheet As Worksheet
+    Dim ws As Worksheet
 
     On Error Resume Next
-    Set sheet = ThisWorkbook.Worksheets(sheetName)
+    Set ws = ThisWorkbook.Worksheets(sheetName)
     On Error GoTo 0
-    If sheet Is Nothing Then
-        Set sheet = ThisWorkbook.Worksheets.Add( _
+    If ws Is Nothing Then
+        Set ws = ThisWorkbook.Worksheets.Add( _
             After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
-        sheet.Name = sheetName
+        ws.Name = sheetName
     End If
-    Set EnsureSheet = sheet
+    Set EnsureSheet = ws
 End Function
 
 ' --- Reading -----------------------------------------------------------------
@@ -267,12 +267,12 @@ Private Sub WriteWriteBackExamples(ByVal salesTable As Object)
     Dim afterShrink As Long
     Dim Region As Variant
     Dim sales As ROneCOne
-    Dim sheet As Worksheet
+    Dim ws As Worksheet
     Dim topWest As ROneCOne
     Dim vacatedCleared As Boolean
     Dim writtenBack As Long
 
-    Set sheet = ThisWorkbook.Worksheets(DATA_SHEET)
+    Set ws = ThisWorkbook.Worksheets(DATA_SHEET)
     Set sales = ROneCOne.Table(salesTable)
 
     ' Keep only the West rows, biggest first, and push that into the Table.
@@ -283,7 +283,7 @@ Private Sub WriteWriteBackExamples(ByVal salesTable As Object)
         .WithSort("Amount", True)
     writtenBack = sales.WriteBack(topWest)
     afterShrink = salesTable.ListRows.Count
-    vacatedCleared = IsEmpty(sheet.Range("A6").Value)
+    vacatedCleared = IsEmpty(ws.Range("A6").Value)
 
     ' Refresh re-reads the sheet in place, so the same variable now sees the
     ' three rows that are actually there.
@@ -304,16 +304,16 @@ Private Sub WriteWriteBackExamples(ByVal salesTable As Object)
         .Range("E41").Value2 = writtenBack
         .Range("E42").Value2 = afterShrink
         .Range("E43").Value2 = vacatedCleared
-        .Range("E44").Value2 = CStr(sheet.Range("B2").Value)
+        .Range("E44").Value2 = CStr(ws.Range("B2").Value)
         .Range("E45").Value2 = afterGrow
-        .Range("E46").Value2 = CStr(sheet.Range("B6").Value)
+        .Range("E46").Value2 = CStr(ws.Range("B6").Value)
         .Range("E47").Value2 = sales.Rows.Count
         .Range("E48").Value2 = sales.WriteBack
         .Range("E49").Value2 = CBool(salesTable.ShowTotals)
     End With
 
     salesTable.ShowTotals = False
-    sheet.Columns("A:C").AutoFit
+    ws.Columns("A:C").AutoFit
 End Sub
 
 ' Five thousand rows out of a real Table, filtered, and written straight back
@@ -323,11 +323,11 @@ Private Sub RunListObjectBenchmark()
     Dim benchSheet As Worksheet
     Dim benchTable As Object
     Dim elapsed As Double
-    Dim index As Long
+    Dim idx As Long
     Dim kept As ROneCOne
     Dim loaded As ROneCOne
     Dim started As Double
-    Dim values() As Variant
+    Dim grid() As Variant
 
     Set benchSheet = EnsureSheet("Benchmark Data")
     benchSheet.Cells.Clear
@@ -335,12 +335,12 @@ Private Sub RunListObjectBenchmark()
     benchSheet.ListObjects("Benchmark").Unlist
     On Error GoTo 0
     benchSheet.Range("A1:B1").Value = Array("Id", "Amount")
-    ReDim values(1 To BENCHMARK_ROWS, 1 To 2)
-    For index = 1 To BENCHMARK_ROWS
-        values(index, 1) = index
-        values(index, 2) = index * 2
-    Next index
-    benchSheet.Range("A2").Resize(BENCHMARK_ROWS, 2).Value = values
+    ReDim grid(1 To BENCHMARK_ROWS, 1 To 2)
+    For idx = 1 To BENCHMARK_ROWS
+        grid(idx, 1) = idx
+        grid(idx, 2) = idx * 2
+    Next idx
+    benchSheet.Range("A2").Resize(BENCHMARK_ROWS, 2).Value = grid
     Set benchTable = benchSheet.ListObjects.Add(XL_SRC_RANGE, _
         benchSheet.Range("A1").Resize(BENCHMARK_ROWS + 1, 2), , XL_YES)
     benchTable.Name = "Benchmark"
@@ -368,11 +368,11 @@ Private Sub MarkDemoPassed()
     End With
 End Sub
 
-Private Sub MarkDemoFailed(ByVal errorNumber As Long, ByVal description As String)
+Private Sub MarkDemoFailed(ByVal errNumber As Long, ByVal errDescription As String)
     With ThisWorkbook.Worksheets(START_SHEET)
         .Range("B12").Value2 = Now
         .Range("B13").Value2 = "ERROR"
-        .Range("B14").Value2 = CStr(errorNumber) & ": " & description
+        .Range("B14").Value2 = CStr(errNumber) & ": " & errDescription
     End With
 End Sub
 

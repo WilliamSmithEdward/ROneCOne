@@ -53,7 +53,7 @@ Private Const START_SHEET As String = "Start Here"
 
 Public Sub RunROneCOneTextDemo()
     Dim errorDescription As String
-    Dim errorNumber As Long
+    Dim errNumber As Long
 
     On Error GoTo DemoFailure
     WriteTextExamples
@@ -63,27 +63,27 @@ Public Sub RunROneCOneTextDemo()
     Exit Sub
 
 DemoFailure:
-    errorNumber = Err.Number
+    errNumber = Err.Number
     errorDescription = Err.Description
-    MarkDemoFailed errorNumber, errorDescription
+    MarkDemoFailed errNumber, errorDescription
 End Sub
 
 Private Sub WriteTextExamples()
-    Dim email As ROneCOne
+    Dim emailRegex As ROneCOne
 
     ' A compiled pattern is reusable. This one captures the local part, the
     ' domain, and the top-level suffix of an email address as three groups.
-    Set email = ROneCOne.Regex("(\w+)@(\w+)\.(\w+)")
+    Set emailRegex = ROneCOne.Regex("(\w+)@(\w+)\.(\w+)")
 
     ' Each line reads one result and writes it to the Examples sheet, so
     ' every feature shows its answer next to what the sheet expects. The
     ' digests are the published FIPS 180 and RFC 4231 test vectors.
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
-        .Range("E6").Value2 = email.IsMatch("write ada@x.com today")
+        .Range("E6").Value2 = emailRegex.IsMatch("write ada@x.com today")
         .Range("E7").Value2 = _
-            email.Match("write ada@x.com today").Groups.Item(1)
-        .Range("E8").Value2 = email.Matches("ada@x.com and bo@y.org").Count
-        .Range("E9").Value2 = email.Replace("ada@x.com", "$2:$1")
+            emailRegex.Match("write ada@x.com today").Groups.Item(1)
+        .Range("E8").Value2 = emailRegex.Matches("ada@x.com and bo@y.org").Count
+        .Range("E9").Value2 = emailRegex.Replace("ada@x.com", "$2:$1")
         .Range("E10").Value2 = ROneCOne.Regex("\s*,\s*").Split("a, b ,c").Count
         .Range("E11").Value2 = _
             ROneCOne.Convert.ToHexString(ROneCOne.Hash.Sha256("abc"))
@@ -110,17 +110,17 @@ End Sub
 Private Sub RunTextBenchmark()
     Dim digests As ROneCOne
     Dim elapsed As Double
-    Dim index As Long
+    Dim idx As Long
     Dim started As Double
 
     ' Hash a thousand distinct strings and count the distinct digests. CNG
     ' runs at native speed, so the whole batch stays well under a second.
     Set digests = ROneCOne.HashSetOf(vbString)
     started = Timer
-    For index = 1 To BENCHMARK_ROWS
+    For idx = 1 To BENCHMARK_ROWS
         digests.Add ROneCOne.Convert.ToHexString( _
-            ROneCOne.Hash.Sha256("row-" & CStr(index)))
-    Next index
+            ROneCOne.Hash.Sha256("row-" & CStr(idx)))
+    Next idx
     elapsed = ElapsedSeconds(started)
 
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
@@ -138,11 +138,11 @@ Private Sub MarkDemoPassed()
     End With
 End Sub
 
-Private Sub MarkDemoFailed(ByVal errorNumber As Long, ByVal description As String)
+Private Sub MarkDemoFailed(ByVal errNumber As Long, ByVal errDescription As String)
     With ThisWorkbook.Worksheets(START_SHEET)
         .Range("B12").Value2 = Now
         .Range("B13").Value2 = "ERROR"
-        .Range("B14").Value2 = CStr(errorNumber) & ": " & description
+        .Range("B14").Value2 = CStr(errNumber) & ": " & errDescription
     End With
 End Sub
 

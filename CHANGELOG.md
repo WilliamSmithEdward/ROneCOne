@@ -45,6 +45,14 @@ checksums for each version are on the
   the default references use, and `tools/run_casing_roundtrip.ps1` exports a host project
   through the VBE and requires every token back as written.
 
+- The demo modules no longer recase Excel's names or ROneCOne's own inside their workbooks.
+  `Dim json As String` in the HTTP demo turned `ROneCOne.Json` into `ROneCOne.json`, and the
+  `description` parameter in every demo's failure handler recased `Err.Description`. Locals and
+  parameters across all eighteen demo modules now take names no reference defines, and the
+  worksheet snippets quote the new names. Snippets that used a colliding placeholder, such as
+  `path`, `text`, or `task`, use one that does not. The casing tests and the VBE round trip
+  cover the demos beside the runtime, and every demo workbook was rebuilt and rerun.
+
 ## 1.9.0 - 2026-08-02
 
 ### Added

@@ -138,14 +138,16 @@ stdole, and Office. Public parameters take the reference spelling (`Value`, `Ind
 `Predicate`), because IntelliSense shows them and VBA matches named arguments regardless of case.
 Everything else takes a name no reference defines, such as `itemValue`, `idx`, or `outcome`.
 `Guid` and `Xml` are the two deliberate exceptions, kept at their .NET spelling over Office's
-`GUID` and `XML`.
+`GUID` and `XML`. The demo modules ship beside the runtime and follow the same rule, spelling
+ROneCOne's members as the runtime does, and the VBA snippets on their worksheets quote those
+names rather than a placeholder such as `path` or `text` that would recase a reader's module.
 
-`tests/python/test_casing.py` holds the runtime to one spelling per name everywhere, and to the
-reference spelling where pywin32 can read the registered type libraries, so CI runs the first
-half and a local Windows run adds the second. The live check builds a workbook holding the
-runtime and a host module that uses Excel and ROneCOne members without declaring any of them,
-opens it in a task-owned Excel, exports every module through the VBE, and requires every token
-back as written:
+`tests/python/test_casing.py` holds the runtime and the demo modules to one spelling per name
+everywhere, and to the reference spelling where pywin32 can read the registered type libraries,
+so CI runs the first half and a local Windows run adds the second. The live check builds a
+workbook holding the runtime, every demo module, and a host module that uses Excel and ROneCOne
+members without declaring any of them, opens it in a task-owned Excel, exports every module
+through the VBE, and requires every token back as written:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\run_casing_roundtrip.ps1

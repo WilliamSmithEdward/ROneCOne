@@ -1,9 +1,10 @@
 """Build the casing round-trip workbook, and compare a VBE export of it with
 the sources that went in (issue #6).
 
-The workbook holds the runtime and a host module written the way a user
-writes one: Excel members, named arguments, an event-style Target parameter,
-and ROneCOne's own members, with nothing declared that shares their names.
+The workbook holds the runtime, every demo module that ships beside it, and a
+host module written the way a user writes one: Excel members, named
+arguments, an event-style Target parameter, and ROneCOne's own members, with
+nothing declared that shares their names.
 tools/run_casing_roundtrip.ps1 opens it in Excel, exports every module through
 the VBE, and then runs `compare`, which requires every code token back
 exactly as written.
@@ -22,7 +23,7 @@ from pathlib import Path
 
 from pyopenvba import ExcelFile, VBAModuleKind
 
-from build_test_workbook import prepare_class_source
+from build_test_workbook import prepare_class_source, read_vba
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests" / "python"))
@@ -71,10 +72,14 @@ End Sub
 
 
 def modules(runtime: Path) -> dict[str, tuple[str, VBAModuleKind]]:
-    return {
-        "ROneCOne": (prepare_class_source(runtime), VBAModuleKind.other),
-        "HostProbe": (HOST_PROBE.replace("\n", "\r\n"), VBAModuleKind.standard),
-    }
+    found = {"ROneCOne": (prepare_class_source(runtime), VBAModuleKind.other)}
+    demo = ROOT / "demo" / "vba"
+    for path in sorted(demo.glob("*.bas")):
+        found[path.stem] = (read_vba(path), VBAModuleKind.standard)
+    for path in sorted(demo.glob("*.cls")):
+        found[path.stem] = (prepare_class_source(path), VBAModuleKind.other)
+    found["HostProbe"] = (HOST_PROBE.replace("\n", "\r\n"), VBAModuleKind.standard)
+    return found
 
 
 def build(workbook: Path, runtime: Path) -> None:

@@ -51,7 +51,7 @@ Private Const START_SHEET As String = "Start Here"
 Public Sub RunROneCOneFilesDemo()
     Dim demoRoot As String
     Dim errorDescription As String
-    Dim errorNumber As Long
+    Dim errNumber As Long
 
     On Error GoTo DemoFailure
     demoRoot = ThisWorkbook.Path & "\ROneCOne_Files_Demo_Data"
@@ -67,7 +67,7 @@ Public Sub RunROneCOneFilesDemo()
     Exit Sub
 
 DemoFailure:
-    errorNumber = Err.Number
+    errNumber = Err.Number
     errorDescription = Err.Description
     On Error Resume Next
     If Len(demoRoot) > 0 Then
@@ -76,11 +76,11 @@ DemoFailure:
         End If
     End If
     On Error GoTo 0
-    MarkDemoFailed errorNumber, errorDescription
+    MarkDemoFailed errNumber, errorDescription
 End Sub
 
 Private Sub WriteFileExamples(ByVal demoRoot As String)
-    Dim lines As ROneCOne
+    Dim readBack As ROneCOne
     Dim orders As ROneCOne
     Dim roundTripped As ROneCOne
 
@@ -99,7 +99,7 @@ Private Sub WriteFileExamples(ByVal demoRoot As String)
     ' and ReadAllLines returns an ordinary typed list you can query.
     ROneCOne.File.WriteAllLines demoRoot & "\lines.txt", _
         Array("alpha", "beta", "gamma")
-    Set lines = ROneCOne.File.ReadAllLines(demoRoot & "\lines.txt")
+    Set readBack = ROneCOne.File.ReadAllLines(demoRoot & "\lines.txt")
 
     ' Step 4: a typed table becomes a CSV file in two calls, and the file
     ' becomes a typed table again in two more. The Note column shows the
@@ -124,22 +124,22 @@ Private Sub WriteFileExamples(ByVal demoRoot As String)
     ' Step 6: a logger writes level-coded, timestamped lines. The Debug line
     ' is below the default Information level, so only two lines land.
     Dim logLines As ROneCOne
-    Dim logger As ROneCOne
-    Set logger = ROneCOne.Logger(demoRoot & "\run.log")
-    logger.LogInformation "processed {0} rows", 3
-    logger.LogDebug "this line is filtered out"
-    logger.LogWarning "keep an eye on row {0}", 2
+    Dim runLog As ROneCOne
+    Set runLog = ROneCOne.Logger(demoRoot & "\run.log")
+    runLog.LogInformation "processed {0} rows", 3
+    runLog.LogDebug "this line is filtered out"
+    runLog.LogWarning "keep an eye on row {0}", 2
     Set logLines = ROneCOne.File.ReadAllLines(demoRoot & "\run.log")
 
     ' Step 7: a watcher awaits the next change under a folder. The baseline
     ' is taken now, so the file dropped just below is seen as Created.
-    Dim change As ROneCOne
+    Dim fileChange As ROneCOne
     Dim watchTask As ROneCOne
     Dim watcher As ROneCOne
     Set watcher = ROneCOne.FileWatcher(demoRoot, "*.dat")
     Set watchTask = watcher.WaitForChangeAsync
     ROneCOne.File.WriteAllText demoRoot & "\signal.dat", "ready"
-    Set change = watchTask.Await
+    Set fileChange = watchTask.Await
 
     ' Each line reads one result and writes it to the Examples sheet, so
     ' every feature above shows its answer next to what the sheet expects.
@@ -147,7 +147,7 @@ Private Sub WriteFileExamples(ByVal demoRoot As String)
         .Range("E6").Value2 = ROneCOne.File.ReadAllText(demoRoot & "\hello.txt")
         .Range("E7").Value2 = (ROneCOne.File.ReadAllText( _
             demoRoot & "\hello16.txt") = "hello files")
-        .Range("E8").Value2 = lines.Count
+        .Range("E8").Value2 = readBack.Count
         .Range("E9").Value2 = ROneCOne.Path.Combine("C:\data", "in", "file.txt")
         .Range("E10").Value2 = ROneCOne.Path.GetFileNameWithoutExtension( _
             "C:\data\in\file.txt")
@@ -158,32 +158,32 @@ Private Sub WriteFileExamples(ByVal demoRoot As String)
         .Range("E14").Value2 = roundTripped.Rows.Item(0).Item("Total")
         .Range("E15").Value2 = IsNull(roundTripped.Rows.Item(0).Item("Note"))
         .Range("E16").Value2 = logLines.Count
-        .Range("E17").Value2 = change.ChangeType & " " & change.Name
+        .Range("E17").Value2 = fileChange.ChangeType & " " & fileChange.Name
     End With
 End Sub
 
 Private Sub RunFilesBenchmark(ByVal demoRoot As String)
     Dim csvPath As String
     Dim elapsed As Double
-    Dim index As Long
+    Dim idx As Long
     Dim roundTripped As ROneCOne
     Dim started As Double
-    Dim table As ROneCOne
+    Dim benchTable As ROneCOne
 
     ' One thousand typed rows travel out to a CSV file on disk and back into
     ' a fresh typed table: serialize, write, read, and parse, all timed as
     ' one round trip.
-    Set table = ROneCOne.DataTable("Benchmark")
-    table.Column "Id", vbLong
-    table.Column "Customer", vbString
-    table.Column "Total", vbDouble
-    For index = 1 To BENCHMARK_ROWS
-        table.LoadRow Array(index, "C" & CStr(index), index * 1.5)
-    Next index
+    Set benchTable = ROneCOne.DataTable("Benchmark")
+    benchTable.Column "Id", vbLong
+    benchTable.Column "Customer", vbString
+    benchTable.Column "Total", vbDouble
+    For idx = 1 To BENCHMARK_ROWS
+        benchTable.LoadRow Array(idx, "C" & CStr(idx), idx * 1.5)
+    Next idx
     csvPath = demoRoot & "\benchmark.csv"
 
     started = Timer
-    ROneCOne.File.WriteAllText csvPath, table.ToCsv
+    ROneCOne.File.WriteAllText csvPath, benchTable.ToCsv
     Set roundTripped = ROneCOne.Csv.DeserializeTable( _
         ROneCOne.File.ReadAllText(csvPath), "Benchmark")
     elapsed = ElapsedSeconds(started)
@@ -203,11 +203,11 @@ Private Sub MarkDemoPassed()
     End With
 End Sub
 
-Private Sub MarkDemoFailed(ByVal errorNumber As Long, ByVal description As String)
+Private Sub MarkDemoFailed(ByVal errNumber As Long, ByVal errDescription As String)
     With ThisWorkbook.Worksheets(START_SHEET)
         .Range("B12").Value2 = Now
         .Range("B13").Value2 = "ERROR"
-        .Range("B14").Value2 = CStr(errorNumber) & ": " & description
+        .Range("B14").Value2 = CStr(errNumber) & ": " & errDescription
     End With
 End Sub
 

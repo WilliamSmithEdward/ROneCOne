@@ -60,38 +60,38 @@ Public Property Get CustomerName() As String
     CustomerName = mCustomerName
 End Property
 
-Public Property Let CustomerName(ByVal value As String)
-    mCustomerName = value
+Public Property Let CustomerName(ByVal incoming As String)
+    mCustomerName = incoming
 End Property
 
 Public Property Get Age() As Long
     Age = mAge
 End Property
 
-Public Property Let Age(ByVal value As Long)
-    mAge = value
+Public Property Let Age(ByVal incoming As Long)
+    mAge = incoming
 End Property
 
 Public Property Get City() As String
     City = mCity
 End Property
 
-Public Property Let City(ByVal value As String)
-    mCity = value
+Public Property Let City(ByVal incoming As String)
+    mCity = incoming
 End Property
 
 Public Property Get Manager() As DemoCustomer
     Set Manager = mManager
 End Property
 
-Public Property Set Manager(ByVal value As DemoCustomer)
-    Set mManager = value
+Public Property Set Manager(ByVal incoming As DemoCustomer)
+    Set mManager = incoming
 End Property
 
 Public Property Get Reports() As ROneCOne
     Set Reports = mReports
 End Property
 
-Public Property Set Reports(ByVal value As ROneCOne)
-    Set mReports = value
+Public Property Set Reports(ByVal incoming As ROneCOne)
+    Set mReports = incoming
 End Property

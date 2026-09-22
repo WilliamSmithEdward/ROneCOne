@@ -156,15 +156,15 @@ examples.getRange("A5:F5").values = [[
 ]];
 tableHeader(examples.getRange("A5:F5"));
 examples.getRange("A6:D16").values = [
-  ["Apply a discount", "price => price * 0.9", "Set price = ROneCOne.Var(vbDouble)\nSet applyDiscount = price.Multiply(0.9).AsFunc", 90],
-  ["Add shipping", "(amount, shipping) => amount + shipping", "Set orderTotal = amount.Add(shipping).AsFunc\norderTotal(100, 5)", 105],
-  ["Check an approval range", "amount >= 100 && amount < 1000", "Set approvalRule = amount.AtLeast(100)\n    .AndAlso(amount.LessThan(1000)).AsFunc", true],
+  ["Apply a discount", "listPrice => listPrice * 0.9", "Set listPrice = ROneCOne.Var(vbDouble)\nSet applyDiscount = listPrice.Multiply(0.9).AsFunc", 90],
+  ["Add shipping", "(orderAmount, shipping) => orderAmount + shipping", "Set orderTotal = orderAmount.Add(shipping).AsFunc\norderTotal(100, 5)", 105],
+  ["Check an approval range", "orderAmount >= 100 && orderAmount < 1000", "Set approvalRule = orderAmount.AtLeast(100)\n    .AndAlso(orderAmount.LessThan(1000)).AsFunc", true],
   ["Avoid unsafe work", "false && unsafeOperation", "ROneCOne.Value(False).AndAlso(...).AsFunc", false],
   ["Reuse an Excel function", "new Func<int,int,double>(Max)", "ROneCOne.Func(WorksheetFunction, \"Max\")\n    .Takes(vbLong, vbLong).Returns(vbDouble)", 7],
   ["Reuse workbook code", "new Func<int,int,int>(CalculateOrderTotal)", "ROneCOne.Func(\"DemoUsage.CalculateOrderTotal\")\n    .Takes(vbLong, vbLong).Returns(vbLong)", 105],
   ["Call with an input array", "calculateTotal.DynamicInvoke(args)", "calculateTotal.DynamicInvoke(Array(100, 5))", 105],
-  ["Notify two features", "Delegate.Combine(dashboard, audit)", "Set notify = ROneCOne.Combine(updateDashboard, writeAudit)\nnotify.Execute \"Order 1042 approved\"", "Dashboard updated; audit written"],
-  ["Update the original number", "increment(ref orderNumber)", "increment.Execute ROneCOne.RefLong(orderNumber)", 1042],
+  ["Notify two features", "Delegate.Combine(dashboard, audit)", "Set announce = ROneCOne.Combine(dashboard, audit)\nannounce.Execute \"Order 1042 approved\"", "Dashboard updated; audit written"],
+  ["Update the original number", "addOne(ref orderNumber)", "addOne.Execute ROneCOne.RefLong(orderNumber)", 1042],
   ["Build a pricing pipeline", "discount.Then(addHandling)", "applyDiscount.PipeTo(addHandling)(100)", 95],
   ["Inspect the contract", "delegate.GetType()", "calculateTotal.Signature", "Func<Long, Long, Long>"],
 ];

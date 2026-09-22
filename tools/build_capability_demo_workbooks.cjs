@@ -59,11 +59,11 @@ const capabilities = [
         "Protect a sales import",
         "try { ImportSales(); } catch (InvalidAmount) { ... } finally { ... }",
         "Set attempt = ROneCOne.Try(importSales)\n" +
-          "    .Catch(INVALID_AMOUNT_ERROR, skipBadRow)\n" +
+          "    .Catch(INVALID_AMOUNT_ERROR, skipBadRowAction)\n" +
           "    .Finally(closeFile)\nattempt.Execute",
         "3 rows imported; file closed",
       ],
-      ["Keep recovery ready", "catch (InvalidAmount)", ".Catch(INVALID_AMOUNT_ERROR, skipBadRow)", true],
+      ["Keep recovery ready", "catch (InvalidAmount)", ".Catch(INVALID_AMOUNT_ERROR, skipBadRowAction)", true],
       ["Confirm a clean import", "no exception", "The Catch handler was not needed", "No import error"],
       ["Close after success", "try { ImportSales(); } finally { CloseFile(); }", "Set attempt = ROneCOne.Try(validImport).Finally(closeFile)\nattempt.Execute", "3 rows imported; file closed"],
     ],
@@ -78,14 +78,14 @@ const capabilities = [
     benchmark: "Cooperative Task.Run startup + Await",
     benchmarkResult: "Last result",
     examples: [
-      ["Run two calculations", "await Task.WhenAll(forecast, reorder)", "Set results = ROneCOne.Task.WhenAll(forecastTask, reorderTask).Await", "135000 | 152"],
+      ["Run two calculations", "await Task.WhenAll(forecast, reorder)", "Set outputs = ROneCOne.Task.WhenAll(forecastTask, reorderTask).Await", "135000 | 152"],
       ["Build the next step", "allWork.ContinueWith(BuildSummary)", "allWork.ContinueWith(buildSummary).Await", "Forecast 135000; reorder point 152"],
-      ["Keep workbook work safe", "run on the UI thread", "ROneCOne.Task.Run(countOpenOrders).Await", 3],
+      ["Keep workbook work safe", "run on the UI thread", "ROneCOne.Task.Run(openOrderCounter).Await", 3],
       ["Pause without another Excel", "await Task.Delay(5)", "ignored = ROneCOne.Task.Delay(5).Await", true],
-      ["Cancel safely", "cancelSource.Cancel()", "source.Cancel: source.Token.IsCancellationRequested", true],
+      ["Cancel safely", "cancelSource.Cancel()", "cancelSource.Cancel: cancelSource.Token.IsCancellationRequested", true],
       ["Show progress", "progress.Report(7)", "ROneCOne.ProgressOf(vbLong, handler).Report 7", 7],
       ["Finish from a callback", "source.SetResult(99)", "completion.SetResult 99: completion.Task.Await", 99],
-      ["Limit waiting time", "await task.WaitAsync(timeout)", "task.WaitAsync(100).Await", true],
+      ["Limit waiting time", "await task.WaitAsync(timeout)", "ROneCOne.Task.Delay(5).WaitAsync(100).Await", true],
       ["Let Excel breathe", "await Task.Yield()", "ignored = ROneCOne.Task.YieldOnce.Await", true],
     ],
   },
@@ -99,16 +99,16 @@ const capabilities = [
     benchmark: "Build 1,000 typed rows and query them",
     benchmarkResult: "Selected rows",
     examples: [
-      ["Add a validated row", "DataColumn + Rows.Add", "table.Column(\"Id\", vbLong).AutoNumber(100, 10).AsPrimaryKey\nSet row = table.Row(\"Ada\", 90, ROneCOne.DBNull).Add", 100],
-      ["Show the top score", "view.Sort + RowFilter", "DataView(table).WithFilter(...).WithSort(\"Score\", True)", "Grace"],
+      ["Add a validated row", "DataColumn + Rows.Add", "people.Column(\"Id\", vbLong).AutoNumber(100, 10).AsPrimaryKey\nSet person = people.Row(\"Ada\", 90, ROneCOne.DBNull).Add", 100],
+      ["Show the top score", "view.Sort + RowFilter", "DataView(people).WithFilter(...).WithSort(\"Score\", True)", "Grace"],
       ["Connect customers to orders", "parent.GetChildRows(...) ", "parentRow.GetChildRows(\"CustomerOrders\").Count", 1],
-      ["Find unsaved changes", "table.GetChanges()", "table.GetChanges.Rows.Count", 1],
-      ["Load an Excel table", "adapter.Fill(table)", "ROneCOne.DbDataAdapter(command).Fill(filled)", 2],
+      ["Find unsaved changes", "table.GetChanges()", "people.GetChanges.Rows.Count", 1],
+      ["Load an Excel table", "adapter.Fill(table)", "ROneCOne.DbDataAdapter(scoresQuery).Fill(filled)", 2],
       ["Keep source ordering", "reader.GetString(0)", "filled.Rows.Item(0).Item(\"Name\")", "Grace"],
-      ["Await a record count", "await command.ExecuteScalarAsync()", "command.ExecuteScalarAsync.Await", 2],
+      ["Await a record count", "await command.ExecuteScalarAsync()", "scoresQuery.ExecuteScalarAsync.Await", 2],
       ["Store a blank database value", "DBNull.Value", "ROneCOne.DBNull", true],
-      ["See how queries wait", "provider capability inspection", "connection.AsyncMode", "Native"],
-      ["Confirm the connection is open", "provider state inspection", "connection.State", "Open"],
+      ["See how queries wait", "provider capability inspection", "conn.AsyncMode", "Native"],
+      ["Confirm the connection is open", "provider state inspection", "conn.State", "Open"],
     ],
   },
   {
@@ -140,7 +140,7 @@ const capabilities = [
       [
         "Read the body as text",
         "await client.GetStringAsync(url)",
-        "json = client.GetStringAsync(\"pokemon/ditto\").Await",
+        "dittoJson = client.GetStringAsync(\"pokemon/ditto\").Await",
         true,
       ],
       [
@@ -158,7 +158,7 @@ const capabilities = [
       [
         "Overlap three downloads",
         "await Task.WhenAll(first, second, third)",
-        "Set replies = ROneCOne.Task.WhenAll(first, second, third).Await",
+        "Set responses = ROneCOne.Task.WhenAll(bulbasaur, charmander, squirtle).Await",
         "bulbasaur, charmander, squirtle ready",
       ],
       [
@@ -170,13 +170,13 @@ const capabilities = [
       [
         "Catch a failed download",
         "try { await client.GetStringAsync(url); }\ncatch (HttpRequestException) { ... }",
-        "On Error Resume Next\ntask.Await\nIf Err.Number = ROneCOne.HttpRequestError Then ...",
+        "On Error Resume Next\npending.Await\nIf Err.Number = ROneCOne.HttpRequestError Then ...",
         "skipped a missing resource",
       ],
       [
         "Cancel a request",
         "cancelSource.Cancel();",
-        "source.Cancel\nSet task = client.GetAsync(\"pokemon/eevee\", source.Token)",
+        "cancelSource.Cancel\nSet pending = client.GetAsync(\"pokemon/eevee\", cancelSource.Token)",
         true,
       ],
       [
@@ -334,19 +334,19 @@ const capabilities = [
       [
         "Write and read UTF-8 text",
         "File.WriteAllText(path, text)",
-        "ROneCOne.File.WriteAllText path, \"hello files\"\nROneCOne.File.ReadAllText path",
+        "ROneCOne.File.WriteAllText helloPath, \"hello files\"\nROneCOne.File.ReadAllText helloPath",
         "hello files",
       ],
       [
         "Let a byte-order mark decide",
         "StreamReader detects encoding",
-        "ROneCOne.File.WriteAllText path16, text, \"utf-16\"\nROneCOne.File.ReadAllText(path16) = text",
+        "ROneCOne.File.WriteAllText path16, \"hello files\", \"utf-16\"\nROneCOne.File.ReadAllText(path16) = \"hello files\"",
         true,
       ],
       [
         "Round-trip lines as a list",
         "File.ReadAllLines(path)",
-        "ROneCOne.File.WriteAllLines path, Array(\"alpha\", \"beta\", \"gamma\")\nROneCOne.File.ReadAllLines(path).Count",
+        "ROneCOne.File.WriteAllLines linesPath, Array(\"alpha\", \"beta\", \"gamma\")\nROneCOne.File.ReadAllLines(linesPath).Count",
         3,
       ],
       [
@@ -394,13 +394,13 @@ const capabilities = [
       [
         "Log level-coded lines to a file",
         "ILogger.LogInformation / LogWarning",
-        "logger.LogInformation \"...\": logger.LogDebug \"...\"\nlogLines.Count",
+        "runLog.LogInformation \"...\": runLog.LogDebug \"...\"\nlogLines.Count",
         2,
       ],
       [
         "Await the next folder change",
         "FileSystemWatcher.Changed",
-        "Set watchTask = watcher.WaitForChangeAsync\nchange.ChangeType & \" \" & change.Name",
+        "Set watchTask = watcher.WaitForChangeAsync\nfileChange.ChangeType & \" \" & fileChange.Name",
         "Created signal.dat",
       ],
     ],
@@ -510,25 +510,25 @@ const capabilities = [
       [
         "Test whether text matches",
         "Regex.IsMatch(input, pattern)",
-        "Set email = ROneCOne.Regex(\"(\\w+)@(\\w+)\\.(\\w+)\")\nemail.IsMatch(\"write ada@x.com today\")",
+        "Set emailRegex = ROneCOne.Regex(\"(\\w+)@(\\w+)\\.(\\w+)\")\nemailRegex.IsMatch(\"write ada@x.com today\")",
         true,
       ],
       [
         "Read a capture group",
         "match.Groups[1].Value",
-        "email.Match(\"write ada@x.com today\").Groups.Item(1)",
+        "emailRegex.Match(\"write ada@x.com today\").Groups.Item(1)",
         "ada",
       ],
       [
         "Count every match",
         "Regex.Matches(input).Count",
-        "email.Matches(\"ada@x.com and bo@y.org\").Count",
+        "emailRegex.Matches(\"ada@x.com and bo@y.org\").Count",
         2,
       ],
       [
         "Replace with group references",
         "Regex.Replace(input, \"$2:$1\")",
-        "email.Replace(\"ada@x.com\", \"$2:$1\")",
+        "emailRegex.Replace(\"ada@x.com\", \"$2:$1\")",
         "x:ada",
       ],
       [
@@ -643,7 +643,7 @@ const capabilities = [
       [
         "Subtract instants into a duration",
         "later - earlier is a TimeSpan",
-        "due.Subtract(startAt).TotalHours",
+        "dueAt.Subtract(startAt).TotalHours",
         2.5,
       ],
       [
@@ -680,31 +680,31 @@ const capabilities = [
       [
         "Parse a document",
         "XDocument.Parse(text)",
-        "Set doc = ROneCOne.Xml.Parse(catalogXml)\ndoc.Name",
+        "Set catalog = ROneCOne.Xml.Parse(catalogXml)\ncatalog.Name",
         "catalog",
       ],
       [
         "Read an attribute",
         "element.Attribute(\"id\").Value",
-        "CLng(doc.Elements(\"book\").Item(0).GetAttribute(\"id\"))",
+        "CLng(catalog.Elements(\"book\").Item(0).GetAttribute(\"id\"))",
         1,
       ],
       [
         "XPath finds nodes anywhere",
         "doc.XPathSelectElements(\"//book\")",
-        "doc.SelectNodes(\"//book\").Count",
+        "catalog.SelectNodes(\"//book\").Count",
         2,
       ],
       [
         "Predicates filter in the query",
         "//book[@id='2']/title",
-        "doc.SelectSingleNode(\"//book[@id='2']/title\").Value",
+        "catalog.SelectSingleNode(\"//book[@id='2']/title\").Value",
         "Second & Third",
       ],
       [
         "Misses are Nothing, not errors",
         "XPathSelectElement returns null",
-        "doc.SelectSingleNode(\"//missing\") Is Nothing",
+        "catalog.SelectSingleNode(\"//missing\") Is Nothing",
         true,
       ],
       [
@@ -795,7 +795,7 @@ const capabilities = [
       [
         "Zip-slip names are refused",
         "directory-traversal guard",
-        "On Error Resume Next\nROneCOne.ZipFile.ExtractToDirectory hostilePath, target\nIf Err.Number = ROneCOne.ZipError Then ...",
+        "On Error Resume Next\nROneCOne.ZipFile.ExtractToDirectory hostilePath, guardedDir\nIf Err.Number = ROneCOne.ZipError Then ...",
         "traversal refused",
       ],
     ],
@@ -895,7 +895,7 @@ const capabilities = [
       [
         "Hand over the Table itself",
         "worksheet.ListObjects[\"Sales\"]",
-        "Set sales = ROneCOne.Table( _\n    sheet.ListObjects(\"Sales\"))\nsales.Rows.Count",
+        "Set sales = ROneCOne.Table( _\n    ws.ListObjects(\"Sales\"))\nsales.Rows.Count",
         5,
       ],
       [
@@ -1117,13 +1117,13 @@ const capabilities = [
       [
         "The rows it gave up were cleared",
         "no orphaned cells",
-        "IsEmpty(sheet.Range(\"A6\").Value)",
+        "IsEmpty(ws.Range(\"A6\").Value)",
         true,
       ],
       [
         "And the sheet now reads in sort order",
         "written in one bulk call",
-        "sheet.Range(\"B2\").Value",
+        "ws.Range(\"B2\").Value",
         "Cy",
       ],
       [
@@ -1135,7 +1135,7 @@ const capabilities = [
       [
         "The grown row landed in the Table",
         "one bulk assignment",
-        "sheet.Range(\"B6\").Value",
+        "ws.Range(\"B6\").Value",
         "Fay",
       ],
       [

@@ -57,22 +57,22 @@ Public Property Get Region() As String
     Region = mRegion
 End Property
 
-Public Property Let Region(ByVal value As String)
-    mRegion = value
+Public Property Let Region(ByVal incoming As String)
+    mRegion = incoming
 End Property
 
 Public Property Get Rep() As String
     Rep = mRep
 End Property
 
-Public Property Let Rep(ByVal value As String)
-    mRep = value
+Public Property Let Rep(ByVal incoming As String)
+    mRep = incoming
 End Property
 
 Public Property Get Amount() As Double
     Amount = mAmount
 End Property
 
-Public Property Let Amount(ByVal value As Double)
-    mAmount = value
+Public Property Let Amount(ByVal incoming As Double)
+    mAmount = incoming
 End Property

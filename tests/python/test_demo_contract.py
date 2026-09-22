@@ -45,9 +45,9 @@ class DemoContractTests(unittest.TestCase):
     def test_delegate_demo_leads_with_a_practical_pricing_rule(self) -> None:
         source = DELEGATES_DEMO.read_text(encoding="utf-8")
 
-        self.assertIn("Set price = ROneCOne.Var(vbDouble)", source)
-        self.assertIn("Set applyDiscount = price.Multiply(0.9).AsFunc", source)
-        self.assertIn("Set orderTotal = amount.Add(shipping).AsFunc", source)
+        self.assertIn("Set listPrice = ROneCOne.Var(vbDouble)", source)
+        self.assertIn("Set applyDiscount = listPrice.Multiply(0.9).AsFunc", source)
+        self.assertIn("Set orderTotal = orderAmount.Add(shipping).AsFunc", source)
 
     def test_delegate_demo_exercises_the_universal_surface(self) -> None:
         source = DELEGATES_DEMO.read_text(encoding="utf-8")
@@ -59,7 +59,7 @@ class DemoContractTests(unittest.TestCase):
             'ROneCOne.Func(worksheetFunctions, "Max")',
             'ROneCOne.Func("DemoUsage.CalculateOrderTotal")',
             "calculateTotal.DynamicInvoke",
-            "ROneCOne.Combine(updateDashboard, writeAudit)",
+            "ROneCOne.Combine(dashboard, audit)",
             "ROneCOne.NativeAction",
             "ROneCOne.RefLong(orderNumber)",
             "calculateTotal.Signature",
@@ -75,8 +75,8 @@ class DemoContractTests(unittest.TestCase):
     def test_delegate_demo_uses_execute_and_inline_byref_sugar(self) -> None:
         source = DELEGATES_DEMO.read_text(encoding="utf-8")
 
-        self.assertIn('notify.Execute "Order 1042 approved"', source)
-        self.assertIn("increment.Execute ROneCOne.RefLong(orderNumber)", source)
+        self.assertIn('announce.Execute "Order 1042 approved"', source)
+        self.assertIn("addOne.Execute ROneCOne.RefLong(orderNumber)", source)
         self.assertNotIn("Dim ignored As Variant", source)
 
     def test_user_class_model_exposes_demo_fields(self) -> None:
@@ -107,7 +107,7 @@ class DemoContractTests(unittest.TestCase):
             "customers.SingleItem(",
             "customers.WhereAny(",
             '"Reports", reportPredicate',
-            "strings.Distinct(",
+            "spellings.Distinct(",
             ".Both(",
             ".Either(",
         )
@@ -123,16 +123,16 @@ class DemoContractTests(unittest.TestCase):
         source = EVENTS_DEMO.read_text(encoding="utf-8")
 
         self.assertIn("ROneCOne.EventOf(vbString)", source)
-        self.assertIn(".Subscribe(updateDashboard)", source)
+        self.assertIn(".Subscribe(dashboard)", source)
         self.assertIn('orderStatusChanged.Emit "Order 1042 shipped"', source)
-        self.assertIn("orderStatusChanged.Unsubscribe(writeAudit)", source)
+        self.assertIn("orderStatusChanged.Unsubscribe(audit)", source)
 
     def test_exception_demo_leads_with_structured_flow(self) -> None:
         source = EXCEPTIONS_DEMO.read_text(encoding="utf-8")
 
         self.assertIn("ROneCOne.Try(importWork)", source)
-        self.assertIn(".Catch(INVALID_AMOUNT_ERROR, skipBadRow)", source)
-        self.assertIn(".Finally(closeImportFile)", source)
+        self.assertIn(".Catch(INVALID_AMOUNT_ERROR, skipBadRowAction)", source)
+        self.assertIn(".Finally(closeImportFileAction)", source)
         self.assertIn("importAttempt.Execute", source)
         self.assertIn("errorInfo.ErrorNumber = INVALID_AMOUNT_ERROR", source)
         self.assertNotIn("Err.Raise", source)
@@ -144,8 +144,8 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("ROneCOne.Task.Run(forecastWork)", source)
         self.assertIn("ROneCOne.Task.Run(reorderWork)", source)
         self.assertIn("ROneCOne.Task.WhenAll(forecastTask, reorderTask)", source)
-        self.assertIn("ROneCOne.Task.Run(countOpenOrders)", source)
-        self.assertIn("Set results = allWork.Await", source)
+        self.assertIn("ROneCOne.Task.Run(openOrderCounter)", source)
+        self.assertIn("Set outputs = allWork.Await", source)
         self.assertIn(".WaitAsync(100)", source)
         self.assertIn("ROneCOne.Task.YieldOnce", source)
         self.assertIn("allWork.ContinueWith(buildSummary)", source)
@@ -187,7 +187,7 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("client.GetStringAsync(", source)
         self.assertIn("ROneCOne.Task.WhenAll(", source)
         self.assertIn("ROneCOne.HttpRequestError", source)
-        self.assertIn("source.Token", source)
+        self.assertIn("cancelSource.Token", source)
         self.assertIn("ROneCOne.Json.Deserialize(pikachuJson)", source)
         self.assertIn("ROneCOne.Json.DeserializeTable(", source)
         self.assertIn("client.DownloadFileAsync(", source)
@@ -462,7 +462,7 @@ class DemoContractTests(unittest.TestCase):
         source = QUERY_DEMO.read_text(encoding="utf-8")
         builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")
 
-        self.assertIn("connection.Queryable(", source)
+        self.assertIn("conn.Queryable(", source)
         self.assertIn(".ToSqlString", source)
         self.assertIn(".ToDataTable", source)
         self.assertIn("SelectColumns(", source)
@@ -494,14 +494,14 @@ class DemoContractTests(unittest.TestCase):
     def test_data_demo_leads_with_typed_data_and_provider_sugar(self) -> None:
         source = DATA_DEMO.read_text(encoding="utf-8")
 
-        self.assertIn('table.Column("Id", vbLong).AutoNumber', source)
+        self.assertIn('people.Column("Id", vbLong).AutoNumber', source)
         self.assertIn(".AsPrimaryKey", source)
-        self.assertIn('table.Row("Ada", 90, ROneCOne.DBNull).Add', source)
-        self.assertIn("ROneCOne.DataView(table)", source)
+        self.assertIn('people.Row("Ada", 90, ROneCOne.DBNull).Add', source)
+        self.assertIn("ROneCOne.DataView(people)", source)
         self.assertIn("ROneCOne.DataRelation", source)
-        self.assertIn("ROneCOne.DbDataAdapter(command)", source)
+        self.assertIn("ROneCOne.DbDataAdapter(scoresQuery)", source)
         self.assertIn("ExecuteScalarAsync", source)
-        self.assertIn("connection.AsyncMode", source)
+        self.assertIn("conn.AsyncMode", source)
 
     def test_capability_builder_and_packager_ship_separate_workbooks(self) -> None:
         builder = CAPABILITY_BUILDER.read_text(encoding="utf-8")

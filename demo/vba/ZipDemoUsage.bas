@@ -52,7 +52,7 @@ Private Const START_SHEET As String = "Start Here"
 Public Sub RunROneCOneZipDemo()
     Dim demoRoot As String
     Dim errorDescription As String
-    Dim errorNumber As Long
+    Dim errNumber As Long
 
     On Error GoTo DemoFailure
     demoRoot = ThisWorkbook.Path & "\ROneCOne_Zip_Demo_Data"
@@ -68,7 +68,7 @@ Public Sub RunROneCOneZipDemo()
     Exit Sub
 
 DemoFailure:
-    errorNumber = Err.Number
+    errNumber = Err.Number
     errorDescription = Err.Description
     On Error Resume Next
     If Len(demoRoot) > 0 Then
@@ -77,7 +77,7 @@ DemoFailure:
         End If
     End If
     On Error GoTo 0
-    MarkDemoFailed errorNumber, errorDescription
+    MarkDemoFailed errNumber, errorDescription
 End Sub
 
 Private Sub WriteZipExamples(ByVal demoRoot As String)
@@ -88,7 +88,7 @@ Private Sub WriteZipExamples(ByVal demoRoot As String)
     Dim slipPath As String
     Dim slipTrace As String
     Dim sourceRoot As String
-    Dim index As Long
+    Dim idx As Long
 
     ' Step 1: build a small tree and zip it. CreateFromDirectory writes a
     ' stored archive that every unzipper reads, including PowerShell's own.
@@ -120,11 +120,11 @@ Private Sub WriteZipExamples(ByVal demoRoot As String)
     ' Step 4: the traversal guard. A hostile entry name is spliced into a
     ' real archive; extraction refuses it before writing anything.
     slipBytes = ROneCOne.File.ReadAllBytes(madePath)
-    For index = 0 To UBound(slipBytes) - 9
-        If BytesMatch(slipBytes, index, "readme.txt") Then
-            PatchBytes slipBytes, index, "..\evil.x"
+    For idx = 0 To UBound(slipBytes) - 9
+        If BytesMatch(slipBytes, idx, "readme.txt") Then
+            PatchBytes slipBytes, idx, "..\evil.x"
         End If
-    Next index
+    Next idx
     slipPath = ROneCOne.Path.Combine(demoRoot, "hostile.zip")
     ROneCOne.File.WriteAllBytes slipPath, slipBytes
     slipTrace = "guard did not fire"
@@ -156,16 +156,16 @@ Private Sub RunZipBenchmark(ByVal demoRoot As String)
     Dim archive As ROneCOne
     Dim builder As ROneCOne
     Dim elapsed As Double
-    Dim index As Long
-    Dim total As Double
+    Dim idx As Long
+    Dim runningTotal As Double
     Dim zipPath As String
 
     ' PowerShell deflates a thousand-line file; the pure-VBA engine inflates
     ' it and sums the numbers back out, timing the read and inflate.
     Set builder = ROneCOne.StringBuilder()
-    For index = 1 To BENCHMARK_ROWS
-        builder.AppendLine CStr(index)
-    Next index
+    For idx = 1 To BENCHMARK_ROWS
+        builder.AppendLine CStr(idx)
+    Next idx
     ROneCOne.File.WriteAllText _
         ROneCOne.Path.Combine(demoRoot, "nums.txt"), builder.ToString
     zipPath = ROneCOne.Path.Combine(demoRoot, "nums.zip")
@@ -175,56 +175,56 @@ Private Sub RunZipBenchmark(ByVal demoRoot As String)
     Dim started As Double
     started = Timer
     Set archive = ROneCOne.ZipFile.OpenRead(zipPath)
-    Dim line As Variant
-    For Each line In VBA.Split(archive.GetEntry("nums.txt").ReadAllText(), _
+    Dim entryLine As Variant
+    For Each entryLine In VBA.Split(archive.GetEntry("nums.txt").ReadAllText(), _
         vbCrLf)
-        If Len(Trim$(CStr(line))) > 0 Then total = total + Val(CStr(line))
-    Next line
+        If Len(Trim$(CStr(entryLine))) > 0 Then runningTotal = runningTotal + Val(CStr(entryLine))
+    Next entryLine
     elapsed = ElapsedSeconds(started)
 
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
         .Range("B6").Value2 = BENCHMARK_ROWS
         .Range("C6").Value2 = elapsed
-        .Range("D6").Value2 = total
+        .Range("D6").Value2 = runningTotal
     End With
 End Sub
 
-Private Sub Shell80(ByVal command As String)
-    Dim result As ROneCOne
+Private Sub Shell80(ByVal psCommand As String)
+    Dim outcome As ROneCOne
 
-    Set result = ROneCOne.Process.RunAsync( _
-        "powershell -NoProfile -Command """ & command & """").Await
-    If result.ExitCode <> 0 Then
+    Set outcome = ROneCOne.Process.RunAsync( _
+        "powershell -NoProfile -Command """ & psCommand & """").Await
+    If outcome.ExitCode <> 0 Then
         Err.Raise vbObjectError + 5000, "ZipDemo", _
-            "PowerShell step failed: " & result.StandardError
+            "PowerShell step failed: " & outcome.StandardError
     End If
 End Sub
 
 Private Function BytesMatch( _
     ByRef bytes As Variant, _
     ByVal at As Long, _
-    ByVal text As String _
+    ByVal asciiText As String _
 ) As Boolean
-    Dim index As Long
+    Dim idx As Long
 
-    For index = 1 To Len(text)
-        If bytes(at + index - 1) <> Asc(Mid$(text, index, 1)) Then
+    For idx = 1 To Len(asciiText)
+        If bytes(at + idx - 1) <> Asc(Mid$(asciiText, idx, 1)) Then
             Exit Function
         End If
-    Next index
+    Next idx
     BytesMatch = True
 End Function
 
 Private Sub PatchBytes( _
     ByRef bytes As Variant, _
     ByVal at As Long, _
-    ByVal text As String _
+    ByVal asciiText As String _
 )
-    Dim index As Long
+    Dim idx As Long
 
-    For index = 1 To Len(text)
-        bytes(at + index - 1) = Asc(Mid$(text, index, 1))
-    Next index
+    For idx = 1 To Len(asciiText)
+        bytes(at + idx - 1) = Asc(Mid$(asciiText, idx, 1))
+    Next idx
 End Sub
 
 Private Sub MarkDemoPassed()
@@ -235,11 +235,11 @@ Private Sub MarkDemoPassed()
     End With
 End Sub
 
-Private Sub MarkDemoFailed(ByVal errorNumber As Long, ByVal description As String)
+Private Sub MarkDemoFailed(ByVal errNumber As Long, ByVal errDescription As String)
     With ThisWorkbook.Worksheets(START_SHEET)
         .Range("B12").Value2 = Now
         .Range("B13").Value2 = "ERROR"
-        .Range("B14").Value2 = CStr(errorNumber) & ": " & description
+        .Range("B14").Value2 = CStr(errNumber) & ": " & errDescription
     End With
 End Sub
 

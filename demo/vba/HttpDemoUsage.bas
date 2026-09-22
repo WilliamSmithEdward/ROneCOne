@@ -58,7 +58,7 @@ Private mTrace As String
 
 Public Sub RunROneCOneHttpDemo()
     Dim errorDescription As String
-    Dim errorNumber As Long
+    Dim errNumber As Long
 
     On Error GoTo DemoFailure
     WriteHttpExamples
@@ -68,9 +68,9 @@ Public Sub RunROneCOneHttpDemo()
     Exit Sub
 
 DemoFailure:
-    errorNumber = Err.Number
+    errNumber = Err.Number
     errorDescription = Err.Description
-    MarkDemoFailed errorNumber, errorDescription
+    MarkDemoFailed errNumber, errorDescription
 End Sub
 
 Private Sub WriteHttpExamples()
@@ -80,13 +80,13 @@ Private Sub WriteHttpExamples()
     Dim client As ROneCOne
     Dim downloadPath As String
     Dim downloadWorked As Boolean
-    Dim json As String
+    Dim dittoJson As String
     Dim missError As Long
     Dim pikachuJson As String
-    Dim replies As ROneCOne
+    Dim responses As ROneCOne
     Dim response As ROneCOne
-    Dim source As ROneCOne
-    Dim task As ROneCOne
+    Dim cancelSource As ROneCOne
+    Dim pending As ROneCOne
     Dim tree As ROneCOne
 
     ' Step 1: create the client once and give it a base address, exactly like
@@ -106,12 +106,12 @@ Private Sub WriteHttpExamples()
     ' Sometimes you only want the text. GetStringAsync skips the response
     ' object and resolves straight to the body, and it refuses to hand back
     ' text from a failed request.
-    json = client.GetStringAsync("pokemon/ditto").Await
+    dittoJson = client.GetStringAsync("pokemon/ditto").Await
 
     ' Overlap three downloads. Each GetAsync starts its transfer right away,
     ' so all three are in flight together; WhenAll finishes when the last one
     ' lands. The Benchmarks sheet shows how much time this saves.
-    Set replies = ROneCOne.Task.WhenAll( _
+    Set responses = ROneCOne.Task.WhenAll( _
         client.GetAsync("pokemon/bulbasaur"), _
         client.GetAsync("pokemon/charmander"), _
         client.GetAsync("pokemon/squirtle")).Await
@@ -122,24 +122,24 @@ Private Sub WriteHttpExamples()
     ' in C#, you handle that error at the await site: trap it and compare its
     ' number with ROneCOne.HttpRequestError. (The task also keeps the full
     ' story in IsFaulted and Exception, mirroring Task.Exception in .NET.)
-    Set task = client.GetStringAsync("pokemon/missingno")
+    Set pending = client.GetStringAsync("pokemon/missingno")
     mTrace = "unexpected success"
     On Error Resume Next
-    task.Await
+    pending.Await
     missError = Err.Number
     On Error GoTo 0
-    If missError = ROneCOne.HttpRequestError And task.IsFaulted Then
+    If missError = ROneCOne.HttpRequestError And pending.IsFaulted Then
         mTrace = "skipped a missing resource"
     End If
 
     ' Cancellation uses the same tokens as every other task. This token is
     ' canceled before the request is awaited, so the transfer is abandoned
     ' and the task reports IsCanceled instead of a result.
-    Set source = ROneCOne.CancellationTokenSource
-    source.Cancel
-    Set task = client.GetAsync("pokemon/eevee", source.Token)
+    Set cancelSource = ROneCOne.CancellationTokenSource
+    cancelSource.Cancel
+    Set pending = client.GetAsync("pokemon/eevee", cancelSource.Token)
     On Error Resume Next
-    task.Await
+    pending.Await
     canceledError = Err.Number
     On Error GoTo 0
 
@@ -169,15 +169,15 @@ Private Sub WriteHttpExamples()
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
         .Range("E6").Value2 = CStr(response.StatusCode) & " " & _
             response.ReasonPhrase
-        .Range("E7").Value2 = (InStr(1, json, """ditto""") > 0)
+        .Range("E7").Value2 = (InStr(1, dittoJson, """ditto""") > 0)
         .Range("E8").Value2 = _
             (response.EnsureSuccessStatusCode Is response)
         .Range("E9").Value2 = response.Header("Content-Type")
-        .Range("E10").Value2 = DescribeOverlappedReplies(replies)
+        .Range("E10").Value2 = DescribeOverlappedReplies(responses)
         .Range("E11").Value2 = client.GetAsync( _
             "pokemon/missingno").Await.StatusCode
         .Range("E12").Value2 = mTrace
-        .Range("E13").Value2 = (task.IsCanceled And canceledError <> 0)
+        .Range("E13").Value2 = (pending.IsCanceled And canceledError <> 0)
         .Range("E14").Value2 = (berry.StatusCode = 200)
         .Range("E15").Value2 = CStr(tree.Item("name"))
         .Range("E16").Value2 = (abilities.Rows.Count > 0)
@@ -191,11 +191,11 @@ Private Sub WriteHttpExamples()
 End Sub
 
 Private Function DescribeOverlappedReplies( _
-    ByVal replies As ROneCOne _
+    ByVal responses As ROneCOne _
 ) As String
-    If replies.Item(0).StatusCode = 200 And _
-        replies.Item(1).StatusCode = 200 And _
-        replies.Item(2).StatusCode = 200 Then
+    If responses.Item(0).StatusCode = 200 And _
+        responses.Item(1).StatusCode = 200 And _
+        responses.Item(2).StatusCode = 200 Then
         DescribeOverlappedReplies = "bulbasaur, charmander, squirtle ready"
     Else
         DescribeOverlappedReplies = "a download failed"
@@ -205,7 +205,7 @@ End Function
 Private Sub RunHttpBenchmark()
     Dim client As ROneCOne
     Dim ignored As ROneCOne
-    Dim names As Variant
+    Dim endpoints As Variant
     Dim overlappedElapsed As Double
     Dim resource As Variant
     Dim sequentialElapsed As Double
@@ -217,18 +217,18 @@ Private Sub RunHttpBenchmark()
     ' The saving is real network time, not parallel VBA.
     Set client = ROneCOne.HttpClient()
     client.BaseAddress = "https://pokeapi.co/api/v2/"
-    names = Array("pokemon/bulbasaur", "pokemon/charmander", _
+    endpoints = Array("pokemon/bulbasaur", "pokemon/charmander", _
         "pokemon/squirtle")
 
     started = Timer
     Set ignored = ROneCOne.Task.WhenAll( _
-        client.GetAsync(CStr(names(0))), _
-        client.GetAsync(CStr(names(1))), _
-        client.GetAsync(CStr(names(2)))).Await
+        client.GetAsync(CStr(endpoints(0))), _
+        client.GetAsync(CStr(endpoints(1))), _
+        client.GetAsync(CStr(endpoints(2)))).Await
     overlappedElapsed = ElapsedSeconds(started)
 
     started = Timer
-    For Each resource In names
+    For Each resource In endpoints
         Set ignored = client.GetAsync(CStr(resource)).Await
     Next resource
     sequentialElapsed = ElapsedSeconds(started)
@@ -248,11 +248,11 @@ Private Sub MarkDemoPassed()
     End With
 End Sub
 
-Private Sub MarkDemoFailed(ByVal errorNumber As Long, ByVal description As String)
+Private Sub MarkDemoFailed(ByVal errNumber As Long, ByVal errDescription As String)
     With ThisWorkbook.Worksheets(START_SHEET)
         .Range("B12").Value2 = Now
         .Range("B13").Value2 = "ERROR"
-        .Range("B14").Value2 = CStr(errorNumber) & ": " & description
+        .Range("B14").Value2 = CStr(errNumber) & ": " & errDescription
     End With
 End Sub
 

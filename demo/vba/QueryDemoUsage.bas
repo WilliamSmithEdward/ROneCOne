@@ -57,7 +57,7 @@ Private Const START_SHEET As String = "Start Here"
 Public Sub RunROneCOneQueryDemo()
     Dim dataPath As String
     Dim errorDescription As String
-    Dim errorNumber As Long
+    Dim errNumber As Long
 
     On Error GoTo DemoFailure
     dataPath = ThisWorkbook.Path & "\ROneCOne_Query_Demo_Data.xlsx"
@@ -70,21 +70,21 @@ Public Sub RunROneCOneQueryDemo()
     Exit Sub
 
 DemoFailure:
-    errorNumber = Err.Number
+    errNumber = Err.Number
     errorDescription = Err.Description
     On Error Resume Next
     If Len(dataPath) > 0 Then
         If ROneCOne.File.Exists(dataPath) Then ROneCOne.File.Delete dataPath
     End If
     On Error GoTo 0
-    MarkDemoFailed errorNumber, errorDescription
+    MarkDemoFailed errNumber, errorDescription
 End Sub
 
 ' A closed workbook is a perfectly good database as far as ACE is concerned,
 ' which keeps this demo offline and free of any server.
 Private Sub BuildDemoWorkbook(ByVal dataPath As String)
     Dim book As Workbook
-    Dim sheet As Worksheet
+    Dim ws As Worksheet
 
     On Error Resume Next
     Kill dataPath
@@ -92,41 +92,41 @@ Private Sub BuildDemoWorkbook(ByVal dataPath As String)
 
     Application.DisplayAlerts = False
     Set book = Application.Workbooks.Add
-    Set sheet = book.Worksheets(1)
-    sheet.Name = "Orders"
-    sheet.Range("A1:D1").Value = Array("Id", "Name", "Total", "Note")
-    sheet.Range("A2:D2").Value = Array(1, "Ada", 12.5, "rush")
-    sheet.Range("A3:D3").Value = Array(2, "Bo", 20, Empty)
-    sheet.Range("A4:D4").Value = Array(3, "Cy", 7.25, "gift")
-    sheet.Range("A5:D5").Value = Array(4, "100% done", 5, "x")
-    sheet.Range("A6:D6").Value = Array(5, "x' OR '1'='1", 11, "z")
+    Set ws = book.Worksheets(1)
+    ws.Name = "Orders"
+    ws.Range("A1:D1").Value = Array("Id", "Name", "Total", "Note")
+    ws.Range("A2:D2").Value = Array(1, "Ada", 12.5, "rush")
+    ws.Range("A3:D3").Value = Array(2, "Bo", 20, Empty)
+    ws.Range("A4:D4").Value = Array(3, "Cy", 7.25, "gift")
+    ws.Range("A5:D5").Value = Array(4, "100% done", 5, "x")
+    ws.Range("A6:D6").Value = Array(5, "x' OR '1'='1", 11, "z")
     book.SaveAs dataPath, 51
     book.Close False
     Application.DisplayAlerts = True
 End Sub
 
 Private Function OpenDemoConnection(ByVal dataPath As String) As ROneCOne
-    Dim connection As ROneCOne
+    Dim conn As ROneCOne
 
-    Set connection = ROneCOne.DbConnection( _
+    Set conn = ROneCOne.DbConnection( _
         "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & dataPath & _
         ";Extended Properties=""Excel 12.0 Xml;HDR=YES"";")
-    connection.Connect
-    Set OpenDemoConnection = connection
+    conn.Connect
+    Set OpenDemoConnection = conn
 End Function
 
 Private Sub WriteQueryExamples(ByVal dataPath As String)
     Dim baseQuery As ROneCOne
-    Dim connection As ROneCOne
+    Dim conn As ROneCOne
     Dim orders As ROneCOne
     Dim refusalTrace As String
     Dim refused As Long
 
-    Set connection = OpenDemoConnection(dataPath)
+    Set conn = OpenDemoConnection(dataPath)
 
     ' Step 1: a query is deferred. Nothing runs until a terminal like Count
     ' or ToDataTable asks for rows, so a query is cheap to build and share.
-    Set orders = connection.Queryable("Orders$")
+    Set orders = conn.Queryable("Orders$")
 
     ' Step 2: composition never mutates what it came from. baseQuery keeps
     ' its own meaning even after a narrower query is derived from it.
@@ -166,26 +166,26 @@ Private Sub WriteQueryExamples(ByVal dataPath As String)
         .Range("E14").Value2 = refusalTrace
     End With
 
-    connection.Disconnect
+    conn.Disconnect
 End Sub
 
 ' Counting five thousand rows without moving them: the provider returns one
 ' number, so nothing but the answer crosses into Excel.
 Private Sub RunQueryBenchmark(ByVal dataPath As String)
-    Dim connection As ROneCOne
+    Dim conn As ROneCOne
     Dim elapsed As Double
     Dim matching As Long
     Dim started As Double
 
     BuildBenchmarkSheet dataPath
-    Set connection = OpenDemoConnection(dataPath)
+    Set conn = OpenDemoConnection(dataPath)
 
     started = Timer
-    matching = connection.Queryable("Bench$") _
+    matching = conn.Queryable("Bench$") _
         .Where("Value").AtLeast(BENCHMARK_ROWS / 2).Count
     elapsed = ElapsedSeconds(started)
 
-    connection.Disconnect
+    conn.Disconnect
 
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
         .Range("B6").Value2 = BENCHMARK_ROWS
@@ -196,20 +196,20 @@ End Sub
 
 Private Sub BuildBenchmarkSheet(ByVal dataPath As String)
     Dim book As Workbook
-    Dim index As Long
-    Dim sheet As Worksheet
-    Dim values() As Variant
+    Dim idx As Long
+    Dim ws As Worksheet
+    Dim grid() As Variant
 
     Application.DisplayAlerts = False
     Set book = Application.Workbooks.Open(dataPath)
-    Set sheet = book.Worksheets.Add
-    sheet.Name = "Bench"
-    sheet.Range("A1").Value = "Value"
-    ReDim values(1 To BENCHMARK_ROWS, 1 To 1)
-    For index = 1 To BENCHMARK_ROWS
-        values(index, 1) = index
-    Next index
-    sheet.Range("A2").Resize(BENCHMARK_ROWS, 1).Value = values
+    Set ws = book.Worksheets.Add
+    ws.Name = "Bench"
+    ws.Range("A1").Value = "Value"
+    ReDim grid(1 To BENCHMARK_ROWS, 1 To 1)
+    For idx = 1 To BENCHMARK_ROWS
+        grid(idx, 1) = idx
+    Next idx
+    ws.Range("A2").Resize(BENCHMARK_ROWS, 1).Value = grid
     book.Save
     book.Close False
     Application.DisplayAlerts = True
@@ -234,11 +234,11 @@ Private Sub MarkDemoPassed()
     End With
 End Sub
 
-Private Sub MarkDemoFailed(ByVal errorNumber As Long, ByVal description As String)
+Private Sub MarkDemoFailed(ByVal errNumber As Long, ByVal errDescription As String)
     With ThisWorkbook.Worksheets(START_SHEET)
         .Range("B12").Value2 = Now
         .Range("B13").Value2 = "ERROR"
-        .Range("B14").Value2 = CStr(errorNumber) & ": " & description
+        .Range("B14").Value2 = CStr(errNumber) & ": " & errDescription
     End With
 End Sub
 

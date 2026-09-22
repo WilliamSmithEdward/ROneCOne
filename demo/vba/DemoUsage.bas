@@ -43,8 +43,8 @@ Option Explicit
 
 #If Win64 Then
 Private Declare PtrSafe Sub CopyPointer Lib "kernel32" Alias "RtlMoveMemory" ( _
-    ByRef destination As LongPtr, _
-    ByRef source As LongPtr, _
+    ByRef dest As LongPtr, _
+    ByRef src As LongPtr, _
     ByVal byteCount As LongPtr _
 )
 #End If
@@ -62,7 +62,7 @@ Private mTrace As String
 
 Public Sub RunROneCOneDemo()
     Dim errorDescription As String
-    Dim errorNumber As Long
+    Dim errNumber As Long
 
     On Error GoTo DemoFailure
 
@@ -73,9 +73,9 @@ Public Sub RunROneCOneDemo()
     Exit Sub
 
 DemoFailure:
-    errorNumber = Err.Number
+    errNumber = Err.Number
     errorDescription = Err.Description
-    MarkDemoFailed errorNumber, errorDescription
+    MarkDemoFailed errNumber, errorDescription
 End Sub
 
 ' -----------------------------------------------------------------------------
@@ -84,38 +84,38 @@ End Sub
 
 Private Sub WriteDelegateExamples()
     Dim addHandling As ROneCOne
-    Dim amount As ROneCOne
+    Dim orderAmount As ROneCOne
     Dim applyDiscount As ROneCOne
     Dim approvalRule As ROneCOne
     Dim calculateTotal As ROneCOne
-    Dim increment As ROneCOne
-    Dim maximum As ROneCOne
-    Dim notify As ROneCOne
+    Dim addOne As ROneCOne
+    Dim largest As ROneCOne
+    Dim announce As ROneCOne
     Dim orderNumber As Long
     Dim orderTotal As ROneCOne
     Dim pipeline As ROneCOne
-    Dim price As ROneCOne
+    Dim listPrice As ROneCOne
     Dim safeFalse As ROneCOne
     Dim shipping As ROneCOne
-    Dim updateDashboard As ROneCOne
+    Dim dashboard As ROneCOne
     Dim worksheetFunctions As Object
-    Dim writeAudit As ROneCOne
+    Dim audit As ROneCOne
 
     ' Step 1: describe placeholders for the numbers a rule will receive later.
     ' "Var" means "a value of this type that I will supply when I run the rule."
     ' Think of them as the blanks in a fill-in-the-blank formula.
-    Set amount = ROneCOne.Var(vbLong)
+    Set orderAmount = ROneCOne.Var(vbLong)
     Set shipping = ROneCOne.Var(vbLong)
-    Set price = ROneCOne.Var(vbDouble)
+    Set listPrice = ROneCOne.Var(vbDouble)
 
     ' Now write the formulas over those blanks and freeze each one into a
     ' runnable rule with AsFunc. applyDiscount takes a price off ten percent;
     ' orderTotal adds shipping to an amount; approvalRule is true only when the
     ' amount is at least 100 and below 1000. Nothing runs yet; these are recipes.
-    Set applyDiscount = price.Multiply(0.9).AsFunc
-    Set orderTotal = amount.Add(shipping).AsFunc
-    Set approvalRule = amount.AtLeast(100) _
-        .AndAlso(amount.LessThan(1000)) _
+    Set applyDiscount = listPrice.Multiply(0.9).AsFunc
+    Set orderTotal = orderAmount.Add(shipping).AsFunc
+    Set approvalRule = orderAmount.AtLeast(100) _
+        .AndAlso(orderAmount.LessThan(1000)) _
         .AsFunc
 
     ' AndAlso is a "short-circuit" and: once the left side is False, the right
@@ -130,7 +130,7 @@ Private Sub WriteDelegateExamples()
     ' name. Takes and Returns state the expected argument and result types so a
     ' wrong call is caught before the target ever runs.
     Set worksheetFunctions = Application.WorksheetFunction
-    Set maximum = ROneCOne.Func(worksheetFunctions, "Max") _
+    Set largest = ROneCOne.Func(worksheetFunctions, "Max") _
         .Takes(vbLong, vbLong) _
         .Returns(vbDouble)
     Set calculateTotal = ROneCOne.Func("DemoUsage.CalculateOrderTotal") _
@@ -139,28 +139,28 @@ Private Sub WriteDelegateExamples()
 
     ' Combine joins several actions into one. Running "notify" once updates the
     ' dashboard and writes the audit entry, in that order, from a single call.
-    Set updateDashboard = ROneCOne.Action("DemoUsage.UpdateDashboard") _
+    Set dashboard = ROneCOne.Action("DemoUsage.UpdateDashboard") _
         .Takes(vbString)
-    Set writeAudit = ROneCOne.Action("DemoUsage.WriteAudit") _
+    Set audit = ROneCOne.Action("DemoUsage.WriteAudit") _
         .Takes(vbString)
-    Set notify = ROneCOne.Combine(updateDashboard, writeAudit)
+    Set announce = ROneCOne.Combine(dashboard, audit)
     mTrace = vbNullString
-    notify.Execute "Order 1042 approved"
+    announce.Execute "Order 1042 approved"
 
     ' Most rules only read their inputs. This one changes a variable in place:
     ' passing orderNumber "by reference" lets the native action bump it from
     ' 1041 to 1042. This is the one place a delegate writes back to your data.
     orderNumber = 1041
 #If Win64 Then
-    Set increment = ROneCOne.NativeAction(NextOrderNumberAddress) _
+    Set addOne = ROneCOne.NativeAction(NextOrderNumberAddress) _
         .Takes(ROneCOne.RefOf(vbLong))
-    increment.Execute ROneCOne.RefLong(orderNumber)
+    addOne.Execute ROneCOne.RefLong(orderNumber)
 #End If
 
     ' PipeTo chains two rules so one feeds the next: apply the discount, then
     ' add a handling charge to that discounted price. The output of the first
     ' becomes the input of the second.
-    Set addHandling = price.Add(5#).AsFunc
+    Set addHandling = listPrice.Add(5#).AsFunc
     Set pipeline = applyDiscount.PipeTo(addHandling)
 
     ' Everything above only described work. This is where the rules finally run.
@@ -172,7 +172,7 @@ Private Sub WriteDelegateExamples()
         .Range("E7").Value2 = orderTotal(100, 5)
         .Range("E8").Value2 = approvalRule(250)
         .Range("E9").Value2 = safeFalse.Run()
-        .Range("E10").Value2 = maximum(4, 7)
+        .Range("E10").Value2 = largest(4, 7)
         .Range("E11").Value2 = calculateTotal(100, 5)
         .Range("E12").Value2 = calculateTotal.DynamicInvoke( _
             Array(100, 5))
@@ -192,17 +192,17 @@ End Sub
 ' -----------------------------------------------------------------------------
 
 Public Function CalculateOrderTotal( _
-    ByVal subtotal As Variant, _
+    ByVal itemsTotal As Variant, _
     ByVal shipping As Variant _
 ) As Variant
-    CalculateOrderTotal = subtotal + shipping
+    CalculateOrderTotal = itemsTotal + shipping
 End Function
 
-Public Sub UpdateDashboard(ByVal message As Variant)
+Public Sub UpdateDashboard(ByVal msg As Variant)
     mTrace = "Dashboard updated"
 End Sub
 
-Public Sub WriteAudit(ByVal message As Variant)
+Public Sub WriteAudit(ByVal msg As Variant)
     mTrace = mTrace & "; audit written"
 End Sub
 
@@ -226,19 +226,19 @@ End Function
 
 Private Sub RunDelegateBenchmark()
     Dim applyDiscount As ROneCOne
-    Dim index As Long
+    Dim idx As Long
     Dim lastResult As Variant
-    Dim price As ROneCOne
+    Dim listPrice As ROneCOne
     Dim started As Double
 
     ' Build one rule, then run it ten thousand times and time the loop. This
     ' shows the per-call cost is small enough for everyday workbook use.
-    Set price = ROneCOne.Var(vbDouble)
-    Set applyDiscount = price.Multiply(0.9).AsFunc
+    Set listPrice = ROneCOne.Var(vbDouble)
+    Set applyDiscount = listPrice.Multiply(0.9).AsFunc
     started = Timer
-    For index = 1 To BENCHMARK_ITERATIONS
-        lastResult = applyDiscount(index)
-    Next index
+    For idx = 1 To BENCHMARK_ITERATIONS
+        lastResult = applyDiscount(idx)
+    Next idx
 
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
         .Range("B6").Value2 = BENCHMARK_ITERATIONS
@@ -255,11 +255,11 @@ Private Sub MarkDemoPassed()
     End With
 End Sub
 
-Private Sub MarkDemoFailed(ByVal errorNumber As Long, ByVal description As String)
+Private Sub MarkDemoFailed(ByVal errNumber As Long, ByVal errDescription As String)
     With ThisWorkbook.Worksheets(START_SHEET)
         .Range("B12").Value2 = Now
         .Range("B13").Value2 = "ERROR"
-        .Range("B14").Value2 = CStr(errorNumber) & ": " & description
+        .Range("B14").Value2 = CStr(errNumber) & ": " & errDescription
     End With
 End Sub
 

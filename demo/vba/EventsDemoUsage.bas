@@ -50,7 +50,7 @@ Private mTrace As String
 
 Public Sub RunROneCOneEventsDemo()
     Dim errorDescription As String
-    Dim errorNumber As Long
+    Dim errNumber As Long
 
     On Error GoTo DemoFailure
     WriteEventExamples
@@ -60,29 +60,29 @@ Public Sub RunROneCOneEventsDemo()
     Exit Sub
 
 DemoFailure:
-    errorNumber = Err.Number
+    errNumber = Err.Number
     errorDescription = Err.Description
-    MarkDemoFailed errorNumber, errorDescription
+    MarkDemoFailed errNumber, errorDescription
 End Sub
 
 Private Sub WriteEventExamples()
     Dim orderStatusChanged As ROneCOne
     Dim removed As Boolean
-    Dim updateDashboard As ROneCOne
-    Dim writeAudit As ROneCOne
+    Dim dashboard As ROneCOne
+    Dim audit As ROneCOne
 
     ' Wrap two ordinary procedures as handlers. Takes(vbString) says each one
     ' expects a single text message, so only compatible handlers can subscribe.
-    Set updateDashboard = ROneCOne.Action( _
+    Set dashboard = ROneCOne.Action( _
         "EventsDemoUsage.UpdateDashboard").Takes(vbString)
-    Set writeAudit = ROneCOne.Action( _
+    Set audit = ROneCOne.Action( _
         "EventsDemoUsage.WriteAudit").Takes(vbString)
 
     ' Create the event and subscribe both handlers. From now on, one Emit call
     ' delivers the message to every subscriber in the order they were added.
     Set orderStatusChanged = ROneCOne.EventOf(vbString) _
-        .Subscribe(updateDashboard) _
-        .Subscribe(writeAudit)
+        .Subscribe(dashboard) _
+        .Subscribe(audit)
 
     mTrace = vbNullString
     orderStatusChanged.Emit "Order 1042 shipped"
@@ -93,7 +93,7 @@ Private Sub WriteEventExamples()
 
     ' Unsubscribe removes one handler and reports whether it was found. The next
     ' Emit reaches only the dashboard; auditing has been switched off cleanly.
-    removed = orderStatusChanged.Unsubscribe(writeAudit)
+    removed = orderStatusChanged.Unsubscribe(audit)
     mTrace = vbNullString
     orderStatusChanged.Emit "Order 1043 delayed"
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
@@ -102,22 +102,22 @@ Private Sub WriteEventExamples()
     End With
 End Sub
 
-Public Sub UpdateDashboard(ByVal message As Variant)
+Public Sub UpdateDashboard(ByVal msg As Variant)
     mTrace = "Dashboard updated"
 End Sub
 
-Public Sub WriteAudit(ByVal message As Variant)
+Public Sub WriteAudit(ByVal msg As Variant)
     mTrace = mTrace & "; audit written"
 End Sub
 
-Public Sub DemoCountEvent(ByVal value As Variant)
-    mCount = mCount + CLng(value)
+Public Sub DemoCountEvent(ByVal itemValue As Variant)
+    mCount = mCount + CLng(itemValue)
 End Sub
 
 Private Sub RunEventBenchmark()
     Dim changed As ROneCOne
     Dim handler As ROneCOne
-    Dim index As Long
+    Dim idx As Long
     Dim started As Double
 
     Set handler = ROneCOne.Action( _
@@ -125,9 +125,9 @@ Private Sub RunEventBenchmark()
     Set changed = ROneCOne.EventOf(vbLong).Subscribe(handler)
     mCount = 0
     started = Timer
-    For index = 1 To BENCHMARK_ITERATIONS
+    For idx = 1 To BENCHMARK_ITERATIONS
         changed.Emit 1
-    Next index
+    Next idx
 
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
         .Range("B6").Value2 = BENCHMARK_ITERATIONS
@@ -144,11 +144,11 @@ Private Sub MarkDemoPassed()
     End With
 End Sub
 
-Private Sub MarkDemoFailed(ByVal errorNumber As Long, ByVal description As String)
+Private Sub MarkDemoFailed(ByVal errNumber As Long, ByVal errDescription As String)
     With ThisWorkbook.Worksheets(START_SHEET)
         .Range("B12").Value2 = Now
         .Range("B13").Value2 = "ERROR"
-        .Range("B14").Value2 = CStr(errorNumber) & ": " & description
+        .Range("B14").Value2 = CStr(errNumber) & ": " & errDescription
     End With
 End Sub
 

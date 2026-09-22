@@ -50,7 +50,7 @@ Private mTrace As String
 
 Public Sub RunROneCOneExceptionsDemo()
     Dim errorDescription As String
-    Dim errorNumber As Long
+    Dim errNumber As Long
 
     On Error GoTo DemoFailure
     WriteExceptionExamples
@@ -60,16 +60,16 @@ Public Sub RunROneCOneExceptionsDemo()
     Exit Sub
 
 DemoFailure:
-    errorNumber = Err.Number
+    errNumber = Err.Number
     errorDescription = Err.Description
-    MarkDemoFailed errorNumber, errorDescription
+    MarkDemoFailed errNumber, errorDescription
 End Sub
 
 Private Sub WriteExceptionExamples()
-    Dim closeImportFile As ROneCOne
+    Dim closeImportFileAction As ROneCOne
     Dim importAttempt As ROneCOne
     Dim importWork As ROneCOne
-    Dim skipBadRow As ROneCOne
+    Dim skipBadRowAction As ROneCOne
     Dim successfulImport As ROneCOne
 
     ' Name the three steps as ordinary procedures. The recovery step,
@@ -77,9 +77,9 @@ Private Sub WriteExceptionExamples()
     ' fails, ROneCOne hands it the captured error so recovery can be specific.
     Set importWork = ROneCOne.Action( _
         "ExceptionsDemoUsage.ImportSales").Takes()
-    Set skipBadRow = ROneCOne.Action( _
+    Set skipBadRowAction = ROneCOne.Action( _
         "ExceptionsDemoUsage.SkipBadRow").Takes(ROneCOne.Exception)
-    Set closeImportFile = ROneCOne.Action( _
+    Set closeImportFileAction = ROneCOne.Action( _
         "ExceptionsDemoUsage.CloseImportFile").Takes()
 
     ' Assemble the protected operation and then run it with Execute. Read it as
@@ -87,8 +87,8 @@ Private Sub WriteExceptionExamples()
     ' and no matter what, close the file at the end.
     mTrace = vbNullString
     Set importAttempt = ROneCOne.Try(importWork) _
-        .Catch(INVALID_AMOUNT_ERROR, skipBadRow) _
-        .Finally(closeImportFile)
+        .Catch(INVALID_AMOUNT_ERROR, skipBadRowAction) _
+        .Finally(closeImportFileAction)
     importAttempt.Execute
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
         .Range("E6").Value2 = mTrace
@@ -101,7 +101,7 @@ Private Sub WriteExceptionExamples()
     Set successfulImport = ROneCOne.Action( _
         "ExceptionsDemoUsage.ImportValidSales").Takes()
     Set importAttempt = ROneCOne.Try(successfulImport) _
-        .Finally(closeImportFile)
+        .Finally(closeImportFileAction)
     mTrace = vbNullString
     importAttempt.Execute
     ThisWorkbook.Worksheets(EXAMPLES_SHEET).Range("E9").Value2 = mTrace
@@ -126,14 +126,14 @@ Public Sub ImportValidSales()
     AppendTrace "3 rows imported"
 End Sub
 
-Private Sub AppendTrace(ByVal message As String)
+Private Sub AppendTrace(ByVal msg As String)
     If Len(mTrace) > 0 Then mTrace = mTrace & "; "
-    mTrace = mTrace & message
+    mTrace = mTrace & msg
 End Sub
 
 Private Sub RunExceptionBenchmark()
     Dim importAttempt As ROneCOne
-    Dim index As Long
+    Dim idx As Long
     Dim started As Double
     Dim successfulImport As ROneCOne
 
@@ -142,9 +142,9 @@ Private Sub RunExceptionBenchmark()
     Set importAttempt = ROneCOne.Try(successfulImport)
     mTrace = vbNullString
     started = Timer
-    For index = 1 To BENCHMARK_ITERATIONS
+    For idx = 1 To BENCHMARK_ITERATIONS
         importAttempt.Execute
-    Next index
+    Next idx
 
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
         .Range("B6").Value2 = BENCHMARK_ITERATIONS
@@ -161,11 +161,11 @@ Private Sub MarkDemoPassed()
     End With
 End Sub
 
-Private Sub MarkDemoFailed(ByVal errorNumber As Long, ByVal description As String)
+Private Sub MarkDemoFailed(ByVal errNumber As Long, ByVal errDescription As String)
     With ThisWorkbook.Worksheets(START_SHEET)
         .Range("B12").Value2 = Now
         .Range("B13").Value2 = "ERROR"
-        .Range("B14").Value2 = CStr(errorNumber) & ": " & description
+        .Range("B14").Value2 = CStr(errNumber) & ": " & errDescription
     End With
 End Sub
 

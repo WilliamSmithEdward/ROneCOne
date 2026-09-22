@@ -57,7 +57,7 @@ Private mTrace As String
 
 Public Sub RunROneCOneTasksDemo()
     Dim errorDescription As String
-    Dim errorNumber As Long
+    Dim errNumber As Long
 
     On Error GoTo DemoFailure
     WriteTaskExamples
@@ -67,9 +67,9 @@ Public Sub RunROneCOneTasksDemo()
     Exit Sub
 
 DemoFailure:
-    errorNumber = Err.Number
+    errNumber = Err.Number
     errorDescription = Err.Description
-    MarkDemoFailed errorNumber, errorDescription
+    MarkDemoFailed errNumber, errorDescription
 End Sub
 
 Private Sub WriteTaskExamples()
@@ -77,7 +77,7 @@ Private Sub WriteTaskExamples()
     Dim bounded As ROneCOne
     Dim buildSummary As ROneCOne
     Dim completion As ROneCOne
-    Dim countOpenOrders As ROneCOne
+    Dim openOrderCounter As ROneCOne
     Dim delayed As ROneCOne
     Dim forecastTask As ROneCOne
     Dim forecastWork As ROneCOne
@@ -85,8 +85,8 @@ Private Sub WriteTaskExamples()
     Dim progress As ROneCOne
     Dim reorderTask As ROneCOne
     Dim reorderWork As ROneCOne
-    Dim results As ROneCOne
-    Dim source As ROneCOne
+    Dim outputs As ROneCOne
+    Dim cancelSource As ROneCOne
     Dim summaryTask As ROneCOne
     Dim yielded As ROneCOne
     Dim ignored As Variant
@@ -116,23 +116,23 @@ Private Sub WriteTaskExamples()
     Set summaryTask = allWork.ContinueWith(buildSummary)
     ' Await is where you finally collect the answer; here it hands back both
     ' numbers together, since allWork bundled the two tasks into one.
-    Set results = allWork.Await
+    Set outputs = allWork.Await
 
     ' A task can also run one of your own procedures. This one reads workbook
     ' data to count open orders, which is exactly why it belongs on Excel's
     ' thread with the rest, taking its turn safely alongside everything else.
-    Set countOpenOrders = ROneCOne.Func( _
+    Set openOrderCounter = ROneCOne.Func( _
         "TasksDemoUsage.CountOpenOrders").Takes().Returns(vbLong)
-    Set openOrdersTask = ROneCOne.Task.Run(countOpenOrders)
+    Set openOrdersTask = ROneCOne.Task.Run(openOrderCounter)
 
     ' Cancellation is how a button, a timeout, or any other signal politely asks
     ' running work to stop. You register what to do when cancel happens, then
     ' Cancel fires it; here it simply records that the cancellation was seen.
-    Set source = ROneCOne.CancellationTokenSource
+    Set cancelSource = ROneCOne.CancellationTokenSource
     mTrace = vbNullString
-    Set registration = source.Token.Register(ROneCOne.Action( _
+    Set registration = cancelSource.Token.Register(ROneCOne.Action( _
         "TasksDemoUsage.RecordCancellation").Takes)
-    source.Cancel
+    cancelSource.Cancel
     registration.Dispose
 
     ' Progress reporting lets long work send updates back as it goes, like a
@@ -165,11 +165,11 @@ Private Sub WriteTaskExamples()
     ' each wait finished, whether cancellation was requested, the progress total,
     ' and the value handed to the completion source, one result per row.
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
-        .Range("E6").Value2 = results.JoinText(" | ")
+        .Range("E6").Value2 = outputs.JoinText(" | ")
         .Range("E7").Value2 = summaryTask.Await
         .Range("E8").Value2 = openOrdersTask.Await
         .Range("E9").Value2 = delayed.IsCompleted
-        .Range("E10").Value2 = source.Token.IsCancellationRequested
+        .Range("E10").Value2 = cancelSource.Token.IsCancellationRequested
         .Range("E11").Value2 = mProgressTotal
         .Range("E12").Value2 = completion.Task.Await
         .Range("E13").Value2 = bounded.IsCompleted
@@ -178,33 +178,33 @@ Private Sub WriteTaskExamples()
 End Sub
 
 Public Function CountOpenOrders() As Variant
-    Dim status As Variant
+    Dim orderStatus As Variant
 
-    For Each status In Array( _
+    For Each orderStatus In Array( _
         "Open", "Shipped", "Open", "Pending", "Open", "Shipped")
-        If status = "Open" Then CountOpenOrders = CLng(CountOpenOrders) + 1
-    Next status
+        If orderStatus = "Open" Then CountOpenOrders = CLng(CountOpenOrders) + 1
+    Next orderStatus
 End Function
 
 Public Function BuildForecastSummary(ByVal antecedent As Variant) As Variant
-    Dim results As ROneCOne
+    Dim outputs As ROneCOne
 
-    Set results = antecedent.Result
-    BuildForecastSummary = "Forecast " & CStr(results.Item(0)) & _
-        "; reorder point " & CStr(results.Item(1))
+    Set outputs = antecedent.Result
+    BuildForecastSummary = "Forecast " & CStr(outputs.Item(0)) & _
+        "; reorder point " & CStr(outputs.Item(1))
 End Function
 
 Public Sub RecordCancellation()
     mTrace = mTrace & "canceled|"
 End Sub
 
-Public Sub RecordProgress(ByVal value As Variant)
-    mProgressTotal = mProgressTotal + CLng(value)
+Public Sub RecordProgress(ByVal progressValue As Variant)
+    mProgressTotal = mProgressTotal + CLng(progressValue)
 End Sub
 
 Private Sub RunTaskBenchmark()
-    Dim index As Long
-    Dim result As Long
+    Dim idx As Long
+    Dim outcome As Long
     Dim started As Double
     Dim work As ROneCOne
 
@@ -212,14 +212,14 @@ Private Sub RunTaskBenchmark()
     ' This shows the round trip of scheduling and collecting a result stays
     ' quick enough to use freely, even though tasks take turns on one thread.
     started = Timer
-    For index = 1 To BENCHMARK_ITERATIONS
-        Set work = ROneCOne.Value(index).Multiply(2).AsFunc
-        result = ROneCOne.Task.Run(work).Await
-    Next index
+    For idx = 1 To BENCHMARK_ITERATIONS
+        Set work = ROneCOne.Value(idx).Multiply(2).AsFunc
+        outcome = ROneCOne.Task.Run(work).Await
+    Next idx
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
         .Range("B6").Value2 = BENCHMARK_ITERATIONS
         .Range("C6").Value2 = ElapsedSeconds(started)
-        .Range("D6").Value2 = result
+        .Range("D6").Value2 = outcome
     End With
 End Sub
 
@@ -231,11 +231,11 @@ Private Sub MarkDemoPassed()
     End With
 End Sub
 
-Private Sub MarkDemoFailed(ByVal errorNumber As Long, ByVal description As String)
+Private Sub MarkDemoFailed(ByVal errNumber As Long, ByVal errDescription As String)
     With ThisWorkbook.Worksheets(START_SHEET)
         .Range("B12").Value2 = Now
         .Range("B13").Value2 = "ERROR"
-        .Range("B14").Value2 = CStr(errorNumber) & ": " & description
+        .Range("B14").Value2 = CStr(errNumber) & ": " & errDescription
     End With
 End Sub
 

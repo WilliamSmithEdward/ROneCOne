@@ -49,7 +49,7 @@ Private Const START_SHEET As String = "Start Here"
 
 Public Sub RunROneCOneXmlDemo()
     Dim errorDescription As String
-    Dim errorNumber As Long
+    Dim errNumber As Long
 
     On Error GoTo DemoFailure
     WriteXmlExamples
@@ -59,15 +59,15 @@ Public Sub RunROneCOneXmlDemo()
     Exit Sub
 
 DemoFailure:
-    errorNumber = Err.Number
+    errNumber = Err.Number
     errorDescription = Err.Description
-    MarkDemoFailed errorNumber, errorDescription
+    MarkDemoFailed errNumber, errorDescription
 End Sub
 
 Private Sub WriteXmlExamples()
     Dim books As ROneCOne
     Dim catalogXml As String
-    Dim doc As ROneCOne
+    Dim catalog As ROneCOne
     Dim feed As ROneCOne
     Dim missError As Long
     Dim trace As String
@@ -77,7 +77,7 @@ Private Sub WriteXmlExamples()
     catalogXml = "<catalog><book id=""1""><title>First</title>" & _
         "<price>10.5</price></book><book id=""2"">" & _
         "<title>Second &amp; Third</title></book></catalog>"
-    Set doc = ROneCOne.Xml.Parse(catalogXml)
+    Set catalog = ROneCOne.Xml.Parse(catalogXml)
 
     ' Elements in a default namespace are invisible to plain XPath; mapping
     ' a prefix once at parse time makes them queryable.
@@ -98,13 +98,13 @@ Private Sub WriteXmlExamples()
     If missError = ROneCOne.XmlError Then trace = "doctype refused"
 
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
-        .Range("E6").Value2 = doc.Name
+        .Range("E6").Value2 = catalog.Name
         .Range("E7").Value2 = CLng( _
-            doc.Elements("book").Item(0).GetAttribute("id"))
-        .Range("E8").Value2 = doc.SelectNodes("//book").Count
+            catalog.Elements("book").Item(0).GetAttribute("id"))
+        .Range("E8").Value2 = catalog.SelectNodes("//book").Count
         .Range("E9").Value2 = _
-            doc.SelectSingleNode("//book[@id='2']/title").Value
-        .Range("E10").Value2 = (doc.SelectSingleNode("//missing") Is Nothing)
+            catalog.SelectSingleNode("//book[@id='2']/title").Value
+        .Range("E10").Value2 = (catalog.SelectSingleNode("//missing") Is Nothing)
         .Range("E11").Value2 = feed.SelectNodes("//p:item").Count
         .Range("E12").Value2 = books.Rows.Item(0).Item("price")
         .Range("E13").Value2 = (InStr(1, books.ToXml(), "<Books>") > 0)
@@ -115,29 +115,29 @@ End Sub
 Private Sub RunXmlBenchmark()
     Dim builder As ROneCOne
     Dim elapsed As Double
-    Dim index As Long
+    Dim idx As Long
     Dim started As Double
-    Dim table As ROneCOne
+    Dim parsed As ROneCOne
 
     ' Build a thousand-row document with the StringBuilder, then land it as
     ' a typed table in one call and count what arrived.
     Set builder = ROneCOne.StringBuilder()
     builder.Append "<rows>"
-    For index = 1 To BENCHMARK_ROWS
+    For idx = 1 To BENCHMARK_ROWS
         builder.AppendFormat _
             "<row><id>{0}</id><total>{1:F2}</total></row>", _
-            index, index * 1.5
-    Next index
+            idx, idx * 1.5
+    Next idx
     builder.Append "</rows>"
 
     started = Timer
-    Set table = ROneCOne.Xml.DeserializeTable(builder.ToString, "Rows")
+    Set parsed = ROneCOne.Xml.DeserializeTable(builder.ToString, "Rows")
     elapsed = ElapsedSeconds(started)
 
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
         .Range("B6").Value2 = BENCHMARK_ROWS
         .Range("C6").Value2 = elapsed
-        .Range("D6").Value2 = table.Rows.Count
+        .Range("D6").Value2 = parsed.Rows.Count
     End With
 End Sub
 
@@ -149,11 +149,11 @@ Private Sub MarkDemoPassed()
     End With
 End Sub
 
-Private Sub MarkDemoFailed(ByVal errorNumber As Long, ByVal description As String)
+Private Sub MarkDemoFailed(ByVal errNumber As Long, ByVal errDescription As String)
     With ThisWorkbook.Worksheets(START_SHEET)
         .Range("B12").Value2 = Now
         .Range("B13").Value2 = "ERROR"
-        .Range("B14").Value2 = CStr(errorNumber) & ": " & description
+        .Range("B14").Value2 = CStr(errNumber) & ": " & errDescription
     End With
 End Sub
 

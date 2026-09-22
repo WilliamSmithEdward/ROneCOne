@@ -160,13 +160,13 @@ async function main() {
   tableHeader(examples.getRange("A5:F5"));
   examples.getRange("A6:D13").values = [
     ["Create a checked number list", "new List<long> { 5, 10, 15 }", "ROneCOne.ListOf(vbLong, 5, 10, 15)", "List<Long>"],
-    ["Reject the wrong data type", "Compile-time element type", "values.Add \"not a Long\"", true],
+    ["Reject the wrong data type", "Compile-time element type", "numbers.Add \"not a Long\"", true],
     ["Use existing Customer objects", "new List<DemoCustomer> { ada, grace }", "ROneCOne.ListFrom(ada, grace)", "List<DemoCustomer>; second customer: Grace"],
-    ["See newly added matches", "query observes later mutation", "Set element = values.Element\nSet query = values.Where(element.AtLeast(10))\nvalues.Add 30", "2 matches; last: 30"],
+    ["See newly added matches", "query observes later mutation", "Set x = numbers.Element\nSet filtered = numbers.Where(x.GreaterThan(10))\nnumbers.Add 30", "2 matches; last: 30"],
     ["Filter and rank values", "Where.Select.OrderBy.Take", ".Where(...).Map(...).OrderDescending.Take(2)", "Top results: 60, 40"],
-    ["Clean and reshape values", "Distinct.Prepend.Append.Reverse.Skip", "values.Distinct.Prepend(1).Append(4).Reverse.Skip(1)", "Sequence: 3, 2, 1"],
+    ["Clean and reshape values", "Distinct.Prepend.Append.Reverse.Skip", "digits.Distinct.Prepend(1).Append(4).Reverse.Skip(1)", "Sequence: 3, 2, 1"],
     ["Summarize numbers", "Sum/Average/Min/Max", "Range(1, 5).Sum / Average / Min / Max", "Sum 15; average 3; min 1; max 5"],
-    ["Run work for every item", "values.ForEach(action)", "values.ForEach ROneCOne.Action(...)", 10],
+    ["Run work for every item", "values.ForEach(action)", "enumerationValues.ForEach ROneCOne.Action(...)", 10],
   ];
   examples.getRange("F6").formulas = [
     ["=IF(E6=\"\",\"NOT RUN\",IF(E6=D6,\"PASS\",\"CHECK\"))"],
@@ -231,13 +231,13 @@ async function main() {
     [
       "Get and alphabetize names",
       ".Select(c => c.Name).OrderBy(name => name)",
-      'Set names = experienced.Map("CustomerName", vbString).Order.ToList',
+      'Set customerNames = experienced.Map("CustomerName", vbString).Order.ToList',
       "Grace, Katherine, Margaret",
     ],
     [
       "Sort by city, then age",
       ".OrderBy(c => c.City).ThenByDescending(c => c.Age).First()",
-      'Set first = customers.OrderBy("City").ThenByDescending("Age").First',
+      'Set firstCustomer = customers.OrderBy("City").ThenByDescending("Age").First',
       "First: Margaret, age 45",
     ],
     [
@@ -315,9 +315,9 @@ async function main() {
     [
       "Customize text matching",
       "IEqualityComparer<T> / IComparer<T>",
-      "strings.Distinct(equalityComparer)\n" +
-        "strings.Contains(\"ada\", equalityComparer)\n" +
-        "strings.Order(comparer)",
+      "spellings.Distinct(ignoreCaseEquality)\n" +
+        "spellings.Contains(\"ada\", ignoreCaseEquality)\n" +
+        "spellings.Order(ignoreCaseOrder)",
       "Distinct: 2; contains Ada: True; first: Ada",
     ],
     [

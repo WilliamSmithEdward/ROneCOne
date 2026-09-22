@@ -60,7 +60,7 @@ Private mForEachTotal As Long
 
 Public Sub RunROneCOneCollectionsDemo()
     Dim errorDescription As String
-    Dim errorNumber As Long
+    Dim errNumber As Long
 
     On Error GoTo DemoFailure
 
@@ -72,9 +72,9 @@ Public Sub RunROneCOneCollectionsDemo()
     Exit Sub
 
 DemoFailure:
-    errorNumber = Err.Number
+    errNumber = Err.Number
     errorDescription = Err.Description
-    MarkDemoFailed errorNumber, errorDescription
+    MarkDemoFailed errNumber, errorDescription
 End Sub
 
 ' -----------------------------------------------------------------------------
@@ -89,9 +89,9 @@ Private Sub WritePrimitiveCollectionExamples()
     Dim grace As DemoCustomer
     Dim numbers As ROneCOne
     Dim projected As ROneCOne
-    Dim sequence As ROneCOne
+    Dim digits As ROneCOne
     Dim strictTypeRejected As Boolean
-    Dim total As Long
+    Dim runningTotal As Long
     Dim x As ROneCOne
 
     ' A typed list holds one kind of value. This one holds Long whole numbers.
@@ -130,8 +130,8 @@ Private Sub WritePrimitiveCollectionExamples()
 
     ' The same chaining shapes a sequence: remove duplicates, add a value at the
     ' front and the back, reverse the order, then drop the first item.
-    Set sequence = ROneCOne.ListOf(vbLong, 2, 2, 3)
-    Set sequence = sequence.Distinct _
+    Set digits = ROneCOne.ListOf(vbLong, 2, 2, 3)
+    Set digits = digits.Distinct _
         .Prepend(1) _
         .Append(4) _
         .Reverse _
@@ -145,7 +145,7 @@ Private Sub WritePrimitiveCollectionExamples()
     mForEachTotal = 0
     enumerationValues.ForEach ROneCOne.Action( _
         "CollectionsDemoUsage.DemoAccumulateLong").Takes(vbLong)
-    total = mForEachTotal
+    runningTotal = mForEachTotal
 
     With ThisWorkbook.Worksheets(BASIC_EXAMPLES_SHEET)
         .Range("E6").Value2 = numbers.GenericTypeName
@@ -155,11 +155,11 @@ Private Sub WritePrimitiveCollectionExamples()
         .Range("E9").Value2 = CStr(filtered.Count) & _
             " matches; last: " & CStr(filtered.Last)
         .Range("E10").Value2 = "Top results: " & projected.JoinText(", ")
-        .Range("E11").Value2 = "Sequence: " & sequence.JoinText(", ")
+        .Range("E11").Value2 = "Sequence: " & digits.JoinText(", ")
         .Range("E12").Value2 = "Sum " & CStr(numbers.Sum) & _
             "; average " & CStr(numbers.Average) & _
             "; min " & CStr(numbers.Min) & "; max " & CStr(numbers.Max)
-        .Range("E13").Value2 = total
+        .Range("E13").Value2 = runningTotal
     End With
 End Sub
 
@@ -173,12 +173,12 @@ Private Sub WriteUserClassLinqExamples()
     Dim anyLondon As Boolean
     Dim ada As DemoCustomer
     Dim allowedCities As ROneCOne
-    Dim comparer As ROneCOne
+    Dim ignoreCaseOrder As ROneCOne
     Dim City As Variant
     Dim customers As ROneCOne
     Dim distinctCities As ROneCOne
     Dim experienced As ROneCOne
-    Dim equalityComparer As ROneCOne
+    Dim ignoreCaseEquality As ROneCOne
     Dim firstCustomer As DemoCustomer
     Dim grace As DemoCustomer
     Dim katherine As DemoCustomer
@@ -186,12 +186,12 @@ Private Sub WriteUserClassLinqExamples()
     Dim managed As ROneCOne
     Dim margaret As DemoCustomer
     Dim membershipMatches As ROneCOne
-    Dim names As ROneCOne
+    Dim customerNames As ROneCOne
     Dim orderedCustomers As ROneCOne
     Dim procedureFiltered As ROneCOne
     Dim reportPredicate As ROneCOne
     Dim singleCustomer As DemoCustomer
-    Dim strings As ROneCOne
+    Dim spellings As ROneCOne
     Dim stringMatches As ROneCOne
 
     ' The same queries now run over ordinary objects of your own class. Nothing
@@ -213,7 +213,7 @@ Private Sub WriteUserClassLinqExamples()
     Set lastCustomer = experienced.Last
 
     ' Use the property name directly instead of writing a selector procedure.
-    Set names = experienced _
+    Set customerNames = experienced _
         .Map("CustomerName", vbString) _
         .Order _
         .ToList
@@ -252,11 +252,11 @@ Private Sub WriteUserClassLinqExamples()
     ' customer that matches, and complains if there is not exactly one.
     Set allowedCities = ROneCOne.ListOf( _
         vbString, "London", "Cleveland")
-    Set equalityComparer = ROneCOne.EqualityComparer( _
+    Set ignoreCaseEquality = ROneCOne.EqualityComparer( _
         "CollectionsDemoUsage.DemoTextEqualsIgnoreCase")
-    Set comparer = ROneCOne.Comparer( _
+    Set ignoreCaseOrder = ROneCOne.Comparer( _
         "CollectionsDemoUsage.DemoCompareTextIgnoreCase")
-    Set strings = ROneCOne.ListOf( _
+    Set spellings = ROneCOne.ListOf( _
         vbString, "Ada", "ADA", "grace")
     Set singleCustomer = customers.SingleItem( _
         customers.Match("CustomerName", "Grace"))
@@ -278,7 +278,7 @@ Private Sub WriteUserClassLinqExamples()
             CStr(customers.Count) & " customers"
         .Range("E7").Value2 = CStr(experienced.Count) & _
             " customers; newest match: " & lastCustomer.CustomerName
-        .Range("E8").Value2 = names.JoinText(", ")
+        .Range("E8").Value2 = customerNames.JoinText(", ")
         .Range("E9").Value2 = "First: " & firstCustomer.CustomerName & _
             ", age " & CStr(firstCustomer.Age)
         .Range("E10").Value2 = "London exists: " & CStr(anyLondon) & _
@@ -294,12 +294,12 @@ Private Sub WriteUserClassLinqExamples()
             CStr(customers.Where("CustomerName").Contains("ther").Count)
         .Range("E14").Value2 = distinctCities.Count
         With customers
-            Set names = .Where(!Age.AtLeast(40)) _
+            Set customerNames = .Where(!Age.AtLeast(40)) _
                 .Map("CustomerName", vbString) _
                 .Order _
                 .ToList
         End With
-        .Range("E15").Value2 = names.JoinText(", ")
+        .Range("E15").Value2 = customerNames.JoinText(", ")
         .Range("E16").Value2 = "No manager: " & _
             CStr(customers.Where("Manager").IsNothing.Count) & _
             "; manager age 40+: " & CStr(managed.Count)
@@ -321,10 +321,10 @@ Private Sub WriteUserClassLinqExamples()
             CStr(customers.WhereAll("Reports", ada.Reports.Condition("Age") _
                 .AtLeast(36)).Count) & "; none: " & _
             CStr(customers.WhereNone("Reports", reportPredicate).Count)
-        .Range("E21").Value2 = "Distinct: " & CStr(strings.Distinct( _
-            equalityComparer).Count) & "; contains Ada: " & _
-            CStr(strings.Contains("ada", equalityComparer)) & _
-            "; first: " & CStr(strings.Order(comparer).First)
+        .Range("E21").Value2 = "Distinct: " & CStr(spellings.Distinct( _
+            ignoreCaseEquality).Count) & "; contains Ada: " & _
+            CStr(spellings.Contains("ada", ignoreCaseEquality)) & _
+            "; first: " & CStr(spellings.Order(ignoreCaseOrder).First)
         .Range("E22").Value2 = "Both: " & CStr(customers.Where( _
             customers.Condition("Age").AtLeast(40).Both( _
                 customers.Match("City", "Arlington"))).Count) & _
@@ -339,12 +339,12 @@ End Sub
 ' -----------------------------------------------------------------------------
 
 Private Sub RunCollectionBenchmark()
-    Dim capacity As Long
+    Dim presized As Long
     Dim customer As DemoCustomer
     Dim customers As ROneCOne
     Dim dictionary As ROneCOne
     Dim filtered As ROneCOne
-    Dim index As Long
+    Dim idx As Long
     Dim lastValue As Long
     Dim numbers As ROneCOne
     Dim ordered As ROneCOne
@@ -389,14 +389,14 @@ Private Sub RunCollectionBenchmark()
     End With
 
     Set dictionary = ROneCOne.DictionaryOf(vbLong, vbLong)
-    capacity = dictionary.EnsureCapacity(BENCHMARK_ELEMENT_COUNT)
+    presized = dictionary.EnsureCapacity(BENCHMARK_ELEMENT_COUNT)
     started = Timer
-    For index = 1 To BENCHMARK_ELEMENT_COUNT
-        dictionary.Add index, index
-    Next index
-    For index = 1 To BENCHMARK_ELEMENT_COUNT
-        lastValue = dictionary.Item(index)
-    Next index
+    For idx = 1 To BENCHMARK_ELEMENT_COUNT
+        dictionary.Add idx, idx
+    Next idx
+    For idx = 1 To BENCHMARK_ELEMENT_COUNT
+        lastValue = dictionary.Item(idx)
+    Next idx
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
         .Range("B9").Value2 = BENCHMARK_ELEMENT_COUNT
         .Range("C9").Value2 = ElapsedSeconds(started)
@@ -404,9 +404,9 @@ Private Sub RunCollectionBenchmark()
     End With
 
     started = Timer
-    For index = 1 To 100000
-        lastValue = dictionary.Item(((index - 1) Mod BENCHMARK_ELEMENT_COUNT) + 1)
-    Next index
+    For idx = 1 To 100000
+        lastValue = dictionary.Item(((idx - 1) Mod BENCHMARK_ELEMENT_COUNT) + 1)
+    Next idx
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
         .Range("B10").Value2 = 100000
         .Range("C10").Value2 = ElapsedSeconds(started)
@@ -422,11 +422,11 @@ Private Sub MarkDemoPassed()
     End With
 End Sub
 
-Private Sub MarkDemoFailed(ByVal errorNumber As Long, ByVal description As String)
+Private Sub MarkDemoFailed(ByVal errNumber As Long, ByVal errDescription As String)
     With ThisWorkbook.Worksheets(START_SHEET)
         .Range("B12").Value2 = Now
         .Range("B13").Value2 = "ERROR"
-        .Range("B14").Value2 = CStr(errorNumber) & ": " & description
+        .Range("B14").Value2 = CStr(errNumber) & ": " & errDescription
     End With
 End Sub
 
@@ -435,25 +435,25 @@ End Sub
 ' -----------------------------------------------------------------------------
 
 Private Function CreateCustomer( _
-    ByVal customerName As String, _
-    ByVal age As Long, _
-    ByVal city As String _
+    ByVal nameText As String, _
+    ByVal ageYears As Long, _
+    ByVal cityName As String _
 ) As DemoCustomer
     Dim customer As DemoCustomer
 
     Set customer = New DemoCustomer
-    customer.CustomerName = customerName
-    customer.Age = age
-    customer.City = city
+    customer.CustomerName = nameText
+    customer.Age = ageYears
+    customer.City = cityName
     Set CreateCustomer = customer
 End Function
 
-Public Sub DemoAccumulateLong(ByVal value As Variant)
-    mForEachTotal = mForEachTotal + CLng(value)
+Public Sub DemoAccumulateLong(ByVal itemValue As Variant)
+    mForEachTotal = mForEachTotal + CLng(itemValue)
 End Sub
 
-Public Function IsExperiencedCustomer(ByVal value As Variant) As Variant
-    IsExperiencedCustomer = (CLng(value.Age) >= 40)
+Public Function IsExperiencedCustomer(ByVal itemValue As Variant) As Variant
+    IsExperiencedCustomer = (CLng(itemValue.Age) >= 40)
 End Function
 
 Public Function DemoTextEqualsIgnoreCase( _
@@ -472,22 +472,22 @@ Public Function DemoCompareTextIgnoreCase( _
         CStr(leftValue), CStr(rightValue), vbTextCompare)))
 End Function
 
-Private Function RaisesExpectedTypeMismatch(ByVal values As ROneCOne) As Boolean
-    Dim description As String
-    Dim number As Long
+Private Function RaisesExpectedTypeMismatch(ByVal longs As ROneCOne) As Boolean
+    Dim errDescription As String
+    Dim errNumber As Long
 
     On Error GoTo TypeMismatch
-    values.Add "not a Long"
+    longs.Add "not a Long"
     Exit Function
 
 TypeMismatch:
-    number = Err.Number
-    description = Err.Description
+    errNumber = Err.Number
+    errDescription = Err.Description
     Err.Clear
-    If number = ROneCOne.TypeMismatchError Then
+    If errNumber = ROneCOne.TypeMismatchError Then
         RaisesExpectedTypeMismatch = True
     Else
-        Err.Raise number, "CollectionsDemoUsage", description
+        Err.Raise errNumber, "CollectionsDemoUsage", errDescription
     End If
 End Function
 

@@ -51,7 +51,7 @@ Private mTrace As String
 
 Public Sub RunROneCOneProcessDemo()
     Dim errorDescription As String
-    Dim errorNumber As Long
+    Dim errNumber As Long
 
     On Error GoTo DemoFailure
     WriteProcessExamples
@@ -61,16 +61,16 @@ Public Sub RunROneCOneProcessDemo()
     Exit Sub
 
 DemoFailure:
-    errorNumber = Err.Number
+    errNumber = Err.Number
     errorDescription = Err.Description
-    MarkDemoFailed errorNumber, errorDescription
+    MarkDemoFailed errNumber, errorDescription
 End Sub
 
 Private Sub WriteProcessExamples()
     Dim emptyError As Long
     Dim hello As ROneCOne
     Dim located As ROneCOne
-    Dim results As ROneCOne
+    Dim echoes As ROneCOne
     Dim warning As ROneCOne
 
     ' Step 1: run one command and await it. The result object carries the
@@ -87,7 +87,7 @@ Private Sub WriteProcessExamples()
 
     ' Step 4: commands overlap. Both processes run at the same time outside
     ' Excel while one WhenAll collects the results in order.
-    Set results = ROneCOne.Task.WhenAll( _
+    Set echoes = ROneCOne.Task.WhenAll( _
         ROneCOne.Process.RunAsync("echo first"), _
         ROneCOne.Process.RunAsync("echo second")).Await
 
@@ -114,7 +114,7 @@ Private Sub WriteProcessExamples()
             (InStr(1, warning.StandardError, "be careful") > 0)
         .Range("E10").Value2 = (InStr(1, located.StandardOutput, _
             ThisWorkbook.Path, vbTextCompare) > 0)
-        .Range("E11").Value2 = results.Count
+        .Range("E11").Value2 = echoes.Count
         .Range("E12").Value2 = (ROneCOne.Process.RunAsync( _
             "definitely_not_a_command_xyz").Await.ExitCode <> 0)
         .Range("E13").Value2 = mTrace
@@ -136,19 +136,19 @@ Private Sub WriteProcessExamples()
 End Sub
 
 Private Function SessionConversation() As String
-    Dim first As String
-    Dim second As String
+    Dim alphaLine As String
+    Dim betaLine As String
     Dim session As ROneCOne
 
     Set session = ROneCOne.Process.StartSession("echo ready")
     session.WriteLineAsync("echo alpha").Await
-    first = SessionLineWith(session, "alpha")
+    alphaLine = SessionLineWith(session, "alpha")
     session.WriteLineAsync("echo beta").Await
-    second = SessionLineWith(session, "beta")
+    betaLine = SessionLineWith(session, "beta")
     session.WriteLineAsync("exit 0").Await
     session.WaitForExitAsync.Await
-    If Len(first) > 0 And Len(second) > 0 Then
-        SessionConversation = first & " then " & second
+    If Len(alphaLine) > 0 And Len(betaLine) > 0 Then
+        SessionConversation = alphaLine & " then " & betaLine
     Else
         SessionConversation = "the session did not answer twice"
     End If
@@ -176,13 +176,13 @@ Private Function SessionLineWith( _
 ) As String
     Dim attempt As Long
     Dim lineText As String
-    Dim position As Long
+    Dim pos As Long
 
     For attempt = 1 To 12
         lineText = session.ReadLineAsync(4000).Await
-        position = InStr(1, lineText, fragment)
-        If position > 0 Then
-            SessionLineWith = Trim$(Mid$(lineText, position))
+        pos = InStr(1, lineText, fragment)
+        If pos > 0 Then
+            SessionLineWith = Trim$(Mid$(lineText, pos))
             Exit Function
         End If
         If Len(lineText) = 0 And session.HasExited Then Exit For
@@ -191,14 +191,14 @@ End Function
 
 Private Sub RunProcessBenchmark()
     Dim elapsed As Double
-    Dim results As ROneCOne
+    Dim runOutcomes As ROneCOne
     Dim started As Double
 
     ' Three commands start together and one WhenAll collects them: the wall
     ' time is close to the slowest single command, not the sum, because the
     ' processes run beside Excel while the scheduler polls.
     started = Timer
-    Set results = ROneCOne.Task.WhenAll( _
+    Set runOutcomes = ROneCOne.Task.WhenAll( _
         ROneCOne.Process.RunAsync("echo one"), _
         ROneCOne.Process.RunAsync("echo two"), _
         ROneCOne.Process.RunAsync("echo three")).Await
@@ -207,7 +207,7 @@ Private Sub RunProcessBenchmark()
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
         .Range("B6").Value2 = BENCHMARK_COMMANDS
         .Range("C6").Value2 = elapsed
-        .Range("D6").Value2 = results.Count
+        .Range("D6").Value2 = runOutcomes.Count
     End With
 End Sub
 
@@ -219,11 +219,11 @@ Private Sub MarkDemoPassed()
     End With
 End Sub
 
-Private Sub MarkDemoFailed(ByVal errorNumber As Long, ByVal description As String)
+Private Sub MarkDemoFailed(ByVal errNumber As Long, ByVal errDescription As String)
     With ThisWorkbook.Worksheets(START_SHEET)
         .Range("B12").Value2 = Now
         .Range("B13").Value2 = "ERROR"
-        .Range("B14").Value2 = CStr(errorNumber) & ": " & description
+        .Range("B14").Value2 = CStr(errNumber) & ": " & errDescription
     End With
 End Sub
 

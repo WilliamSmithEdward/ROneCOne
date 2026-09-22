@@ -5,9 +5,10 @@ VBA keeps one spelling per identifier across a whole project, and a
 declaration anywhere sets it: a parameter named `value` in ROneCOne.cls turns
 every `.Value` in the host's modules into `.value`, which lands as noise in
 every exported diff. The same rule made ROneCOne and ModernJsonInVBA recase
-each other when they shared a project. These tests hold the runtime's code
-tokens to one spelling per name and to the spelling the default references
-give any name they define. The second half reads the registered type
+each other when they shared a project. These tests hold the code tokens of
+the runtime and of the demo modules that ship beside it to one spelling per
+name and to the spelling the default references, or ROneCOne itself, give
+any name they define. The canonical half reads the registered type
 libraries, so it needs Windows and pywin32 and skips elsewhere: CI enforces
 one spelling per name, and a local run enforces both.
 tools/run_casing_roundtrip.ps1 checks the outcome directly in Excel.
@@ -24,6 +25,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNTIME = ROOT / "src" / "ROneCOne.cls"
+# The demo modules ship beside the runtime in the demo workbooks, so they
+# share its project and are held to the same rule.
+DEMOS = sorted((ROOT / "demo" / "vba").glob("*.bas")) + sorted(
+    (ROOT / "demo" / "vba").glob("*.cls")
+)
+MEMBER = re.compile(
+    r"^\s*(?:Public|Friend)\s+(?:Static\s+)?"
+    r"(?:Function|Sub|Property\s+(?:Get|Let|Set))\s+([A-Za-z_][A-Za-z0-9_]*)",
+    re.MULTILINE,
+)
 
 # The references every new Excel VBA project carries, in reference order.
 REFERENCES = (
@@ -135,6 +146,12 @@ def typelib_spellings() -> dict[str, str]:
     return {key: spelling for key, (_, spelling) in best.items()}
 
 
+def runtime_members() -> dict[str, str]:
+    """ROneCOne's own member spellings, which demo code must not recase."""
+    text = RUNTIME.read_text(encoding="utf-8")
+    return {name.lower(): name for name in MEMBER.findall(text)}
+
+
 def spellings_by_name(paths: list[Path]) -> dict[str, dict[str, list[str]]]:
     found: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
     for path in paths:
@@ -144,27 +161,45 @@ def spellings_by_name(paths: list[Path]) -> dict[str, dict[str, list[str]]]:
 
 
 class CasingTests(unittest.TestCase):
-    def test_runtime_spells_every_name_one_way(self) -> None:
+    def assert_one_spelling(self, paths: list[Path]) -> None:
         split = [
-            f"{lower}: spelled {sorted(forms)}"
-            for lower, forms in sorted(spellings_by_name([RUNTIME]).items())
+            f"{lower}: spelled {sorted(forms)} in {sorted({f for p in forms.values() for f in p})}"
+            for lower, forms in sorted(spellings_by_name(paths).items())
             if len(forms) > 1
         ]
         self.assertEqual([], split, "VBA would recase one spelling to the other")
 
-    def test_runtime_uses_the_type_library_spelling(self) -> None:
-        try:
-            canon = typelib_spellings()
-        except Exception as exc:  # noqa: BLE001 - no oracle without the libraries
-            self.skipTest(f"default type libraries unavailable: {exc}")
-        canon = {**canon, **EXEMPT}
+    def assert_canonical(self, paths: list[Path], canon: dict[str, str]) -> None:
         wrong = []
-        for lower, forms in sorted(spellings_by_name([RUNTIME]).items()):
+        for lower, forms in sorted(spellings_by_name(paths).items()):
             wanted = canon.get(lower)
             if wanted is None or lower in KEYWORDS:
                 continue
-            wrong.extend(f"{name}: {wanted} is canonical" for name in forms if name != wanted)
-        self.assertEqual([], wrong, "ROneCOne would recase these names in a host project")
+            wrong.extend(
+                f"{name} in {sorted(set(files))}: {wanted} is canonical"
+                for name, files in forms.items()
+                if name != wanted
+            )
+        self.assertEqual([], wrong, "these names would be recased in a host project")
+
+    def library_spellings(self) -> dict[str, str]:
+        try:
+            return typelib_spellings()
+        except Exception as exc:  # noqa: BLE001 - no oracle without the libraries
+            self.skipTest(f"default type libraries unavailable: {exc}")
+
+    def test_runtime_spells_every_name_one_way(self) -> None:
+        self.assert_one_spelling([RUNTIME])
+
+    def test_runtime_uses_the_type_library_spelling(self) -> None:
+        self.assert_canonical([RUNTIME], {**self.library_spellings(), **EXEMPT})
+
+    def test_demos_and_runtime_spell_every_name_one_way(self) -> None:
+        self.assert_one_spelling([RUNTIME, *DEMOS])
+
+    def test_demos_use_the_library_and_runtime_spelling(self) -> None:
+        canon = {**self.library_spellings(), **runtime_members(), **EXEMPT}
+        self.assert_canonical(DEMOS, canon)
 
 
 if __name__ == "__main__":

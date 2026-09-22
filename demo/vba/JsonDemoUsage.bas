@@ -55,7 +55,7 @@ Private mTrace As String
 
 Public Sub RunROneCOneJsonDemo()
     Dim errorDescription As String
-    Dim errorNumber As Long
+    Dim errNumber As Long
 
     On Error GoTo DemoFailure
     WriteJsonExamples
@@ -65,9 +65,9 @@ Public Sub RunROneCOneJsonDemo()
     Exit Sub
 
 DemoFailure:
-    errorNumber = Err.Number
+    errNumber = Err.Number
     errorDescription = Err.Description
-    MarkDemoFailed errorNumber, errorDescription
+    MarkDemoFailed errNumber, errorDescription
 End Sub
 
 ' The factory the binding examples hand to the runtime. VBA cannot create an
@@ -189,27 +189,27 @@ Private Function FatDocument() As String
 End Function
 
 Private Sub RunJsonBenchmark()
-    Dim document As String
+    Dim ordersJson As String
     Dim elapsed As Double
-    Dim index As Long
+    Dim idx As Long
     Dim roundTripped As ROneCOne
     Dim started As Double
-    Dim table As ROneCOne
+    Dim orders As ROneCOne
 
     ' One thousand typed rows travel out to JSON text and back into a fresh
     ' typed table. The writer builds the whole document in one buffer and the
     ' reader scans it from one byte snapshot, so both directions stay flat.
-    Set table = ROneCOne.DataTable("Orders")
-    table.Column("Id", vbLong).AsPrimaryKey
-    table.Column "Customer", vbString
-    table.Column "Total", vbDouble
-    For index = 1 To BENCHMARK_ROWS
-        table.LoadRow Array(index, "C" & CStr(index), index * 1.5)
-    Next index
+    Set orders = ROneCOne.DataTable("Orders")
+    orders.Column("Id", vbLong).AsPrimaryKey
+    orders.Column "Customer", vbString
+    orders.Column "Total", vbDouble
+    For idx = 1 To BENCHMARK_ROWS
+        orders.LoadRow Array(idx, "C" & CStr(idx), idx * 1.5)
+    Next idx
 
     started = Timer
-    document = table.ToJson
-    Set roundTripped = ROneCOne.Json.DeserializeTable(document, "Orders")
+    ordersJson = orders.ToJson
+    Set roundTripped = ROneCOne.Json.DeserializeTable(ordersJson, "Orders")
     elapsed = ElapsedSeconds(started)
 
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
@@ -227,11 +227,11 @@ Private Sub MarkDemoPassed()
     End With
 End Sub
 
-Private Sub MarkDemoFailed(ByVal errorNumber As Long, ByVal description As String)
+Private Sub MarkDemoFailed(ByVal errNumber As Long, ByVal errDescription As String)
     With ThisWorkbook.Worksheets(START_SHEET)
         .Range("B12").Value2 = Now
         .Range("B13").Value2 = "ERROR"
-        .Range("B14").Value2 = CStr(errorNumber) & ": " & description
+        .Range("B14").Value2 = CStr(errNumber) & ": " & errDescription
     End With
 End Sub
 

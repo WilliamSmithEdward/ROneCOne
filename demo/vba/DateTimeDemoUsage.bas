@@ -49,7 +49,7 @@ Private Const START_SHEET As String = "Start Here"
 
 Public Sub RunROneCOneDateTimeDemo()
     Dim errorDescription As String
-    Dim errorNumber As Long
+    Dim errNumber As Long
 
     On Error GoTo DemoFailure
     WriteDateTimeExamples
@@ -59,13 +59,13 @@ Public Sub RunROneCOneDateTimeDemo()
     Exit Sub
 
 DemoFailure:
-    errorNumber = Err.Number
+    errNumber = Err.Number
     errorDescription = Err.Description
-    MarkDemoFailed errorNumber, errorDescription
+    MarkDemoFailed errNumber, errorDescription
 End Sub
 
 Private Sub WriteDateTimeExamples()
-    Dim due As ROneCOne
+    Dim dueAt As ROneCOne
     Dim missError As Long
     Dim posted As ROneCOne
     Dim startAt As ROneCOne
@@ -75,7 +75,7 @@ Private Sub WriteDateTimeExamples()
     ' +02:00; the instant itself is 16:30 universal time.
     Set posted = ROneCOne.DateTime.Parse("2026-07-24T18:30:05.123+02:00")
     Set startAt = ROneCOne.DateTime.Parse("2026-07-24T10:00:00Z")
-    Set due = ROneCOne.DateTime.Parse("2026-07-24T12:30:00Z")
+    Set dueAt = ROneCOne.DateTime.Parse("2026-07-24T12:30:00Z")
 
     ' Impossible text raises the typed FormatError instead of guessing.
     trace = "unexpected success"
@@ -98,7 +98,7 @@ Private Sub WriteDateTimeExamples()
         .Range("E11").Value2 = (ROneCOne.DateTime.Parse( _
             "2026-01-31T12:00:00Z").AddMonths(1).ToIsoString = _
             "2026-02-28T12:00:00Z")
-        .Range("E12").Value2 = due.Subtract(startAt).TotalHours
+        .Range("E12").Value2 = dueAt.Subtract(startAt).TotalHours
         .Range("E13").Value2 = "lasts " & _
             ROneCOne.TimeSpan.FromMinutes(90).ToString
         .Range("E14").Value2 = trace
@@ -107,7 +107,7 @@ End Sub
 
 Private Sub RunDateTimeBenchmark()
     Dim elapsed As Double
-    Dim index As Long
+    Dim idx As Long
     Dim moment As ROneCOne
     Dim roundTrips As Long
     Dim stamp As String
@@ -116,12 +116,12 @@ Private Sub RunDateTimeBenchmark()
     ' Parse a thousand ISO timestamps and format each one back, counting the
     ' exact round trips. Everything is integer arithmetic on milliseconds.
     started = Timer
-    For index = 1 To BENCHMARK_ROWS
-        stamp = "2026-07-24T" & Right$("0" & CStr(index Mod 24), 2) & _
-            ":30:05." & Right$("00" & CStr((index Mod 999) + 1), 3) & "Z"
+    For idx = 1 To BENCHMARK_ROWS
+        stamp = "2026-07-24T" & Right$("0" & CStr(idx Mod 24), 2) & _
+            ":30:05." & Right$("00" & CStr((idx Mod 999) + 1), 3) & "Z"
         Set moment = ROneCOne.DateTime.Parse(stamp)
         If moment.ToIsoString = stamp Then roundTrips = roundTrips + 1
-    Next index
+    Next idx
     elapsed = ElapsedSeconds(started)
 
     With ThisWorkbook.Worksheets(BENCHMARKS_SHEET)
@@ -139,11 +139,11 @@ Private Sub MarkDemoPassed()
     End With
 End Sub
 
-Private Sub MarkDemoFailed(ByVal errorNumber As Long, ByVal description As String)
+Private Sub MarkDemoFailed(ByVal errNumber As Long, ByVal errDescription As String)
     With ThisWorkbook.Worksheets(START_SHEET)
         .Range("B12").Value2 = Now
         .Range("B13").Value2 = "ERROR"
-        .Range("B14").Value2 = CStr(errorNumber) & ": " & description
+        .Range("B14").Value2 = CStr(errNumber) & ": " & errDescription
     End With
 End Sub
 
