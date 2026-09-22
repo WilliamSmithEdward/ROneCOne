@@ -18,6 +18,33 @@ checksums for each version are on the
   changelog and from `LICENSE`, and a source contract fails while any module disagrees with
   either.
 
+### Fixed
+
+- Importing `ROneCOne.cls` no longer rewrites the host's own modules, closing
+  [issue #6](https://github.com/WilliamSmithEdward/ROneCOne/issues/6). VBA keeps one spelling
+  per identifier across a project, and a declaration anywhere sets it. The runtime declared more
+  than a thousand parameters and locals in lowercase whose names Excel, Office, or VBA spell
+  otherwise, so `.Value` became `.value` and `.Text` became `.text` in every module of the
+  project, and each export carried the change as diff noise. Exported through the VBE beside a
+  host module that declares none of those names, 24 names in the host module came back recased,
+  `Count`, `Item`, `Rows`, and `Value` among them, and the runtime recased its own members too:
+  `Capacity`, `Columns`, and `Result` came back in lowercase. The same rule made ROneCOne and
+  ModernJsonInVBA recase each other when they shared a project.
+
+  Public parameters keep their .NET names and take the spelling the type libraries use, as
+  Excel's own parameters do: `Add(Value)`, `Item(Index)`, `Where(Predicate)`,
+  `Contains(Value, Comparer)`. VBA matches named arguments regardless of case, so no call site
+  changes. Private parameters, locals, UDT fields, and Declare parameters were renamed to names
+  no reference defines, such as `value` to `itemValue`, `index` to `idx`, and `result` to
+  `outcome`. The JSON parser's private types, adapted from ModernJsonInVBA and still named after
+  its `JsonReader` and Public `JsonTextBuilder`, are now `JsonScanState` and `JsonWriteBuffer`.
+
+  Two members keep their .NET spelling where Office capitalizes the whole word, `Guid` and
+  `Xml`, so a host that writes `GUID` or `.XML` still sees those two recased.
+  `tests/python/test_casing.py` holds the runtime to one spelling per name and to the spelling
+  the default references use, and `tools/run_casing_roundtrip.ps1` exports a host project
+  through the VBE and requires every token back as written.
+
 ## 1.9.0 - 2026-08-02
 
 ### Added

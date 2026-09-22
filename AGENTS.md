@@ -78,6 +78,8 @@ Repository validation commands:
 - test workbook build: `.venv\Scripts\python.exe tools\build_test_workbook.py`
 - popup-aware live host suite: `powershell -ExecutionPolicy Bypass -File
   tools\run_excel_tests.ps1`
+- identifier casing round trip through the VBE: `powershell -ExecutionPolicy Bypass -File
+  tools\run_casing_roundtrip.ps1`
 - demo packaging and live validation: `tools\build_*_demo_workbook.cjs`,
   `tools\convert_demo_workbook.ps1`, `tools\package_demo_workbook.py`,
   `tools\run_demo_workbook.ps1`, and `tools\render_demo_workbook.ps1`

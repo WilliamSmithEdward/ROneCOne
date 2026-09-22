@@ -546,7 +546,7 @@ class SourceContractTests(unittest.TestCase):
         self.assertIn("InternalMethodName", self.source)
 
     def test_sequence_default_member_can_select_contextual_members(self) -> None:
-        self.assertIn("Set result = Condition(", self.source)
+        self.assertIn("Set outcome = Condition(", self.source)
         self.assertIn("Attribute Run.VB_UserMemId = 0", self.source)
 
     def test_collections_expose_vba_foreach_enumeration(self) -> None:
@@ -831,7 +831,7 @@ class SourceContractTests(unittest.TestCase):
         # The table and object bridges select during the scan rather than
         # parsing the whole document and navigating the result.
         self.assertNotIn("ResolveJsonArray(Deserialize(", self.source)
-        self.assertIn('DeserializeAt(text, arrayPath), "$"', self.source)
+        self.assertIn('DeserializeAt(Text, arrayPath), "$"', self.source)
         self.assertIn('DeserializeAt(jsonText, arrayPath), "$"', self.source)
 
     def test_process_session_surface_is_present_and_nonblocking(self) -> None:
@@ -872,13 +872,13 @@ class SourceContractTests(unittest.TestCase):
         # IsArrayValue tests IsObject first, so it is the only legal caller.
         sites = re.findall(r"^.*\bIsArray\(.*$", self.source, re.MULTILINE)
         self.assertEqual(
-            ["    IsArrayValue = IsArray(value)"],
+            ["    IsArrayValue = IsArray(itemValue)"],
             [site.rstrip() for site in sites],
         )
         self.assertIn("Private Function IsArrayValue(", self.source)
         self.assertIn(
-            "    If IsObject(value) Then Exit Function\n"
-            "    IsArrayValue = IsArray(value)",
+            "    If IsObject(itemValue) Then Exit Function\n"
+            "    IsArrayValue = IsArray(itemValue)",
             self.source,
         )
 
@@ -894,19 +894,19 @@ class SourceContractTests(unittest.TestCase):
             r"^.*(?<![A-Za-z])VarType\(.*$", self.source, re.MULTILINE
         )
         self.assertEqual(
-            ["    VarTypeOf = VarType(value)"],
+            ["    VarTypeOf = VarType(itemValue)"],
             [site.rstrip() for site in sites],
         )
         self.assertIn(
-            "Private Function VarTypeOf(ByVal value As Variant) As VbVarType",
+            "Private Function VarTypeOf(ByVal itemValue As Variant) As VbVarType",
             self.source,
         )
         self.assertIn(
-            "    If IsObject(value) Then\n"
+            "    If IsObject(itemValue) Then\n"
             "        VarTypeOf = vbObject\n"
             "        Exit Function\n"
             "    End If\n"
-            "    VarTypeOf = VarType(value)",
+            "    VarTypeOf = VarType(itemValue)",
             self.source,
         )
 
@@ -1041,7 +1041,7 @@ class SourceContractTests(unittest.TestCase):
         # names must pass the bracket refusal before they are quoted.
         self.assertIn('QueryableRenderValue = "?"', self.source)
         self.assertIn(
-            'ValidateQueryIdentifier(node.InternalMethodName, "Member")',
+            'ValidateQueryIdentifier(nodeRef.InternalMethodName, "Member")',
             self.source,
         )
         # A null constant becomes IS NULL rather than a silent = NULL.
@@ -1086,8 +1086,8 @@ class SourceContractTests(unittest.TestCase):
         # escape-free strings with a single copy, accumulates short integers
         # inline, and writes numbers with an invariant decimal separator.
         for mechanism in (
-            "Private Type JsonReader",
-            "Private Type JsonTextBuilder",
+            "Private Type JsonScanState",
+            "Private Type JsonWriteBuffer",
             "reader.bytes = jsonText",
             "Private Function JsonReadNumber(",
             "Private Function JsonReadString(",
@@ -1096,6 +1096,11 @@ class SourceContractTests(unittest.TestCase):
             '"ROneCOne.JsonException"',
         ):
             self.assertIn(mechanism, self.source)
+        # The parser descends from ModernJsonInVBA, which declares its own
+        # JsonReader and a Public JsonTextBuilder. Both libraries often share
+        # a project, so the private types must not reuse those names.
+        for sibling_type in ("JsonReader", "JsonTextBuilder", "JsonStringIndex"):
+            self.assertNotRegex(self.source, rf"\bType {sibling_type}\b")
         # The model is runtime-native: objects deserialize into ordered
         # dictionaries and arrays into Variant lists.
         self.assertIn(
@@ -1289,7 +1294,7 @@ class SourceContractTests(unittest.TestCase):
         # single-field edit validates only its own column with index probes
         # instead of row scans, and key edits defer one rebuild.
         add_row = sub_body("AddRow")
-        self.assertIn("IndexDataRow row", add_row)
+        self.assertIn("IndexDataRow Row", add_row)
         self.assertNotIn("RebuildPrimaryKeyIndex", add_row)
         validate = sub_body("ValidateDataRowConstraints")
         self.assertIn("EnsureDataIndexesCurrent", validate)
@@ -1308,7 +1313,7 @@ class SourceContractTests(unittest.TestCase):
             pattern = rf"Public\s+Function\s+{member}\b"
             self.assertRegex(self.source, re.compile(pattern, re.IGNORECASE), member)
         # Bulk single-call I/O, never a per-cell loop.
-        self.assertIn("raw = source.Value", self.source)
+        self.assertIn("raw = src.Value", self.source)
         self.assertIn(".Value = output", self.source)
 
     def test_lossless_numeric_widening_is_present_and_wired(self) -> None:

@@ -1,2 +1,3 @@
 pyOpenVBA==3.3.0
 pyVBAanalysis==1.3.1
+pywin32==312; sys_platform == "win32"

@@ -9,11 +9,12 @@ pipeline. Using the runtime requires none of this tooling.
 ROneCOne uses four independent gates:
 
 1. Python source-contract tests enforce the one-file invariant, public API, ASCII portability,
-   IntelliSense metadata, and absence of runtime VBIDE/process dependencies.
+   IntelliSense metadata, identifier casing, and absence of runtime VBIDE/process dependencies.
 2. pyVBAanalysis checks the runtime and all VBA fixtures as one project.
 3. pyOpenVBA builds test and demo workbooks and verifies byte-for-byte module round trips.
 4. Microsoft Excel compiles and executes the VBA suite, records worksheet-observed assertions,
-   and runs delegate and collection benchmarks.
+   runs delegate and collection benchmarks, and exports a host project through the VBE to prove
+   the runtime recases none of its names.
 
 The live suite exercises explicit and inferred lambda creation, `Var`/`VarLike`, unary and binary
 calls, explicit and default invocation, comparisons, short-circuit behavior, typed failures,
@@ -125,6 +126,33 @@ Live bang examples therefore declare the token name in their local scope even th
 as a default-member name, not a variable value. This keeps both the normal and
 `--no-inline-suppression` complete-project gates clean. Excel compilation and execution remain the
 decisive host-level checks for that syntax.
+
+## Identifier casing
+
+VBA keeps one spelling per identifier across a whole project, and a declaration in any module
+sets it. A parameter named `value` in the runtime turns every `.Value` in the host's modules
+into `.value`, so each export of the host's code carries the change as diff noise
+([issue #6](https://github.com/WilliamSmithEdward/ROneCOne/issues/6)). The runtime therefore
+declares no name whose spelling differs from the one the default references use: VBA, Excel,
+stdole, and Office. Public parameters take the reference spelling (`Value`, `Index`,
+`Predicate`), because IntelliSense shows them and VBA matches named arguments regardless of case.
+Everything else takes a name no reference defines, such as `itemValue`, `idx`, or `outcome`.
+`Guid` and `Xml` are the two deliberate exceptions, kept at their .NET spelling over Office's
+`GUID` and `XML`.
+
+`tests/python/test_casing.py` holds the runtime to one spelling per name everywhere, and to the
+reference spelling where pywin32 can read the registered type libraries, so CI runs the first
+half and a local Windows run adds the second. The live check builds a workbook holding the
+runtime and a host module that uses Excel and ROneCOne members without declaring any of them,
+opens it in a task-owned Excel, exports every module through the VBE, and requires every token
+back as written:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\run_casing_roundtrip.ps1
+```
+
+`-RuntimePath` points it at another copy of `ROneCOne.cls`. The export uses development-only
+VBIDE trust, the same as demo conversion. The runtime itself never touches the VBIDE.
 
 ## Popup-adaptive Excel harness
 
