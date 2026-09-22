@@ -1317,18 +1317,22 @@ async function buildCapability(config) {
     "Invariant", "Decision", "Behavior", "Status", "Runtime files", "Dependencies",
   ]];
   tableHeader(architecture.getRange("A5:F5"));
-  architecture.getRange("A6:F10").values = config.architecture || [
+  const architectureRows = config.architecture || [
     ["Single-file core", "ROneCOne.cls", "One import", "ENFORCED", 1, 0],
     ["Checked values", "Runtime signatures", "Reject mistakes before work starts", "ENFORCED", 1, 0],
     ["One process", "Cooperative scheduler", "Never launches another Excel", "ENFORCED", 1, 0],
     ["No runtime VBIDE", "One internal object model", "Normal macro security", "ENFORCED", 1, 0],
     ["Privacy", "No transmission", "Workbook data remains local", "ENFORCED", 1, 0],
   ];
-  architecture.getRange("A6:F10").format = {
+  // The table grows with the demo's invariants, so every range below ends at
+  // the last one. A fixed range spilled the sixth row out of the formatting.
+  const architectureEnd = 5 + architectureRows.length;
+  architecture.getRange(`A6:F${architectureEnd}`).values = architectureRows;
+  architecture.getRange(`A6:F${architectureEnd}`).format = {
     borders: { preset: "all", style: "thin", color: colors.line },
     wrapText: true,
   };
-  architecture.getRange("D6:D10").format = {
+  architecture.getRange(`D6:D${architectureEnd}`).format = {
     fill: colors.pale,
     font: { bold: true, color: colors.green },
   };
