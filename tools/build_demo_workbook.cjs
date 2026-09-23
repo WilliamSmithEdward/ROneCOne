@@ -208,10 +208,10 @@ tableHeader(examples.getRange("A5:F5"));
 const exampleRows = [
   ["Apply a discount", "listPrice => listPrice * 0.9", "Set listPrice = ROneCOne.Var(vbDouble)\nSet applyDiscount = listPrice.Multiply(0.9).AsFunc", 90],
   ["Add shipping", "(orderAmount, shipping) => orderAmount + shipping", "Set orderTotal = orderAmount.Add(shipping).AsFunc\norderTotal(100, 5)", 105],
-  ["Check an approval range", "orderAmount >= 100 && orderAmount < 1000", "Set approvalRule = orderAmount.AtLeast(100)\n    .AndAlso(orderAmount.LessThan(1000)).AsFunc", true],
+  ["Check an approval range", "orderAmount >= 100 && orderAmount < 1000", "Set approvalRule = orderAmount.AtLeast(100) _\n    .AndAlso(orderAmount.LessThan(1000)).AsFunc", true],
   ["Avoid unsafe work", "false && unsafeOperation", "ROneCOne.Value(False).AndAlso(...).AsFunc", false],
-  ["Reuse an Excel function", "new Func<int, int, double>(Max)", "ROneCOne.Func(WorksheetFunction, \"Max\")\n    .Takes(vbLong, vbLong).Returns(vbDouble)", 7],
-  ["Reuse workbook code", "new Func<int, int, int>(CalculateOrderTotal)", "ROneCOne.Func(\"DemoUsage.CalculateOrderTotal\")\n    .Takes(vbLong, vbLong).Returns(vbLong)", 105],
+  ["Reuse an Excel function", "new Func<int, int, double>(Max)", "ROneCOne.Func(WorksheetFunction, \"Max\") _\n    .Takes(vbLong, vbLong).Returns(vbDouble)", 7],
+  ["Reuse workbook code", "new Func<int, int, int>(CalculateOrderTotal)", "ROneCOne.Func(\"DemoUsage.CalculateOrderTotal\") _\n    .Takes(vbLong, vbLong).Returns(vbLong)", 105],
   ["Call with an input array", "calculateTotal.DynamicInvoke(args)", "calculateTotal.DynamicInvoke(Array(100, 5))", 105],
   ["Notify two features", "Delegate.Combine(dashboard, audit)", "Set announce = ROneCOne.Combine(dashboard, audit)\nannounce.Execute \"Order 1042 approved\"", "Dashboard updated; audit written"],
   ["Update the original number", "addOne(ref orderNumber)", "addOne.Execute ROneCOne.RefLong(orderNumber)", 1042],

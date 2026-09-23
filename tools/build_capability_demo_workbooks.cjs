@@ -31,7 +31,7 @@ const capabilities = [
       [
         "Notify two features",
         "orderChanged += dashboard; orderChanged += audit",
-        "Set orderChanged = ROneCOne.EventOf(vbString)\n" +
+        "Set orderChanged = ROneCOne.EventOf(vbString) _\n" +
           "    .Subscribe(dashboard).Subscribe(audit)\n" +
           "orderChanged.Emit \"Order 1042 shipped\"",
         "Dashboard updated; audit written",
@@ -60,8 +60,8 @@ const capabilities = [
       [
         "Protect a sales import",
         "try { ImportSales(); } catch (InvalidAmount) { ... } finally { ... }",
-        "Set attempt = ROneCOne.Try(importSales)\n" +
-          "    .Catch(INVALID_AMOUNT_ERROR, skipBadRowAction)\n" +
+        "Set attempt = ROneCOne.Try(importSales) _\n" +
+          "    .Catch(INVALID_AMOUNT_ERROR, skipBadRowAction) _\n" +
           "    .Finally(closeFile)\nattempt.Execute",
         "3 rows imported; file closed",
       ],
@@ -127,6 +127,7 @@ const capabilities = [
     benchmark: "Three downloads from pokeapi.co",
     benchmarkSeconds: "Overlapped seconds",
     benchmarkResult: "Sequential seconds",
+    benchmarkResultFormat: "0.000000",
     benchmarkNote:
       "Both columns time the same three downloads. Overlapped, all three are in flight " +
       "inside WinHTTP at once while VBA waits; in sequence, each starts when the last " +
@@ -1393,6 +1394,9 @@ async function buildCapability(config) {
     borders: { preset: "all", style: "thin", color: colors.line },
   };
   benchmarks.getRange("C6").format.numberFormat = "0.000000";
+  if (config.benchmarkResultFormat) {
+    benchmarks.getRange("D6").format.numberFormat = config.benchmarkResultFormat;
+  }
   if (config.benchmarkNote) {
     benchmarks.getRange("A8:F8").merge();
     benchmarks.getRange("A8").values = [[config.benchmarkNote]];

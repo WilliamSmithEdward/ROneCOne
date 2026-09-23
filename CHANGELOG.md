@@ -6,6 +6,40 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
+## 1.10.0 - 2026-09-22
+
+### Fixed
+
+- The demo workbooks fit their text in Excel. The renders used to review them draw text in
+  narrower fonts than Excel does, so they hid most of what was wrong. Measured with Excel's own
+  AutoFit, the 1.9.1 workbooks split or clipped 74 cells, soft-wrapped 50 code lines
+  mid-expression, and cut off text in rows too short to hold it, among them every capability
+  demo's title band. Code lines longer than their column now break with a VBA line
+  continuation, each example row takes its height from its longest cell, every table row has an
+  explicit height, and value columns widen only where a timestamp, an escaped string, or a
+  joined list needs the room. Five snippets that already carried a statement onto a second line
+  lacked the ` _` continuation VBA requires, and now end the line with it. The two SHA-256
+  digests on the Text sheet still wrap mid-string, inside rows sized to hold them.
+
+- Expected Booleans no longer show as checkboxes beside the plain TRUE the macro writes. The
+  workbook builders stored a JavaScript Boolean as an Excel checkbox cell, and now write an
+  expected Boolean as `=TRUE` or `=FALSE`.
+
+- The capability demos' Examples titles read naturally, such as "Live HTTP examples" and "Live
+  file and CSV examples" in place of "Live http + async examples" and "Live files + csv
+  examples". Their Status columns show PASS in green and CHECK in red, as the Delegates and
+  Collections demos already did, and NOT RUN now shows in amber in all sixteen demos.
+
+- The HTTP benchmark labels its overlapped and sequential timings and shows both to six
+  decimals, and its note and the demo module's comments say what overlapping can save instead
+  of promising a saving the measurement does not always show. The Collections benchmark
+  subtitle names both scales it measures.
+
+### Changed
+
+- The Excel Table demo serializes its sample row with `ToJson(True)`, so the JSON shows indented
+  and wraps at its own line breaks.
+
 ## 1.9.1 - 2026-09-22
 
 ### Changed
