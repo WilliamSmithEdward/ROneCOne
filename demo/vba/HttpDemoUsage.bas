@@ -110,7 +110,7 @@ Private Sub WriteHttpExamples()
 
     ' Overlap three downloads. Each GetAsync starts its transfer right away,
     ' so all three are in flight together; WhenAll finishes when the last one
-    ' lands. The Benchmarks sheet shows how much time this saves.
+    ' lands. The Benchmarks sheet times the same downloads both ways.
     Set responses = ROneCOne.Task.WhenAll( _
         client.GetAsync("pokemon/bulbasaur"), _
         client.GetAsync("pokemon/charmander"), _
@@ -213,8 +213,9 @@ Private Sub RunHttpBenchmark()
 
     ' The same three downloads, timed two ways. One after another, each
     ' request waits for the previous one to finish. Overlapped, all three are
-    ' in flight at once and the total is roughly the slowest single download.
-    ' The saving is real network time, not parallel VBA.
+    ' in flight at once inside WinHTTP while VBA waits, so the total can come
+    ' down toward the slowest single download. How much that saves depends on
+    ' network latency, and fast responses can take the same time either way.
     Set client = ROneCOne.HttpClient()
     client.BaseAddress = "https://pokeapi.co/api/v2/"
     endpoints = Array("pokemon/bulbasaur", "pokemon/charmander", _

@@ -61,6 +61,56 @@ function tableHeader(range) {
   };
 }
 
+// The artifact tool stores a JS Boolean as an Excel checkbox, while the macro
+// writes a plain TRUE or FALSE beside it. A formula keeps each expected
+// Boolean plain as well, so the Expected and Live result columns match.
+function writeExamples(sheet, rows) {
+  sheet.getRange(`A6:D${5 + rows.length}`).values = rows.map((row) =>
+    row.map((value) => (typeof value === "boolean" ? null : value)),
+  );
+  rows.forEach((row, index) => {
+    row.forEach((value, column) => {
+      if (typeof value === "boolean") {
+        sheet.getRange(`${"ABCD"[column]}${6 + index}`).formulas = [
+          [value ? "=TRUE" : "=FALSE"],
+        ];
+      }
+    });
+  });
+}
+
+// Excel draws a line of 10-point Consolas in about 13 points and a line of
+// 11-point Calibri in about 15, and a fixed row clips whatever it cannot
+// hold, so each example row grows to fit its longest cell.
+function sizeExampleRows(sheet, rows, minimum) {
+  const lines = (value) => (typeof value === "string" ? value.split("\n").length : 1);
+  rows.forEach((row, index) => {
+    const height = Math.max(
+      minimum,
+      13 * lines(row[2]) + 4,
+      15 * Math.max(lines(row[1]), lines(row[3])) + 4,
+    );
+    sheet.getRange(`${6 + index}:${6 + index}`).format.rowHeight = height;
+  });
+}
+
+// PASS reads green and CHECK red, and NOT RUN, the state before the macro
+// has filled the sheet, stands out in amber.
+function statusFormats(range) {
+  range.conditionalFormats.add("containsText", {
+    text: "PASS",
+    format: { fill: "#DCFCE7", font: { bold: true, color: colors.green } },
+  });
+  range.conditionalFormats.add("containsText", {
+    text: "CHECK",
+    format: { fill: "#FEE2E2", font: { bold: true, color: "#B91C1C" } },
+  });
+  range.conditionalFormats.add("containsText", {
+    text: "NOT RUN",
+    format: { fill: "#FFF4E8", font: { bold: true, color: "#9A4A00" } },
+  });
+}
+
 titleBand(
   start,
   "ROneCOne Delegates",
@@ -131,13 +181,13 @@ start.getRange("A16:H16").format = {
 };
 start.getRange("A1:H16").format.verticalAlignment = "center";
 start.getRange("A:A").format.columnWidth = 16;
-start.getRange("B:B").format.columnWidth = 22;
+start.getRange("B:B").format.columnWidth = 24;
 start.getRange("C:D").format.columnWidth = 28;
 start.getRange("E:E").format.columnWidth = 3;
-start.getRange("F:F").format.columnWidth = 22;
+start.getRange("F:F").format.columnWidth = 26;
 start.getRange("G:G").format.columnWidth = 28;
 start.getRange("H:H").format.columnWidth = 10;
-start.getRange("6:10").format.rowHeight = 28;
+start.getRange("6:10").format.rowHeight = 34;
 start.freezePanes.freezeRows(3);
 
 titleBand(
@@ -155,19 +205,20 @@ examples.getRange("A5:F5").values = [[
   "Status",
 ]];
 tableHeader(examples.getRange("A5:F5"));
-examples.getRange("A6:D16").values = [
+const exampleRows = [
   ["Apply a discount", "listPrice => listPrice * 0.9", "Set listPrice = ROneCOne.Var(vbDouble)\nSet applyDiscount = listPrice.Multiply(0.9).AsFunc", 90],
   ["Add shipping", "(orderAmount, shipping) => orderAmount + shipping", "Set orderTotal = orderAmount.Add(shipping).AsFunc\norderTotal(100, 5)", 105],
   ["Check an approval range", "orderAmount >= 100 && orderAmount < 1000", "Set approvalRule = orderAmount.AtLeast(100)\n    .AndAlso(orderAmount.LessThan(1000)).AsFunc", true],
   ["Avoid unsafe work", "false && unsafeOperation", "ROneCOne.Value(False).AndAlso(...).AsFunc", false],
-  ["Reuse an Excel function", "new Func<int,int,double>(Max)", "ROneCOne.Func(WorksheetFunction, \"Max\")\n    .Takes(vbLong, vbLong).Returns(vbDouble)", 7],
-  ["Reuse workbook code", "new Func<int,int,int>(CalculateOrderTotal)", "ROneCOne.Func(\"DemoUsage.CalculateOrderTotal\")\n    .Takes(vbLong, vbLong).Returns(vbLong)", 105],
+  ["Reuse an Excel function", "new Func<int, int, double>(Max)", "ROneCOne.Func(WorksheetFunction, \"Max\")\n    .Takes(vbLong, vbLong).Returns(vbDouble)", 7],
+  ["Reuse workbook code", "new Func<int, int, int>(CalculateOrderTotal)", "ROneCOne.Func(\"DemoUsage.CalculateOrderTotal\")\n    .Takes(vbLong, vbLong).Returns(vbLong)", 105],
   ["Call with an input array", "calculateTotal.DynamicInvoke(args)", "calculateTotal.DynamicInvoke(Array(100, 5))", 105],
   ["Notify two features", "Delegate.Combine(dashboard, audit)", "Set announce = ROneCOne.Combine(dashboard, audit)\nannounce.Execute \"Order 1042 approved\"", "Dashboard updated; audit written"],
   ["Update the original number", "addOne(ref orderNumber)", "addOne.Execute ROneCOne.RefLong(orderNumber)", 1042],
   ["Build a pricing pipeline", "discount.Then(addHandling)", "applyDiscount.PipeTo(addHandling)(100)", 95],
   ["Inspect the contract", "delegate.GetType()", "calculateTotal.Signature", "Func<Long, Long, Long>"],
 ];
+writeExamples(examples, exampleRows);
 examples.getRange("F6").formulas = [["=IF(E6=\"\",\"NOT RUN\",IF(E6=D6,\"PASS\",\"CHECK\"))"]];
 examples.getRange("F6:F16").fillDown();
 examples.getRange("A6:F16").format = {
@@ -180,19 +231,12 @@ examples.getRange("C6:C16").format = {
   font: { name: "Consolas", color: colors.ink, size: 10 },
   wrapText: true,
 };
-examples.getRange("F6:F16").conditionalFormats.add("containsText", {
-  text: "PASS",
-  format: { fill: "#DCFCE7", font: { bold: true, color: colors.green } },
-});
-examples.getRange("F6:F16").conditionalFormats.add("containsText", {
-  text: "CHECK",
-  format: { fill: "#FEE2E2", font: { bold: true, color: "#B91C1C" } },
-});
+statusFormats(examples.getRange("F6:F16"));
 examples.getRange("A:A").format.columnWidth = 20;
-examples.getRange("B:B").format.columnWidth = 25;
-examples.getRange("C:C").format.columnWidth = 52;
+examples.getRange("B:B").format.columnWidth = 43;
+examples.getRange("C:C").format.columnWidth = 54;
 examples.getRange("D:F").format.columnWidth = 15;
-examples.getRange("6:16").format.rowHeight = 54;
+sizeExampleRows(examples, exampleRows, 54);
 examples.freezePanes.freezeRows(5);
 
 titleBand(
@@ -224,9 +268,10 @@ benchmarks.getRange("A8:F8").format = {
   fill: "#FFF4E8",
   font: { color: "#9A4A00" },
   wrapText: true,
+  verticalAlignment: "center",
 };
-benchmarks.getRange("A:A").format.columnWidth = 34;
-benchmarks.getRange("B:E").format.columnWidth = 20;
+benchmarks.getRange("A:A").format.columnWidth = 49;
+benchmarks.getRange("B:E").format.columnWidth = 23;
 benchmarks.getRange("F:F").format.columnWidth = 3;
 benchmarks.getRange("8:8").format.rowHeight = 42;
 benchmarks.freezePanes.freezeRows(5);
@@ -246,7 +291,9 @@ architecture.getRange("A5:F5").values = [[
   "Runtime installs",
 ]];
 tableHeader(architecture.getRange("A5:F5"));
-architecture.getRange("A6:F11").values = [
+// Both tables take their extent from their rows, so a row added to either
+// keeps the table's formatting.
+const invariantRows = [
   ["Single-file core", "ROneCOne.cls", "One import operation", "ENFORCED", 1, 0],
   ["No runtime VBIDE", "Expression trees", "Works without trusted project access", "ENFORCED", 1, 0],
   ["Concise code", "Inferred Func + reusable adapters", "Less VBA ceremony", "ENFORCED", 1, 0],
@@ -254,23 +301,26 @@ architecture.getRange("A6:F11").values = [
   ["Privacy", "Local-only opt-in logs", "Never transmits workbook data", "ENFORCED", 1, 0],
   ["Workbook formats", ".xlsm / .xlsb / .xlam", "Normal VBA remains unchanged", "SUPPORTED CONTRACT", 1, 0],
 ];
-architecture.getRange("A6:F11").format = {
+const invariantEnd = 5 + invariantRows.length;
+architecture.getRange(`A6:F${invariantEnd}`).values = invariantRows;
+architecture.getRange(`A6:F${invariantEnd}`).format = {
   borders: { preset: "all", style: "thin", color: colors.line },
   wrapText: true,
   verticalAlignment: "top",
 };
-architecture.getRange("D6:D11").format = {
+architecture.getRange(`D6:D${invariantEnd}`).format = {
   fill: colors.pale,
   font: { bold: true, color: colors.green },
 };
-architecture.getRange("A12:D12").values = [[
+const milestoneHeader = invariantEnd + 1;
+architecture.getRange(`A${milestoneHeader}:D${milestoneHeader}`).values = [[
   "Milestone",
   "Capability",
   "Release status",
   "Depends on",
 ]];
-tableHeader(architecture.getRange("A12:D12"));
-architecture.getRange("A13:D18").values = [
+tableHeader(architecture.getRange(`A${milestoneHeader}:D${milestoneHeader}`));
+const milestoneRows = [
   [1, "Universal delegates + expression lambdas", "AVAILABLE (v0.5.0)", "Tagged object kernel"],
   [2, "Runtime-generic List<T> + LINQ", "AVAILABLE (v0.2.0)", "Delegates"],
   [3, "Inferred Func + clear LINQ syntax", "AVAILABLE (v0.4.0)", "Delegates + collections"],
@@ -278,16 +328,18 @@ architecture.getRange("A13:D18").values = [
   [5, "Typed events", "AVAILABLE (v0.6.0)", "Actions + multicast"],
   [6, "Tasks / async / await / cancellation", "AVAILABLE (v1.0.0)", "Exceptions + delegates"],
 ];
-architecture.getRange("A13:D18").format = {
+const milestoneEnd = milestoneHeader + milestoneRows.length;
+architecture.getRange(`A${milestoneHeader + 1}:D${milestoneEnd}`).values = milestoneRows;
+architecture.getRange(`A${milestoneHeader + 1}:D${milestoneEnd}`).format = {
   borders: { preset: "all", style: "thin", color: colors.line },
   wrapText: true,
 };
 architecture.getRange("A:A").format.columnWidth = 22;
-architecture.getRange("B:B").format.columnWidth = 40;
+architecture.getRange("B:B").format.columnWidth = 43;
 architecture.getRange("C:C").format.columnWidth = 24;
 architecture.getRange("D:D").format.columnWidth = 32;
-architecture.getRange("E:F").format.columnWidth = 16;
-architecture.getRange("6:11").format.rowHeight = 42;
+architecture.getRange("E:F").format.columnWidth = 18;
+architecture.getRange(`6:${invariantEnd}`).format.rowHeight = 42;
 architecture.freezePanes.freezeRows(5);
 
 await fs.mkdir(outputDir, { recursive: true });

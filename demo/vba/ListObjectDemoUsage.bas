@@ -250,7 +250,7 @@ Private Sub WriteMappingExamples(ByVal salesTable As Object)
         .Range("E33").Value2 = rebuilt.Rows.Count
         .Range("E34").Value2 = CStr(rebuilt.Rows.Item(2).Item("Rep"))
         .Range("E35").Value2 = CBool(rebuilt.ToJson = sales.ToJson)
-        .Range("E36").Value2 = sales.Rows.Item(0).ToJson
+        .Range("E36").Value2 = sales.Rows.Item(0).ToJson(True)
         .Range("E37").Value2 = ROneCOne.Json.DeserializeTable( _
             sales.ToJson, "FromJson").Rows.Count
         .Range("E38").Value2 = ROneCOne.Json.DeserializeTable( _

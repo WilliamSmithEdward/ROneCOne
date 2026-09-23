@@ -23,6 +23,7 @@ const capabilities = [
     subtitle: "Send one checked order update to several workbook features",
     macro: "RunROneCOneEventsDemo",
     feature: "Typed events",
+    exampleLabel: "typed event",
     output: "ROneCOne_Events_Demo.xlsx",
     benchmark: "Event.Emit with one typed handler",
     benchmarkResult: "Accumulated value",
@@ -51,6 +52,7 @@ const capabilities = [
     subtitle: "Protect a sales import and always close the source file",
     macro: "RunROneCOneExceptionsDemo",
     feature: "Try / Catch / Finally",
+    exampleLabel: "Try / Catch / Finally",
     output: "ROneCOne_Exceptions_Demo.xlsx",
     benchmark: "Successful import wrapped in Try.Execute",
     benchmarkResult: "Trace characters",
@@ -65,7 +67,7 @@ const capabilities = [
       ],
       ["Keep recovery ready", "catch (InvalidAmount)", ".Catch(INVALID_AMOUNT_ERROR, skipBadRowAction)", true],
       ["Confirm a clean import", "no exception", "The Catch handler was not needed", "No import error"],
-      ["Close after success", "try { ImportSales(); } finally { CloseFile(); }", "Set attempt = ROneCOne.Try(validImport).Finally(closeFile)\nattempt.Execute", "3 rows imported; file closed"],
+      ["Close after success", "try { ImportSales(); } finally { CloseFile(); }", "Set attempt = ROneCOne.Try(validImport) _\n    .Finally(closeFile)\nattempt.Execute", "3 rows imported; file closed"],
     ],
   },
   {
@@ -74,15 +76,16 @@ const capabilities = [
     subtitle: "Coordinate calculations, cancellation, and progress on Excel's thread",
     macro: "RunROneCOneTasksDemo",
     feature: "Tasks + async",
+    exampleLabel: "task and async",
     output: "ROneCOne_Tasks_Demo.xlsx",
     benchmark: "Cooperative Task.Run startup + Await",
     benchmarkResult: "Last result",
     examples: [
-      ["Run two calculations", "await Task.WhenAll(forecast, reorder)", "Set outputs = ROneCOne.Task.WhenAll(forecastTask, reorderTask).Await", "135000 | 152"],
+      ["Run two calculations", "await Task.WhenAll(forecast, reorder)", "Set outputs = ROneCOne.Task.WhenAll( _\n    forecastTask, reorderTask).Await", "135000 | 152"],
       ["Build the next step", "allWork.ContinueWith(BuildSummary)", "allWork.ContinueWith(buildSummary).Await", "Forecast 135000; reorder point 152"],
       ["Keep workbook work safe", "run on the UI thread", "ROneCOne.Task.Run(openOrderCounter).Await", 3],
       ["Pause without another Excel", "await Task.Delay(5)", "ignored = ROneCOne.Task.Delay(5).Await", true],
-      ["Cancel safely", "cancelSource.Cancel()", "cancelSource.Cancel: cancelSource.Token.IsCancellationRequested", true],
+      ["Cancel safely", "cancelSource.Cancel()", "cancelSource.Cancel\ncancelSource.Token.IsCancellationRequested", true],
       ["Show progress", "progress.Report(7)", "ROneCOne.ProgressOf(vbLong, handler).Report 7", 7],
       ["Finish from a callback", "source.SetResult(99)", "completion.SetResult 99: completion.Task.Await", 99],
       ["Limit waiting time", "await task.WaitAsync(timeout)", "ROneCOne.Task.Delay(5).WaitAsync(100).Await", true],
@@ -95,11 +98,12 @@ const capabilities = [
     subtitle: "Build validated tables, query them, and load local Excel data",
     macro: "RunROneCOneDataDemo",
     feature: "Data + providers",
+    exampleLabel: "data and provider",
     output: "ROneCOne_Data_Demo.xlsx",
     benchmark: "Build 1,000 typed rows and query them",
     benchmarkResult: "Selected rows",
     examples: [
-      ["Add a validated row", "DataColumn + Rows.Add", "people.Column(\"Id\", vbLong).AutoNumber(100, 10).AsPrimaryKey\nSet person = people.Row(\"Ada\", 90, ROneCOne.DBNull).Add", 100],
+      ["Add a validated row", "DataColumn + Rows.Add", "people.Column(\"Id\", vbLong) _\n    .AutoNumber(100, 10).AsPrimaryKey\nSet person = people.Row(\"Ada\", 90, ROneCOne.DBNull).Add", 100],
       ["Show the top score", "view.Sort + RowFilter", "DataView(people).WithFilter(...).WithSort(\"Score\", True)", "Grace"],
       ["Connect customers to orders", "parent.GetChildRows(...) ", "parentRow.GetChildRows(\"CustomerOrders\").Count", 1],
       ["Find unsaved changes", "table.GetChanges()", "people.GetChanges.Rows.Count", 1],
@@ -117,9 +121,17 @@ const capabilities = [
     subtitle: "Download web data with awaitable requests that keep Excel responsive",
     macro: "RunROneCOneHttpDemo",
     feature: "HTTP + async",
+    exampleLabel: "HTTP",
+    valueWidth: 31,
     output: "ROneCOne_Http_Demo.xlsx",
-    benchmark: "Three downloads: one after another vs overlapped",
+    benchmark: "Three downloads from pokeapi.co",
+    benchmarkSeconds: "Overlapped seconds",
     benchmarkResult: "Sequential seconds",
+    benchmarkNote:
+      "Both columns time the same three downloads. Overlapped, all three are in flight " +
+      "inside WinHTTP at once while VBA waits; in sequence, each starts when the last " +
+      "one finishes. What overlapping saves depends on network latency, and fast " +
+      "responses can take the same time either way.",
     notice:
       "This demo requests data from https://pokeapi.co over the internet. " +
       "Only the URLs shown are contacted; the runtime itself transmits nothing.",
@@ -158,7 +170,7 @@ const capabilities = [
       [
         "Overlap three downloads",
         "await Task.WhenAll(first, second, third)",
-        "Set responses = ROneCOne.Task.WhenAll(bulbasaur, charmander, squirtle).Await",
+        "Set responses = ROneCOne.Task.WhenAll( _\n    bulbasaur, charmander, squirtle).Await",
         "bulbasaur, charmander, squirtle ready",
       ],
       [
@@ -176,7 +188,7 @@ const capabilities = [
       [
         "Cancel a request",
         "cancelSource.Cancel();",
-        "cancelSource.Cancel\nSet pending = client.GetAsync(\"pokemon/eevee\", cancelSource.Token)",
+        "cancelSource.Cancel\nSet pending = client.GetAsync( _\n    \"pokemon/eevee\", cancelSource.Token)",
         true,
       ],
       [
@@ -200,7 +212,7 @@ const capabilities = [
       [
         "Download a body to a file",
         "await client.GetStreamAsync(url).CopyToAsync(file)",
-        "client.DownloadFileAsync(\"pokemon/pikachu\", downloadPath).Await\nROneCOne.File.Exists(downloadPath)",
+        "client.DownloadFileAsync( _\n    \"pokemon/pikachu\", downloadPath).Await\nROneCOne.File.Exists(downloadPath)",
         true,
       ],
       [
@@ -217,6 +229,7 @@ const capabilities = [
     subtitle: "Parse, build, and bind JSON without leaving the workbook",
     macro: "RunROneCOneJsonDemo",
     feature: "JSON",
+    exampleLabel: "JSON",
     output: "ROneCOne_Json_Demo.xlsx",
     benchmark: "Round-trip a 1,000-order table",
     benchmarkResult: "Round-tripped rows",
@@ -261,7 +274,7 @@ const capabilities = [
       [
         "Land an array in a DataTable",
         "JsonSerializer.Deserialize<List<Order>>(json)",
-        "Set orders = ROneCOne.Json.DeserializeTable(ordersJson, \"Orders\")",
+        "Set orders = ROneCOne.Json.DeserializeTable( _\n    ordersJson, \"Orders\")",
         3,
       ],
       [
@@ -273,7 +286,7 @@ const capabilities = [
       [
         "Address an envelope path",
         "root.GetProperty(\"data\").GetProperty(\"items\")",
-        "ROneCOne.Json.DeserializeTable(envelope, \"Items\", \"$.data.items\")",
+        "ROneCOne.Json.DeserializeTable( _\n    envelope, \"Items\", \"$.data.items\")",
         2,
       ],
       [
@@ -284,8 +297,9 @@ const capabilities = [
       ],
       [
         "Build objects through a factory",
-        "JsonSerializer.Deserialize<List<Customer>>(json)",
-        "Set factory = ROneCOne.Func(\"JsonDemoUsage.NewDemoCustomer\") _\n    .Takes().Returns(vbObject)\nSet people = ROneCOne.Json.DeserializeObjects(peopleJson, factory)",
+        "JsonSerializer\n    .Deserialize<List<Customer>>(json)",
+        "Set factory = ROneCOne.Func( _\n    \"JsonDemoUsage.NewDemoCustomer\") _\n    .Takes().Returns(vbObject)\n" +
+          "Set people = ROneCOne.Json.DeserializeObjects( _\n    peopleJson, factory)",
         "Bo",
       ],
       [
@@ -320,6 +334,7 @@ const capabilities = [
     subtitle: "Read, write, and round-trip real files without leaving the workbook",
     macro: "RunROneCOneFilesDemo",
     feature: "Files + CSV",
+    exampleLabel: "file and CSV",
     output: "ROneCOne_Files_Demo.xlsx",
     benchmark: "Round-trip 1,000 rows via a CSV file",
     benchmarkResult: "Round-tripped rows",
@@ -340,13 +355,13 @@ const capabilities = [
       [
         "Let a byte-order mark decide",
         "StreamReader detects encoding",
-        "ROneCOne.File.WriteAllText path16, \"hello files\", \"utf-16\"\nROneCOne.File.ReadAllText(path16) = \"hello files\"",
+        "ROneCOne.File.WriteAllText _\n    path16, \"hello files\", \"utf-16\"\nROneCOne.File.ReadAllText(path16) = \"hello files\"",
         true,
       ],
       [
         "Round-trip lines as a list",
         "File.ReadAllLines(path)",
-        "ROneCOne.File.WriteAllLines linesPath, Array(\"alpha\", \"beta\", \"gamma\")\nROneCOne.File.ReadAllLines(linesPath).Count",
+        "ROneCOne.File.WriteAllLines linesPath, _\n    Array(\"alpha\", \"beta\", \"gamma\")\nROneCOne.File.ReadAllLines(linesPath).Count",
         3,
       ],
       [
@@ -358,13 +373,13 @@ const capabilities = [
       [
         "Dissect a path",
         "Path.GetFileNameWithoutExtension(path)",
-        "ROneCOne.Path.GetFileNameWithoutExtension(\"C:\\data\\in\\file.txt\")",
+        "ROneCOne.Path.GetFileNameWithoutExtension( _\n    \"C:\\data\\in\\file.txt\")",
         "file",
       ],
       [
         "Enumerate a tree with a pattern",
         "Directory.GetFiles(root, \"*.txt\", AllDirectories)",
-        "ROneCOne.Directory.GetFiles(demoRoot, \"*.txt\", True).Count",
+        "ROneCOne.Directory.GetFiles( _\n    demoRoot, \"*.txt\", True).Count",
         4,
       ],
       [
@@ -411,6 +426,7 @@ const capabilities = [
     subtitle: "Await command lines with exit codes and captured output",
     macro: "RunROneCOneProcessDemo",
     feature: "Processes",
+    exampleLabel: "process",
     output: "ROneCOne_Process_Demo.xlsx",
     benchmark: "Overlap three shell commands",
     benchmarkResult: "Collected results",
@@ -425,7 +441,7 @@ const capabilities = [
       [
         "Run a command and await it",
         "Process.Start + WaitForExit",
-        "Set hello = ROneCOne.Process.RunAsync(\"echo hello from ROneCOne\").Await\nhello.ExitCode = 0",
+        "Set hello = ROneCOne.Process.RunAsync( _\n    \"echo hello from ROneCOne\").Await\nhello.ExitCode = 0",
         true,
       ],
       [
@@ -449,7 +465,7 @@ const capabilities = [
       [
         "Pick the working directory",
         "startInfo.WorkingDirectory",
-        "Set located = ROneCOne.Process.RunAsync(\"cd\", ThisWorkbook.Path).Await",
+        "Set located = ROneCOne.Process.RunAsync( _\n    \"cd\", ThisWorkbook.Path).Await",
         true,
       ],
       [
@@ -461,7 +477,7 @@ const capabilities = [
       [
         "Failing commands report",
         "nonzero ExitCode, no exception",
-        "ROneCOne.Process.RunAsync(\"definitely_not_a_command_xyz\") _\n    .Await.ExitCode <> 0",
+        "ROneCOne.Process.RunAsync( _\n    \"definitely_not_a_command_xyz\") _\n    .Await.ExitCode <> 0",
         true,
       ],
       [
@@ -473,7 +489,7 @@ const capabilities = [
       [
         "Feed a command standard input",
         "process.StandardInput.Write(...)",
-        "ROneCOne.Process.RunAsync(\"sort\", , , \"banana\" & vbCrLf & _\n    \"apple\" & vbCrLf).Await.StandardOutput has apple before banana",
+        "ROneCOne.Process.RunAsync(\"sort\", , , _\n    \"banana\" & vbCrLf & \"apple\" & vbCrLf) _\n    .Await.StandardOutput has apple before banana",
         true,
       ],
       [
@@ -496,6 +512,8 @@ const capabilities = [
     subtitle: "Match, format, build, hash, and encode text, all offline",
     macro: "RunROneCOneTextDemo",
     feature: "Text + hashing",
+    exampleLabel: "text and hashing",
+    valueWidth: 24,
     output: "ROneCOne_Text_Demo.xlsx",
     benchmark: "Hash 1,000 strings with SHA-256",
     benchmarkResult: "Distinct digests",
@@ -539,26 +557,26 @@ const capabilities = [
       ],
       [
         "Hash text as SHA-256",
-        "SHA256.HashData(Encoding.UTF8.GetBytes(s))",
+        "SHA256.HashData(\n    Encoding.UTF8.GetBytes(s))",
         "ROneCOne.Convert.ToHexString(ROneCOne.Hash.Sha256(\"abc\"))",
         "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD",
       ],
       [
         "Sign with HMAC-SHA256",
         "new HMACSHA256(key).ComputeHash(msg)",
-        "ROneCOne.Convert.ToHexString(ROneCOne.Hash.HmacSha256(\"Jefe\", _\n    \"what do ya want for nothing?\"))",
+        "ROneCOne.Convert.ToHexString( _\n    ROneCOne.Hash.HmacSha256(\"Jefe\", _\n    \"what do ya want for nothing?\"))",
         "5BDCC146BF60754E6A042426089575C75A003F089D2739839DEC58B964EC3843",
       ],
       [
         "Encode bytes as base64",
         "Convert.ToBase64String(bytes)",
-        "ROneCOne.Convert.ToBase64String(ROneCOne.Convert.FromHexString(\"4D616E\"))",
+        "ROneCOne.Convert.ToBase64String( _\n    ROneCOne.Convert.FromHexString(\"4D616E\"))",
         "TWFu",
       ],
       [
         "Round-trip through hex",
         "Convert.ToHexString(bytes)",
-        "ROneCOne.Convert.ToHexString(ROneCOne.Convert.FromHexString(\"4d616e\"))",
+        "ROneCOne.Convert.ToHexString( _\n    ROneCOne.Convert.FromHexString(\"4d616e\"))",
         "4D616E",
       ],
       [
@@ -576,13 +594,13 @@ const capabilities = [
       [
         "Build text in linear time",
         "new StringBuilder().Append(...)",
-        "ROneCOne.StringBuilder().Append(\"a\").AppendFormat(\"{0:D3}\", 7).ToString",
+        "ROneCOne.StringBuilder().Append(\"a\") _\n    .AppendFormat(\"{0:D3}\", 7).ToString",
         "a007",
       ],
       [
         "Mint ids and random bytes",
         "Guid.NewGuid / RandomNumberGenerator",
-        "Len(ROneCOne.Guid.NewGuid) & \" chars, \" & _\n    (UBound(ROneCOne.RandomNumberGenerator.GetBytes(8)) + 1) & \" bytes\"",
+        "Len(ROneCOne.Guid.NewGuid) & \" chars, \" & _\n    (UBound(ROneCOne.RandomNumberGenerator.GetBytes(8)) _\n    + 1) & \" bytes\"",
         "36 chars, 8 bytes",
       ],
     ],
@@ -593,6 +611,8 @@ const capabilities = [
     subtitle: "Parse ISO 8601 and epochs, convert zones, and add durations",
     macro: "RunROneCOneDateTimeDemo",
     feature: "Dates + times",
+    exampleLabel: "date and time",
+    valueWidth: 28,
     output: "ROneCOne_DateTime_Demo.xlsx",
     benchmark: "Parse and format 1,000 timestamps",
     benchmarkResult: "Exact round trips",
@@ -607,7 +627,7 @@ const capabilities = [
       [
         "Parse ISO 8601 with an offset",
         "DateTimeOffset.Parse(text)",
-        "Set posted = ROneCOne.DateTime.Parse(\"2026-07-24T18:30:05.123+02:00\")\nposted.Hour",
+        "Set posted = ROneCOne.DateTime.Parse( _\n    \"2026-07-24T18:30:05.123+02:00\")\nposted.Hour",
         18,
       ],
       [
@@ -619,7 +639,7 @@ const capabilities = [
       [
         "Epoch numbers become readable",
         "DateTimeOffset.FromUnixTimeSeconds(n)",
-        "\"epoch \" & ROneCOne.DateTime.FromUnixTimeSeconds(1784910605).ToIsoString",
+        "\"epoch \" & ROneCOne.DateTime.FromUnixTimeSeconds( _\n    1784910605).ToIsoString",
         "epoch 2026-07-24T16:30:05Z",
       ],
       [
@@ -666,6 +686,7 @@ const capabilities = [
     subtitle: "Query XML with XPath and land it in typed DataTables",
     macro: "RunROneCOneXmlDemo",
     feature: "XML",
+    exampleLabel: "XML",
     output: "ROneCOne_Xml_Demo.xlsx",
     benchmark: "Extract 1,000 rows from XML",
     benchmarkResult: "Typed table rows",
@@ -710,13 +731,13 @@ const capabilities = [
       [
         "Namespaces map once",
         "XmlNamespaceManager prefixes",
-        "Set feed = ROneCOne.Xml.Parse(feedXml, \"xmlns:p='urn:demo'\")\nfeed.SelectNodes(\"//p:item\").Count",
+        "Set feed = ROneCOne.Xml.Parse( _\n    feedXml, \"xmlns:p='urn:demo'\")\nfeed.SelectNodes(\"//p:item\").Count",
         2,
       ],
       [
         "XML lands as a typed table",
         "DataSet.ReadXml",
-        "Set books = ROneCOne.Xml.DeserializeTable(catalogXml, \"Books\", \"//book\")\nbooks.Rows.Item(0).Item(\"price\")",
+        "Set books = ROneCOne.Xml.DeserializeTable( _\n    catalogXml, \"Books\", \"//book\")\nbooks.Rows.Item(0).Item(\"price\")",
         10.5,
       ],
       [
@@ -739,6 +760,7 @@ const capabilities = [
     subtitle: "Open and make zip archives, pure VBA, offline",
     macro: "RunROneCOneZipDemo",
     feature: "Zip",
+    exampleLabel: "zip",
     output: "ROneCOne_Zip_Demo.xlsx",
     benchmark: "Inflate a 1,000-line archived file",
     benchmarkResult: "Summed value",
@@ -783,7 +805,7 @@ const capabilities = [
       [
         "And inflates its DEFLATE",
         "RFC 1951 inflate",
-        "InStr(1, ROneCOne.ZipFile.OpenRead(psMadePath) _\n    .GetEntry(\"readme.txt\").ReadAllText(), \"read me first\") > 0",
+        "InStr(1, ROneCOne.ZipFile.OpenRead(psMadePath) _\n    .GetEntry(\"readme.txt\").ReadAllText(), _\n    \"read me first\") > 0",
         true,
       ],
       [
@@ -795,7 +817,7 @@ const capabilities = [
       [
         "Zip-slip names are refused",
         "directory-traversal guard",
-        "On Error Resume Next\nROneCOne.ZipFile.ExtractToDirectory hostilePath, guardedDir\nIf Err.Number = ROneCOne.ZipError Then ...",
+        "On Error Resume Next\nROneCOne.ZipFile.ExtractToDirectory _\n    hostilePath, guardedDir\nIf Err.Number = ROneCOne.ZipError Then ...",
         "traversal refused",
       ],
     ],
@@ -806,6 +828,7 @@ const capabilities = [
     subtitle: "LINQ that compiles to SQL and runs on the server, offline",
     macro: "RunROneCOneQueryDemo",
     feature: "Query",
+    exampleLabel: "query",
     output: "ROneCOne_Query_Demo.xlsx",
     benchmark: "Count 50,000 rows server-side",
     benchmarkResult: "Matching rows",
@@ -880,6 +903,7 @@ const capabilities = [
     macro: "RunROneCOneListObjectDemo",
     feature: "ListObject",
     exampleLabel: "Excel Table",
+    valueWidth: 24,
     output: "ROneCOne_ListObject_Demo.xlsx",
     benchmark: "Read, filter, and write back 5,000 table rows",
     benchmarkResult: "Rows kept",
@@ -1074,9 +1098,9 @@ const capabilities = [
       ],
       [
         "Any row serializes to JSON",
-        "JsonSerializer.Serialize(row)",
-        "sales.Rows.Item(0).ToJson",
-        "{\"Region\":\"West\",\"Rep\":\"Ada\",\"Amount\":120}",
+        "JsonSerializer.Serialize(row,\n    new JsonSerializerOptions\n    { WriteIndented = true })",
+        "sales.Rows.Item(0).ToJson(True)",
+        "{\n  \"Region\": \"West\",\n  \"Rep\": \"Ada\",\n  \"Amount\": 120\n}",
       ],
       [
         "JSON comes back as a table",
@@ -1176,6 +1200,8 @@ function titleBand(sheet, title, subtitle, endColumn) {
     font: { color: colors.ink, italic: true, size: 11 },
     verticalAlignment: "center",
   };
+  // Two default rows are shorter than a 24-point title, so it would clip.
+  sheet.getRange(`A1:${endColumn}3`).format.rowHeight = 24;
 }
 
 function section(range) {
@@ -1193,6 +1219,56 @@ function tableHeader(range) {
     wrapText: true,
     borders: { preset: "all", style: "thin", color: colors.line },
   };
+}
+
+// The artifact tool stores a JS Boolean as an Excel checkbox, while the macro
+// writes a plain TRUE or FALSE beside it. A formula keeps each expected
+// Boolean plain as well, so the Expected and Live result columns match.
+function writeExamples(sheet, rows) {
+  sheet.getRange(`A6:D${5 + rows.length}`).values = rows.map((row) =>
+    row.map((value) => (typeof value === "boolean" ? null : value)),
+  );
+  rows.forEach((row, index) => {
+    row.forEach((value, column) => {
+      if (typeof value === "boolean") {
+        sheet.getRange(`${"ABCD"[column]}${6 + index}`).formulas = [
+          [value ? "=TRUE" : "=FALSE"],
+        ];
+      }
+    });
+  });
+}
+
+// Excel draws a line of 10-point Consolas in about 13 points and a line of
+// 11-point Calibri in about 15, and a fixed row clips whatever it cannot
+// hold, so each example row grows to fit its longest cell.
+function sizeExampleRows(sheet, rows, minimum) {
+  const lines = (value) => (typeof value === "string" ? value.split("\n").length : 1);
+  rows.forEach((row, index) => {
+    const height = Math.max(
+      minimum,
+      13 * lines(row[2]) + 4,
+      15 * Math.max(lines(row[1]), lines(row[3])) + 4,
+    );
+    sheet.getRange(`${6 + index}:${6 + index}`).format.rowHeight = height;
+  });
+}
+
+// PASS reads green and CHECK red, and NOT RUN, the state before the macro
+// has filled the sheet, stands out in amber.
+function statusFormats(range) {
+  range.conditionalFormats.add("containsText", {
+    text: "PASS",
+    format: { fill: "#DCFCE7", font: { bold: true, color: colors.green } },
+  });
+  range.conditionalFormats.add("containsText", {
+    text: "CHECK",
+    format: { fill: "#FEE2E2", font: { bold: true, color: "#B91C1C" } },
+  });
+  range.conditionalFormats.add("containsText", {
+    text: "NOT RUN",
+    format: { fill: "#FFF4E8", font: { bold: true, color: "#9A4A00" } },
+  });
 }
 
 async function buildCapability(config) {
@@ -1265,20 +1341,24 @@ async function buildCapability(config) {
     font: { bold: true, color: "#9A4A00" },
     wrapText: true,
   };
+  start.getRange("A1:H16").format.verticalAlignment = "center";
   start.getRange("A:A").format.columnWidth = 16;
-  start.getRange("B:B").format.columnWidth = 30;
+  start.getRange("B:B").format.columnWidth = 34;
   start.getRange("C:D").format.columnWidth = 26;
-  start.getRange("F:F").format.columnWidth = 22;
+  start.getRange("F:F").format.columnWidth = 26;
   start.getRange("G:H").format.columnWidth = 19;
   start.getRange("6:10").format.rowHeight = 34;
   start.freezePanes.freezeRows(3);
 
-  titleBand(examples, `Live ${config.exampleLabel || config.feature.toLowerCase()} examples`, `Run ${config.macro}; column F validates every result.`, "F");
+  if (!config.exampleLabel) {
+    throw new Error(`${config.key} needs an exampleLabel for its Examples title`);
+  }
+  titleBand(examples, `Live ${config.exampleLabel} examples`, `Run ${config.macro}; column F validates every result.`, "F");
   examples.getRange("A5:F5").values = [[
     "What it does", "C# equivalent (optional)", "ROneCOne VBA", "Expected", "Live result", "Status",
   ]];
   tableHeader(examples.getRange("A5:F5"));
-  examples.getRange(`A6:D${lastRow}`).values = config.examples;
+  writeExamples(examples, config.examples);
   examples.getRange("F6").formulas = [["=IF(E6=\"\",\"NOT RUN\",IF(E6=D6,\"PASS\",\"CHECK\"))"]];
   examples.getRange(`F6:F${lastRow}`).fillDown();
   examples.getRange(`A6:F${lastRow}`).format = {
@@ -1291,16 +1371,21 @@ async function buildCapability(config) {
     font: { name: "Consolas", color: colors.ink, size: 10 },
     wrapText: true,
   };
+  statusFormats(examples.getRange(`F6:F${lastRow}`));
+  // Widths come from Excel's own measurements: C holds a 57-character code
+  // line and B the longest C# word. D and E widen only in the demos whose
+  // values need it, so a timestamp or escaped string never splits.
   examples.getRange("A:A").format.columnWidth = 22;
-  examples.getRange("B:B").format.columnWidth = 40;
-  examples.getRange("C:C").format.columnWidth = 58;
-  examples.getRange("D:F").format.columnWidth = 18;
-  examples.getRange(`6:${lastRow}`).format.rowHeight = 62;
+  examples.getRange("B:B").format.columnWidth = 47;
+  examples.getRange("C:C").format.columnWidth = 61;
+  examples.getRange("D:E").format.columnWidth = config.valueWidth || 18;
+  examples.getRange("F:F").format.columnWidth = 14;
+  sizeExampleRows(examples, config.examples, 62);
   examples.freezePanes.freezeRows(5);
 
   titleBand(benchmarks, `${config.feature} benchmark`, "Measured in the same Excel process.", "F");
   benchmarks.getRange("A5:D5").values = [[
-    "Scenario", "Iterations", "Seconds", config.benchmarkResult,
+    "Scenario", "Iterations", config.benchmarkSeconds || "Seconds", config.benchmarkResult,
   ]];
   tableHeader(benchmarks.getRange("A5:D5"));
   benchmarks.getRange("A6").values = [[config.benchmark]];
@@ -1308,8 +1393,19 @@ async function buildCapability(config) {
     borders: { preset: "all", style: "thin", color: colors.line },
   };
   benchmarks.getRange("C6").format.numberFormat = "0.000000";
-  benchmarks.getRange("A:A").format.columnWidth = 38;
-  benchmarks.getRange("B:D").format.columnWidth = 20;
+  if (config.benchmarkNote) {
+    benchmarks.getRange("A8:F8").merge();
+    benchmarks.getRange("A8").values = [[config.benchmarkNote]];
+    benchmarks.getRange("A8:F8").format = {
+      fill: "#FFF4E8",
+      font: { color: "#9A4A00" },
+      wrapText: true,
+      verticalAlignment: "center",
+    };
+    benchmarks.getRange("8:8").format.rowHeight = 48;
+  }
+  benchmarks.getRange("A:A").format.columnWidth = 44;
+  benchmarks.getRange("B:D").format.columnWidth = 23;
   benchmarks.freezePanes.freezeRows(5);
 
   titleBand(architecture, "Why deployment stays simple", "Every capability is contained in ROneCOne.cls.", "F");
@@ -1331,6 +1427,7 @@ async function buildCapability(config) {
   architecture.getRange(`A6:F${architectureEnd}`).format = {
     borders: { preset: "all", style: "thin", color: colors.line },
     wrapText: true,
+    verticalAlignment: "top",
   };
   architecture.getRange(`D6:D${architectureEnd}`).format = {
     fill: colors.pale,
@@ -1338,8 +1435,11 @@ async function buildCapability(config) {
   };
   architecture.getRange("A:A").format.columnWidth = 22;
   architecture.getRange("B:B").format.columnWidth = 32;
-  architecture.getRange("C:C").format.columnWidth = 32;
+  architecture.getRange("C:C").format.columnWidth = 40;
   architecture.getRange("D:F").format.columnWidth = 18;
+  // Excel keeps whatever height a row was saved with, so a row left unsized
+  // shows only the first line of wrapped text. Two lines fit every row here.
+  architecture.getRange(`6:${architectureEnd}`).format.rowHeight = 32;
 
   const inspect = await workbook.inspect({
     kind: "workbook,sheet,table,formula",

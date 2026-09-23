@@ -345,6 +345,16 @@ benchmark, live execution gate, and all-sheet render pass. Renders accumulate in
 `demo\.working` directory across runs; pass `-Clean` to the first render call of a batch to drop
 every stale PNG set first.
 
+The renderer draws text in narrower fonts than Excel, so a render can show a line whole that Excel
+splits or clips. Column widths and row heights in the builders therefore follow Excel's own
+measurements, not the renders. A code line holds at most 57 characters in the capability demos'
+Consolas column, and longer ones break with a VBA line continuation. Each example row takes its
+height from its longest cell, and every table row gets an explicit height: Excel keeps the height
+a row was saved with, so a row left unsized shows only the first line of wrapped text. The
+artifact tool also stores a JavaScript Boolean as an Excel checkbox, so builders write an expected
+Boolean as `=TRUE` or `=FALSE` to match the plain value the macro writes; the renderer draws both
+as 1 and 0, where Excel shows TRUE and FALSE.
+
 The collections workbook packages one demo-only class, `DemoCustomer`, as the user model. Typed
 member expressions remove the need for a predicate/selector adapter class. The public
 `RunROneCOneCollectionsDemo` macro is only an orchestrator; primitive examples, user-class LINQ,
