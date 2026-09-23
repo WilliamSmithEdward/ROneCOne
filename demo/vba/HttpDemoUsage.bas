@@ -204,7 +204,6 @@ End Function
 
 Private Sub RunHttpBenchmark()
     Dim client As ROneCOne
-    Dim ignored As ROneCOne
     Dim endpoints As Variant
     Dim overlappedElapsed As Double
     Dim resource As Variant
@@ -222,7 +221,7 @@ Private Sub RunHttpBenchmark()
         "pokemon/squirtle")
 
     started = Timer
-    Set ignored = ROneCOne.Task.WhenAll( _
+    ROneCOne.Task.WhenAll( _
         client.GetAsync(CStr(endpoints(0))), _
         client.GetAsync(CStr(endpoints(1))), _
         client.GetAsync(CStr(endpoints(2)))).Await
@@ -230,7 +229,7 @@ Private Sub RunHttpBenchmark()
 
     started = Timer
     For Each resource In endpoints
-        Set ignored = client.GetAsync(CStr(resource)).Await
+        client.GetAsync(CStr(resource)).Await
     Next resource
     sequentialElapsed = ElapsedSeconds(started)
 

@@ -121,6 +121,7 @@ Private Sub WriteQueryExamples(ByVal dataPath As String)
     Dim orders As ROneCOne
     Dim refusalTrace As String
     Dim refused As Long
+    Dim refusedCount As Long
 
     Set conn = OpenDemoConnection(dataPath)
 
@@ -134,16 +135,16 @@ Private Sub WriteQueryExamples(ByVal dataPath As String)
 
     ' Step 3: an expression the translator cannot turn into SQL refuses
     ' loudly. A nested member path would need a join, so it raises rather
-    ' than silently pulling the table into Excel and filtering there.
+    ' than silently pulling the table into Excel and filtering there, and
+    ' no count comes back.
     refusalTrace = "unexpected acceptance"
     refused = 0
     On Error Resume Next
-    Dim ignoredCount As Long
-    ignoredCount = orders.Where( _
+    refusedCount = orders.Where( _
         orders.Condition("Name.Length").AtLeast(1)).Count
     refused = Err.Number
     On Error GoTo 0
-    If refused = ROneCOne.QueryError Then
+    If refused = ROneCOne.QueryError And refusedCount = 0 Then
         refusalTrace = "refused, not scanned locally"
     End If
 

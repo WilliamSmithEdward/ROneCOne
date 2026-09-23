@@ -303,7 +303,6 @@ Private Sub TestSyntaxSugar()
     Dim distinctCities As ROneCOne
     Dim experienced As ROneCOne
     Dim grace As GenericCustomer
-    Dim invalid As ROneCOne
     Dim katherine As GenericCustomer
     Dim names As ROneCOne
     Dim numbers As ROneCOne
@@ -441,7 +440,7 @@ Private Sub TestSyntaxSugar()
     AssertEqual "sugar primitive last", CLng(4), result.Last
 
     On Error Resume Next
-    Set invalid = customers.Where("Missing").EqualTo(1).ToList
+    customers.Where("Missing").EqualTo(1).ToList
     actualError = Err.Number
     Err.Clear
     On Error GoTo 0
@@ -488,7 +487,6 @@ Private Sub TestUserClassLinq()
 End Sub
 
 Public Sub RunROneCOneCollectionBenchmark()
-    Dim capacity As Long
     Dim dictionary As ROneCOne
     Dim elapsed As Double
     Dim filtered As ROneCOne
@@ -531,7 +529,7 @@ Public Sub RunROneCOneCollectionBenchmark()
     If orderingElapsed < 0 Then orderingElapsed = orderingElapsed + 86400#
 
     Set dictionary = ROneCOne.DictionaryOf(vbLong, vbLong)
-    capacity = dictionary.EnsureCapacity(10000&)
+    dictionary.EnsureCapacity 10000&
     started = Timer
     For index = 1 To 10000
         dictionary.Add index, index
@@ -543,7 +541,7 @@ Public Sub RunROneCOneCollectionBenchmark()
     If hashElapsed10K < 0 Then hashElapsed10K = hashElapsed10K + 86400#
 
     Set dictionary = ROneCOne.DictionaryOf(vbLong, vbLong)
-    capacity = dictionary.EnsureCapacity(10000&)
+    dictionary.EnsureCapacity 10000&
     For index = 1 To 10000
         dictionary.Add index, index
     Next index
@@ -559,7 +557,7 @@ Public Sub RunROneCOneCollectionBenchmark()
     ' array-shift cost near zero, so this isolates the per-operation cost of
     ' maintaining the hash index during mutation.
     Set dictionary = ROneCOne.DictionaryOf(vbLong, vbLong)
-    capacity = dictionary.EnsureCapacity(10000&)
+    dictionary.EnsureCapacity 10000&
     For index = 1 To 10000
         dictionary.Add index, index
     Next index

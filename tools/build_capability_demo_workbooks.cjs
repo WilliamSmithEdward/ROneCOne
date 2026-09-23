@@ -84,12 +84,12 @@ const capabilities = [
       ["Run two calculations", "await Task.WhenAll(forecast, reorder)", "Set outputs = ROneCOne.Task.WhenAll( _\n    forecastTask, reorderTask).Await", "135000 | 152"],
       ["Build the next step", "allWork.ContinueWith(BuildSummary)", "allWork.ContinueWith(buildSummary).Await", "Forecast 135000; reorder point 152"],
       ["Keep workbook work safe", "run on the UI thread", "ROneCOne.Task.Run(openOrderCounter).Await", 3],
-      ["Pause without another Excel", "await Task.Delay(5)", "ignored = ROneCOne.Task.Delay(5).Await", true],
+      ["Pause without another Excel", "await Task.Delay(5)", "ROneCOne.Task.Delay(5).Await", true],
       ["Cancel safely", "cancelSource.Cancel()", "cancelSource.Cancel\ncancelSource.Token.IsCancellationRequested", true],
       ["Show progress", "progress.Report(7)", "ROneCOne.ProgressOf(vbLong, handler).Report 7", 7],
       ["Finish from a callback", "source.SetResult(99)", "completion.SetResult 99: completion.Task.Await", 99],
       ["Limit waiting time", "await task.WaitAsync(timeout)", "ROneCOne.Task.Delay(5).WaitAsync(100).Await", true],
-      ["Let Excel breathe", "await Task.Yield()", "ignored = ROneCOne.Task.YieldOnce.Await", true],
+      ["Let Excel breathe", "await Task.Yield()", "ROneCOne.Task.YieldOnce.Await", true],
     ],
   },
   {
@@ -103,7 +103,7 @@ const capabilities = [
     benchmark: "Build 1,000 typed rows and query them",
     benchmarkResult: "Selected rows",
     examples: [
-      ["Add a validated row", "DataColumn + Rows.Add", "people.Column(\"Id\", vbLong) _\n    .AutoNumber(100, 10).AsPrimaryKey\nSet person = people.Row(\"Ada\", 90, ROneCOne.DBNull).Add", 100],
+      ["Add a validated row", "DataColumn + Rows.Add", "people.Column(\"Id\", vbLong) _\n    .AutoNumber(100, 10).AsPrimaryKey\npeople.Row(\"Ada\", 90, ROneCOne.DBNull).Add", 100],
       ["Show the top score", "view.Sort + RowFilter", "DataView(people).WithFilter(...).WithSort(\"Score\", True)", "Grace"],
       ["Connect customers to orders", "parent.GetChildRows(...) ", "parentRow.GetChildRows(\"CustomerOrders\").Count", 1],
       ["Find unsaved changes", "table.GetChanges()", "people.GetChanges.Rows.Count", 1],

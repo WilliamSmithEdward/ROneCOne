@@ -339,7 +339,6 @@ End Sub
 ' -----------------------------------------------------------------------------
 
 Private Sub RunCollectionBenchmark()
-    Dim presized As Long
     Dim customer As DemoCustomer
     Dim customers As ROneCOne
     Dim dictionary As ROneCOne
@@ -389,7 +388,7 @@ Private Sub RunCollectionBenchmark()
     End With
 
     Set dictionary = ROneCOne.DictionaryOf(vbLong, vbLong)
-    presized = dictionary.EnsureCapacity(BENCHMARK_ELEMENT_COUNT)
+    dictionary.EnsureCapacity BENCHMARK_ELEMENT_COUNT
     started = Timer
     For idx = 1 To BENCHMARK_ELEMENT_COUNT
         dictionary.Add idx, idx

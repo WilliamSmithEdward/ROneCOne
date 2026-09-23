@@ -6,6 +6,17 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
+## Unreleased
+
+### Changed
+
+- `ROneCOne.cls` no longer declares variables that nothing reads, found by the dead-code checks
+  in pyVBAanalysis 2.2.0. Two linked-list node fields unused since 1.0.0, four unused locals, and
+  an error source the HTTP poll saved but never raised are gone, and eight calls that parked a
+  result in a throwaway variable are now plain statements. Behavior is unchanged. The Collections,
+  Data, HTTP, and Tasks demos drop the same throwaway variables, and the Data and Tasks worksheets
+  show the plain calls.
+
 ## 1.10.0 - 2026-09-22
 
 ### Fixed

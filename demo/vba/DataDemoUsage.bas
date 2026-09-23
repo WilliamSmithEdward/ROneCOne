@@ -83,7 +83,6 @@ Private Sub WriteDataExamples( _
     Dim filled As ROneCOne
     Dim customers As ROneCOne
     Dim parentRow As ROneCOne
-    Dim person As ROneCOne
     Dim scalarTask As ROneCOne
     Dim Score As Variant
     Dim people As ROneCOne
@@ -100,8 +99,8 @@ Private Sub WriteDataExamples( _
     people.Column "Note", vbString
     ' Add two rows. You supply Name, Score, and Note; the Id fills itself in.
     ' ROneCOne.DBNull is the data layer's way of saying "no value here" for Note.
-    Set person = people.Row("Ada", 90, ROneCOne.DBNull).Add
-    Set person = people.Row("Grace", 95, "Compiler pioneer").Add
+    people.Row("Ada", 90, ROneCOne.DBNull).Add
+    people.Row("Grace", 95, "Compiler pioneer").Add
     ' A view is a live window onto the same rows, filtered and sorted, without
     ' copying anything by hand. This one keeps scores of at least 90 and orders
     ' them high to low, so reading the view back gives the top scorer first.

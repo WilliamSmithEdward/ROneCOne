@@ -89,7 +89,6 @@ Private Sub WriteTaskExamples()
     Dim cancelSource As ROneCOne
     Dim summaryTask As ROneCOne
     Dim yielded As ROneCOne
-    Dim ignored As Variant
     Dim registration As ROneCOne
 
     ' Describe two small calculations as rules, the same delegates from the
@@ -155,10 +154,10 @@ Private Sub WriteTaskExamples()
     ' forever. YieldOnce steps aside for a single beat to let Excel catch up.
     Set delayed = ROneCOne.Task.Delay(5)
     Set bounded = ROneCOne.Task.Delay(5).WaitAsync(100)
-    ignored = delayed.Await
-    ignored = bounded.Await
+    delayed.Await
+    bounded.Await
     Set yielded = ROneCOne.Task.YieldOnce
-    ignored = yielded.Await
+    yielded.Await
 
     ' Collect every answer and write it to the Examples sheet: the two forecast
     ' numbers joined together, the formatted summary, the order count, whether

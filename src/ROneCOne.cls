@@ -628,8 +628,6 @@ Private mKeyType As VbVarType
 Private mKeyObjectType As String
 Private mKeySelector As ROneCOne
 Private mCollectionChanged As ROneCOne
-Private mNodePrevious As ROneCOne
-Private mNodeNext As ROneCOne
 Private mAddingCompleted As Boolean
 Private mTaskBody As ROneCOne
 Private mTaskResult As ROneCOne
@@ -1707,7 +1705,6 @@ End Sub
 Public Sub Report(ByVal Value As Variant)
 Attribute Report.VB_Description = "Reports one typed progress value."
     Dim arguments As Collection
-    Dim ignored As ROneCOne
     Dim wrapped As ROneCOne
 
     If mRole <> ROLE_PROGRESS Then
@@ -1720,7 +1717,7 @@ Attribute Report.VB_Description = "Reports one typed progress value."
         "Report", "progress value"
     Set arguments = New Collection
     arguments.Add wrapped
-    Set ignored = mTaskBody.InvokeValue(arguments)
+    mTaskBody.InvokeValue arguments
 End Sub
 
 Public Property Get DBNull() As ROneCOne
@@ -6404,7 +6401,6 @@ End Function
 Public Sub Execute(ParamArray arguments() As Variant)
 Attribute Execute.VB_Description = "Executes an Action or structured operation."
     Dim argumentValues As Collection
-    Dim ignored As ROneCOne
     Dim rawArgument As Variant
 
     Set argumentValues = New Collection
@@ -6417,7 +6413,7 @@ Attribute Execute.VB_Description = "Executes an Action or structured operation."
             RaiseContractError ERROR_INVALID_OPERATION, "Execute", _
                 "Execute requires an Action delegate."
         End If
-        Set ignored = InvokeValue(argumentValues)
+        InvokeValue argumentValues
         Exit Sub
     End If
     If mRole = ROLE_TRY Then
@@ -6460,7 +6456,6 @@ Attribute Emit.VB_Description = "Raises this event for a snapshot of its handler
     Dim argumentValues As Collection
     Dim handler As ROneCOne
     Dim handlers As Collection
-    Dim ignored As ROneCOne
     Dim rawArgument As Variant
 
     RequireEvent Me, "Emit"
@@ -6471,7 +6466,7 @@ Attribute Emit.VB_Description = "Raises this event for a snapshot of its handler
     ValidateDelegateArguments argumentValues
     Set handlers = CopyWrappedCollection(mInvocationList)
     For Each handler In handlers
-        Set ignored = handler.InvokeValue(argumentValues)
+        handler.InvokeValue argumentValues
     Next handler
 End Sub
 
@@ -9231,7 +9226,6 @@ Attribute Average.VB_Description = "Averages numeric elements or selected numeri
     Dim picked As ROneCOne
     Dim selectorValue As ROneCOne
     Dim runningTotal As Double
-    Dim valueCount As Long
     Dim itemValues As Collection
     Dim wrapped As ROneCOne
 
@@ -10580,14 +10574,13 @@ End Function
 Public Sub ForEach(ByVal Action As ROneCOne)
 Attribute ForEach.VB_Description = "Executes an Action once for every sequence element."
     Dim actionDelegate As ROneCOne
-    Dim ignored As ROneCOne
     Dim itemValues As Collection
     Dim wrapped As ROneCOne
 
     Set actionDelegate = NormalizeUnaryAction(Action, "ForEach")
     Set itemValues = MaterializeWrapped
     For Each wrapped In itemValues
-        Set ignored = InvokeUnary(actionDelegate, wrapped)
+        InvokeUnary actionDelegate, wrapped
     Next wrapped
 End Sub
 
@@ -11781,7 +11774,6 @@ End Sub
 Friend Function InternalHttpPoll(ByVal captureBytes As Boolean) As Boolean
     Dim capturedDescription As String
     Dim capturedNumber As Long
-    Dim capturedSource As String
 
     ' The response was already captured, so a completed task can keep asking.
     If mProviderObject Is Nothing Then
@@ -11805,7 +11797,6 @@ Friend Function InternalHttpPoll(ByVal captureBytes As Boolean) As Boolean
 
 PollFailed:
     capturedNumber = Err.Number
-    capturedSource = Err.Source
     capturedDescription = Err.Description
     On Error GoTo 0
     InternalHttpAbort
@@ -11984,11 +11975,10 @@ End Property
 
 Friend Sub RegisterCancellationCallback(ByVal registration As ROneCOne)
     Dim arguments As Collection
-    Dim ignored As ROneCOne
 
     If mCancellationRequested Then
         Set arguments = New Collection
-        Set ignored = registration.InternalRegistrationCallback.InvokeValue(arguments)
+        registration.InternalRegistrationCallback.InvokeValue arguments
     Else
         mInvocationList.Add registration.InternalRegistrationCallback
     End If
@@ -12650,7 +12640,6 @@ Friend Function MaterializeWrapped() As Collection
     Dim entryIndex As Long
     Dim sourceValues As Collection
     Dim itemValues As Collection
-    Dim wrapped As ROneCOne
 
     RequireSequence Me, "Materialize"
     If mRole = ROLE_LIST Then
@@ -14197,7 +14186,6 @@ Private Sub JsonWriteValuePretty( _
     ByVal itemValue As Variant, _
     ByVal nestDepth As Long _
 )
-    Dim elem As Variant
     Dim firstEntry As Boolean
     Dim pairIndex As Long
     Dim runtimeValue As ROneCOne
@@ -14817,7 +14805,6 @@ Private Function BuildTableFromJsonArray( _
 ) As ROneCOne
     Dim colIndex As Long
     Dim columnNames As ROneCOne
-    Dim columnTypes As ROneCOne
     Dim elem As Variant
     Dim flatRows As Collection
     Dim flat As ROneCOne
@@ -17041,14 +17028,15 @@ Private Function CsvClassifyNumber(ByVal fieldText As String) As Long
     End If
     On Error Resume Next
     Err.Clear
+    ' The narrowest integer conversion that succeeds gives the type.
     overflowProbe = CLng(fieldText)
     If Err.Number = 0 Then
-        CsvClassifyNumber = vbLong
+        CsvClassifyNumber = VarTypeOf(overflowProbe)
     Else
         Err.Clear
         overflowProbe = CLngLng(fieldText)
         If Err.Number = 0 Then
-            CsvClassifyNumber = vbLongLong
+            CsvClassifyNumber = VarTypeOf(overflowProbe)
         Else
             CsvClassifyNumber = vbDouble
         End If
@@ -17470,10 +17458,8 @@ Private Function ExecuteUpdateRowCaptured( _
     ByVal rowItem As ROneCOne, _
     ByRef errorValue As ROneCOne _
 ) As Boolean
-    Dim ignored As Long
-
     On Error GoTo UpdateFailed
-    ignored = cmd.ExecuteNonQueryForDataRow(rowItem)
+    cmd.ExecuteNonQueryForDataRow rowItem
     ExecuteUpdateRowCaptured = True
     Exit Function
 
@@ -18914,11 +18900,10 @@ Private Function InvokeCancellationCallback( _
     Dim capturedHelpFile As String
     Dim capturedNumber As Long
     Dim capturedSource As String
-    Dim ignored As ROneCOne
 
     On Error GoTo CallbackFailed
     Set arguments = New Collection
-    Set ignored = callbackFn.InvokeValue(arguments)
+    callbackFn.InvokeValue arguments
     On Error GoTo 0
     Exit Function
 
@@ -22852,10 +22837,8 @@ Private Function InvokeActionCaptured( _
     ByVal arguments As Collection, _
     ByRef errorValue As ROneCOne _
 ) As Boolean
-    Dim ignored As ROneCOne
-
     On Error GoTo InvocationFailed
-    Set ignored = actionValue.InvokeValue(arguments)
+    actionValue.InvokeValue arguments
     InvokeActionCaptured = True
     Exit Function
 

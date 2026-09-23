@@ -190,6 +190,7 @@ Private Sub TestTypedParameterFailure()
     On Error GoTo 0
 
     AssertEqual "typed parameter error", ROneCOne.TypeMismatchError, actualError
+    AssertTrue "typed parameter failure returns nothing", IsEmpty(ignored)
 End Sub
 
 Private Sub TestUniversalFactories()
@@ -214,6 +215,7 @@ Private Sub TestUniversalFactories()
     AssertEqual "method delegate", CLng(14), doubleValue(CLng(7))
     ignored = recordValue("captured")
     AssertEqual "action delegate", "captured", fixture.LastValue
+    AssertTrue "action delegate returns Empty", IsEmpty(ignored)
     AssertEqual "callable object", CLng(105), callable(CLng(5))
     Set returnedFixture = identity()
     AssertTrue "object return identity", returnedFixture Is fixture
@@ -224,14 +226,13 @@ Private Sub TestInvalidDelegateConversions()
     Dim actionValue As ROneCOne
     Dim actualError As Long
     Dim fixture As DelegateFixture
-    Dim invalidDelegate As ROneCOne
 
     Set fixture = New DelegateFixture
     Set actionValue = ROneCOne.Action(fixture, "RecordValue")
     Set actionValue = actionValue.Takes(vbString)
 
     On Error Resume Next
-    Set invalidDelegate = ROneCOne.Func(actionValue)
+    ROneCOne.Func actionValue
     actualError = Err.Number
     Err.Clear
     On Error GoTo 0
@@ -239,7 +240,7 @@ Private Sub TestInvalidDelegateConversions()
         ROneCOne.InvalidOperationError, actualError
 
     On Error Resume Next
-    Set invalidDelegate = actionValue.Returns(vbString)
+    actionValue.Returns vbString
     actualError = Err.Number
     Err.Clear
     On Error GoTo 0
@@ -268,6 +269,7 @@ Private Sub TestProcedureByRefFailsClosed()
     AssertEqual "procedure ByRef fails closed", _
         ROneCOne.ByRefInvocationError, actualError
     AssertEqual "failed ByRef is atomic", CLng(41), value
+    AssertTrue "failed ByRef returns nothing", IsEmpty(ignored)
 End Sub
 
 Private Sub TestWorkbookProcedureDelegate()
@@ -318,6 +320,7 @@ Private Sub TestMulticastDelegate()
 
     AssertEqual "multicast order", "first:value|second:value|", _
         DelegateProcedures.CurrentTrace
+    AssertTrue "multicast action returns Empty", IsEmpty(ignored)
     AssertEqual "multicast count", CLng(2), combined.InvocationCount
     AssertEqual "invocation list", CLng(2), invocationList.Count
     AssertEqual "immutable removal", CLng(1), reduced.InvocationCount
@@ -339,6 +342,7 @@ Private Sub TestByRefDelegate()
     ignored = increment(reference)
 
     AssertEqual "ByRef mutation", CLng(42), value
+    AssertTrue "ByRef action returns Empty", IsEmpty(ignored)
 #Else
     AssertTrue "ByRef mutation", True
 #End If
@@ -366,6 +370,7 @@ Private Sub TestNativeDelegate()
     On Error GoTo 0
     AssertEqual "untyped native fails closed", _
         ROneCOne.NativeInvocationError, actualError
+    AssertTrue "untyped native returns nothing", IsEmpty(ignored)
 #Else
     AssertTrue "native procedure pointer", True
 #End If
@@ -549,14 +554,13 @@ End Sub
 Private Sub TestUnboundParameterFailure()
     Dim boundValue As ROneCOne
     Dim unboundValue As ROneCOne
-    Dim ignored As ROneCOne
     Dim actualError As Long
 
     Set boundValue = ROneCOne.Parameter(vbLong)
     Set unboundValue = ROneCOne.Parameter(vbLong)
 
     On Error Resume Next
-    Set ignored = ROneCOne.Lambda(boundValue.Add(unboundValue), boundValue)
+    ROneCOne.Lambda boundValue.Add(unboundValue), boundValue
     actualError = Err.Number
     Err.Clear
     On Error GoTo 0

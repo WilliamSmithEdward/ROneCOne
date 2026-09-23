@@ -392,7 +392,6 @@ End Sub
 
 Private Sub TestJsonSerializationLeavesErrClean()
     Dim errNumber As Long
-    Dim ignoredText As String
     Dim indented As String
     Dim map As ROneCOne
     Dim table As ROneCOne
@@ -416,42 +415,42 @@ Private Sub TestJsonSerializationLeavesErrClean()
 
     Err.Clear
     On Error Resume Next
-    ignoredText = ROneCOne.ListOf(vbString, "a", "b").ToJson
+    ROneCOne.ListOf(vbString, "a", "b").ToJson
     errNumber = Err.Number
     On Error GoTo 0
     AssertEqual "list to json leaves Err clean", 0&, errNumber
 
     Err.Clear
     On Error Resume Next
-    ignoredText = map.ToJson
+    map.ToJson
     errNumber = Err.Number
     On Error GoTo 0
     AssertEqual "dictionary to json leaves Err clean", 0&, errNumber
 
     Err.Clear
     On Error Resume Next
-    ignoredText = table.ToJson
+    table.ToJson
     errNumber = Err.Number
     On Error GoTo 0
     AssertEqual "table to json leaves Err clean", 0&, errNumber
 
     Err.Clear
     On Error Resume Next
-    ignoredText = table.Rows.Item(0).ToJson
+    table.Rows.Item(0).ToJson
     errNumber = Err.Number
     On Error GoTo 0
     AssertEqual "row to json leaves Err clean", 0&, errNumber
 
     Err.Clear
     On Error Resume Next
-    ignoredText = view.ToJson
+    view.ToJson
     errNumber = Err.Number
     On Error GoTo 0
     AssertEqual "view to json leaves Err clean", 0&, errNumber
 
     Err.Clear
     On Error Resume Next
-    ignoredText = table.ToCsv
+    table.ToCsv
     errNumber = Err.Number
     On Error GoTo 0
     AssertEqual "table to csv leaves Err clean", 0&, errNumber
@@ -667,7 +666,6 @@ Private Sub TestProviderSurface()
     Dim fillTask As ROneCOne
     Dim insertCommand As ROneCOne
     Dim reader As ROneCOne
-    Dim row As ROneCOne
     Dim scalarTask As ROneCOne
     Dim table As ROneCOne
     Dim updateCommand As ROneCOne
@@ -743,7 +741,7 @@ Private Sub TestProviderSurface()
     insertCommand.AddParameter ROneCOne.DbParameter( _
         "Score", 0#).FromColumn("Score")
     Set adapter.InsertCommand = insertCommand
-    Set row = table.LoadRow(Array("Alan", 70#))
+    table.LoadRow Array("Alan", 70#)
     Set updateTask = adapter.UpdateAsync(table)
     AssertEqual "adapter UpdateAsync insert", 1&, updateTask.Await
 
@@ -770,8 +768,6 @@ Private Sub TestProcessSessionSurface()
     Dim exitCode As Long
     Dim killed As ROneCOne
     Dim pending As ROneCOne
-    Dim reply As String
-    Dim secondRead As ROneCOne
     Dim session As ROneCOne
     Dim sorted As ROneCOne
 
@@ -817,7 +813,7 @@ Private Sub TestProcessSessionSurface()
     Set pending = session.ReadLineAsync(4000)
     closedError = 0
     On Error Resume Next
-    Set secondRead = session.ReadLineAsync(4000)
+    session.ReadLineAsync 4000
     closedError = Err.Number
     On Error GoTo 0
     AssertEqual "session refuses a second pending read", _
@@ -898,11 +894,11 @@ Private Sub TestQueryableSurface()
     Dim connection As ROneCOne
     Dim filtered As ROneCOne
     Dim firstRow As Variant
-    Dim ignoredCount As Long
     Dim orders As ROneCOne
     Dim page As ROneCOne
     Dim projected As ROneCOne
     Dim refusalError As Long
+    Dim refusedCount As Long
     Dim strangeConnection As ROneCOne
 
     ' Expression trees compile to parameterized SQL and run on the server.
@@ -1011,12 +1007,13 @@ Private Sub TestQueryableSurface()
     On Error Resume Next
     ' Count is a property, so it needs a receiving variable; a bare
     ' property statement is a VBA compile error, not a runtime one.
-    ignoredCount = orders.Where( _
+    refusedCount = orders.Where( _
         orders.Condition("Customer.Length").AtLeast(1&)).Count
     refusalError = Err.Number
     On Error GoTo 0
     AssertEqual "queryable nested member refused", ROneCOne.QueryError, _
         refusalError
+    AssertEqual "refused queryable counts nothing", 0&, refusedCount
     refusalError = 0
     On Error Resume Next
     connection.Queryable "bad[name"
@@ -1211,7 +1208,6 @@ End Sub
 
 Private Sub TestTaskLifecycle()
     Dim canceledError As Long
-    Dim ignored As Variant
     Dim source As ROneCOne
     Dim taskValue As ROneCOne
     Dim work As ROneCOne
@@ -1229,7 +1225,7 @@ Private Sub TestTaskLifecycle()
     source.Cancel
     Set taskValue = ROneCOne.Task.Run(work, source.Token)
     On Error Resume Next
-    ignored = taskValue.Await
+    taskValue.Await
     canceledError = Err.Number
     Err.Clear
     On Error GoTo 0
@@ -1250,7 +1246,6 @@ Private Sub TestTaskCombinators()
     Dim winner As ROneCOne
     Dim faulted As ROneCOne
     Dim faultNumber As Long
-    Dim ignored As Variant
 
     Set firstTask = ROneCOne.Task.FromResult(CLng(10))
     Set secondTask = ROneCOne.Task.FromResult(CLng(20))
@@ -1283,7 +1278,7 @@ Private Sub TestTaskCombinators()
         ROneCOne.Task.Run(firstTask), _
         ROneCOne.Task.Run(secondTask))
     On Error Resume Next
-    ignored = faulted.Await
+    faulted.Await
     faultNumber = Err.Number
     Err.Clear
     On Error GoTo 0
@@ -1368,7 +1363,6 @@ End Sub
 Private Sub TestTaskTimeoutAndContinuation()
     Dim continuation As ROneCOne
     Dim delayed As ROneCOne
-    Dim ignored As Variant
     Dim resultTask As ROneCOne
     Dim source As ROneCOne
     Dim timeoutError As Long
@@ -1379,16 +1373,16 @@ Private Sub TestTaskTimeoutAndContinuation()
     AssertFalse "delay timeout", delayed.Wait(1&)
     AssertTrue "delay eventually completes", delayed.Wait(100&)
 
-    ignored = ROneCOne.Task.YieldOnce.Await
+    ROneCOne.Task.YieldOnce.Await
     AssertTrue "Task.YieldOnce completes", True
 
     Set waitTask = ROneCOne.Task.Delay(20&).WaitAsync(100&)
-    ignored = waitTask.Await
+    waitTask.Await
     AssertTrue "WaitAsync completes before timeout", waitTask.IsCompleted
 
     Set waitTask = ROneCOne.Task.Delay(50&).WaitAsync(1&)
     On Error Resume Next
-    ignored = waitTask.Await
+    waitTask.Await
     timeoutError = Err.Number
     Err.Clear
     On Error GoTo 0
@@ -1591,7 +1585,6 @@ End Sub
 Private Sub TestDataViewAndMerge()
     Dim copied As ROneCOne
     Dim merged As ROneCOne
-    Dim row As ROneCOne
     Dim Score As Variant
     Dim table As ROneCOne
     Dim view As ROneCOne
@@ -1599,9 +1592,9 @@ Private Sub TestDataViewAndMerge()
     Set table = ROneCOne.DataTable("Scores")
     table.Column "Name", vbString
     table.Column "Score", vbLong
-    Set row = table.LoadRow(Array("Ada", 90&))
-    Set row = table.LoadRow(Array("Grace", 95&))
-    Set row = table.LoadRow(Array("Alan", 70&))
+    table.LoadRow Array("Ada", 90&)
+    table.LoadRow Array("Grace", 95&)
+    table.LoadRow Array("Alan", 70&)
 
     Set view = ROneCOne.DataView(table) _
         .WithFilter(table.Rows!Score.AtLeast(80&)) _
@@ -1664,10 +1657,10 @@ End Sub
 Private Sub TestExcelTableBridge(ByVal sheet As Object)
     Dim Amount As Variant
     Dim errNumber As Long
-    Dim ignoredCount As Long
     Dim listObject As Object
     Dim loose As ROneCOne
     Dim narrow As ROneCOne
+    Dim refusedCount As Long
     Dim sales As ROneCOne
     Dim typed As ROneCOne
     Dim view As ROneCOne
@@ -1744,18 +1737,19 @@ Private Sub TestExcelTableBridge(ByVal sheet As Object)
     ' Guardrails, each asserted on the error rather than the answer.
     errNumber = 0
     On Error Resume Next
-    ignoredCount = ROneCOne.Table(sheet.Range("H1")).Rows.Count
+    refusedCount = ROneCOne.Table(sheet.Range("H1")).Rows.Count
     errNumber = Err.Number
     On Error GoTo 0
     AssertEqual "Table refuses a plain range", ROneCOne.InvalidArgumentError, _
         errNumber
+    AssertEqual "refused Table counts nothing", 0&, refusedCount
 
     Set narrow = ROneCOne.DataTable("Narrow")
     narrow.Column "Only", vbVariant
     narrow.LoadRow Array("x")
     errNumber = 0
     On Error Resume Next
-    ignoredCount = narrow.ToRange(listObject)
+    narrow.ToRange listObject
     errNumber = Err.Number
     On Error GoTo 0
     AssertEqual "column count must match", ROneCOne.InvalidArgumentError, _
@@ -1764,7 +1758,7 @@ Private Sub TestExcelTableBridge(ByVal sheet As Object)
     Set loose = ROneCOne.DataTable("Loose")
     errNumber = 0
     On Error Resume Next
-    ignoredCount = loose.WriteBack
+    loose.WriteBack
     errNumber = Err.Number
     On Error GoTo 0
     AssertEqual "WriteBack needs an attached table", _
@@ -1784,10 +1778,8 @@ End Sub
 
 Private Sub TestRelationConstraints()
     Dim child As ROneCOne
-    Dim childRow As ROneCOne
     Dim data As ROneCOne
     Dim parent As ROneCOne
-    Dim parentRow As ROneCOne
     Dim relationError As Long
 
     Set parent = ROneCOne.DataTable("Parent")
@@ -1800,12 +1792,12 @@ Private Sub TestRelationConstraints()
     data.AddRelation ROneCOne.DataRelation( _
         "ParentChild", parent.Columns("Id"), child.Columns("ParentId"))
 
-    Set parentRow = parent.LoadRow(Array(1&))
-    Set childRow = child.LoadRow(Array(1&))
+    parent.LoadRow Array(1&)
+    child.LoadRow Array(1&)
     AssertEqual "foreign key valid", 1&, child.Rows.Count
 
     On Error Resume Next
-    Set childRow = child.LoadRow(Array(99&))
+    child.LoadRow Array(99&)
     relationError = Err.Number
     Err.Clear
     On Error GoTo 0
