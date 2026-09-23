@@ -17,7 +17,7 @@ Start here if you write workbook code and want results quickly. The
 
 | Guide | What you will accomplish |
 |---|---|
-| [Getting started](user-guide/getting-started.md) | Run a demo and add ROneCOne to a workbook |
+| [Getting started](user-guide/getting-started.md) | Run a demo, add ROneCOne to a workbook, and upgrade it |
 | [Collections and LINQ](user-guide/collections-and-linq.md) | Query and summarize data |
 | [Delegates and expressions](user-guide/delegates-and-expressions.md) | Build reusable behavior |
 | [Events and exceptions](user-guide/events-and-exceptions.md) | Coordinate changes and failures |

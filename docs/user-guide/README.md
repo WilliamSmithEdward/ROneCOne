@@ -8,7 +8,7 @@ class module, and copy the smallest example that solves your problem.
 
 | Guide | What you will accomplish | Typical first read |
 |---|---|---:|
-| [Getting started](getting-started.md) | Run a demo and add ROneCOne to a workbook | 5 minutes |
+| [Getting started](getting-started.md) | Run a demo, add ROneCOne to a workbook, and upgrade it | 5 minutes |
 | [Collections and LINQ](collections-and-linq.md) | Query and summarize data | 10 minutes |
 | [Delegates and expressions](delegates-and-expressions.md) | Build reusable behavior | 10 minutes |
 | [Events and exceptions](events-and-exceptions.md) | Coordinate changes and failures | 10 minutes |

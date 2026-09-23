@@ -92,6 +92,41 @@ Files downloaded from the internet can carry Windows' Mark of the Web. If Excel 
 > [!WARNING]
 > Do not weaken Excel's global macro settings. Trust only the specific file you reviewed.
 
+## Upgrading from an earlier release
+
+Remove the old class before importing the new one:
+
+1. Press `Alt+F11` and find **ROneCOne** under **Class Modules**.
+2. Right-click it, choose **Remove ROneCOne**, and answer **No** when asked to export it first.
+3. Choose **File > Import File** and select the new `ROneCOne.cls`.
+4. Save the workbook.
+
+Releases up to 1.9.0 changed the spelling of names in your own modules, turning `.Value` into
+`.value` ([issue #6](https://github.com/WilliamSmithEdward/ROneCOne/issues/6)). VBA keeps one
+spelling per name across a project, and the change stays after the old class is removed.
+Importing 1.9.1 or later restores the names the runtime declares itself, such as `Value`,
+`Count`, and `Item`. Names that an older release declared and 1.9.1 does not, 72 in all, can keep
+the old spelling wherever your code uses them: `.cells`, `.names`, and `.width`, for example.
+
+To restore them, paste this procedure at the end of any module, then delete it:
+
+```vba
+Private Sub RestoreSpellings()
+    Dim Address, Alignment, Amount, ApplicationName, Cells, Character, Charset, Child, ChildNodes
+    Dim Clone, ColumnIndex, Comparison, Context, Cursor, DateValue, Depth, Description
+    Dim DocumentElement, ErrorText, Errors, Expression, Field, Fields, FileNumber, Filename, Group
+    Dim HResult, InsertAfter, LeftColumn, Level, Levels, Limit, Line, LoadXML, Lookup, Markers, Mask
+    Dim Method, Names, Negative, NodeType, Operation, Part, Position, Proper, PropertyName
+    Dim Protection, Query, Reason, Record, Recordset, Reference, Resolved, Results, ReturnType, Root
+    Dim RowCount, RowIndex, RowOffset, Scope, Selected, Sequence, SetProperty, Sheet, Sql, Stream
+    Dim Symbol, Total, UniqueValues, Version, View, Width
+End Sub
+```
+
+Declaring a name sets its spelling everywhere in the project, and the spelling stays after the
+procedure is deleted, through saving and reopening. Nothing runs. A variable of your own with one
+of these names, such as `total`, takes the listed spelling as well.
+
 ## Where next
 
 - [Collections and LINQ](collections-and-linq.md) continues with everyday queries.
