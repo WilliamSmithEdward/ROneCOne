@@ -6,7 +6,7 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
-## Unreleased
+## 1.9.1 - 2026-09-22
 
 ### Changed
 
@@ -32,18 +32,26 @@ checksums for each version are on the
   ModernJsonInVBA recase each other when they shared a project.
 
   Public parameters keep their .NET names and take the spelling the type libraries use, as
-  Excel's own parameters do: `Add(Value)`, `Item(Index)`, `Where(Predicate)`,
+  Excel's own parameters do: `Add(Value)`, `Item(Index)`, `WhereNot(Predicate)`,
   `Contains(Value, Comparer)`. VBA matches named arguments regardless of case, so no call site
-  changes. Private parameters, locals, UDT fields, and Declare parameters were renamed to names
-  no reference defines, such as `value` to `itemValue`, `index` to `idx`, and `result` to
-  `outcome`. The JSON parser's private types, adapted from ModernJsonInVBA and still named after
-  its `JsonReader` and Public `JsonTextBuilder`, are now `JsonScanState` and `JsonWriteBuffer`.
+  changes. Parameters of Private and Friend members, locals, UDT fields, and Declare parameters
+  were renamed to names no reference defines, such as `value` to `itemValue`, `index` to `idx`,
+  and `result` to `outcome`. The JSON parser's private types, adapted from ModernJsonInVBA and
+  still named after its `JsonReader` and Public `JsonTextBuilder`, are now `JsonScanState` and
+  `JsonWriteBuffer`.
 
   Two members keep their .NET spelling where Office capitalizes the whole word, `Guid` and
   `Xml`, so a host that writes `GUID` or `.XML` still sees those two recased.
   `tests/python/test_casing.py` holds the runtime to one spelling per name and to the spelling
   the default references use, and `tools/run_casing_roundtrip.ps1` exports a host project
   through the VBE and requires every token back as written.
+
+  Replacing an older class restores the names this runtime declares, but not a name it never
+  declares: VBA keeps that spelling after the class that set it is removed. Measured on a host
+  saved beside 1.9.0 and then upgraded, 64 names such as `.cells`, `.names`, and `.width` kept
+  the old spelling. The upgrade section of
+  [Getting started](docs/user-guide/getting-started.md#upgrading-from-an-earlier-release)
+  has a procedure to paste and delete that restores all of them.
 
 - The demo modules no longer recase Excel's names or ROneCOne's own inside their workbooks.
   `Dim json As String` in the HTTP demo turned `ROneCOne.Json` into `ROneCOne.json`, and the
