@@ -2,7 +2,8 @@ name: CI
 
 # The live Excel suite and the demo workbook runs need Microsoft 365 Excel
 # driven over COM, which no hosted runner has, so they stay local. Everything
-# that reads source rather than running it belongs here.
+# that reads the sources or the shipped workbooks rather than running them
+# belongs here.
 
 on:
   push:
@@ -45,7 +46,19 @@ jobs:
       # member-not-found) need every module present, and a narrower input is
       # treated as a project fragment and skips them silently. Analyzing src
       # alone reports "no diagnostics" on source that a full run rejects.
-      - name: Static analysis
+      - name: Static analysis of the sources
         run: >-
           pyvbaanalysis src tests/vba demo/vba
           --no-inline-suppression --format text
+
+      # The sixteen demo workbooks are what ships, so they meet the same gate.
+      # Each one is a whole VBA project on its own, so one invocation per
+      # workbook loses no project context, and four at a time finish in about
+      # a tenth of the time one invocation over all sixteen takes. xargs exits
+      # 123 when any workbook reports a diagnostic. The workbooks keep the last
+      # release's modules until the next release repackages them, so a change
+      # that makes pyVBAanalysis report on shipped code fails here until then.
+      - name: Static analysis of the demo workbooks
+        run: >-
+          printf '%s\n' demo/*.xlsm
+          | xargs -P 4 -n 1 pyvbaanalysis --no-inline-suppression --format text
