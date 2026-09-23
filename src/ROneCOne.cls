@@ -7993,7 +7993,7 @@ End Function
 
 Public Function TryUpdate( _
     ByVal Key As Variant, _
-    ByVal replacementValue As Variant, _
+    ByVal newvalue As Variant, _
     ByVal comparisonValue As Variant _
 ) As Boolean
 Attribute TryUpdate.VB_Description = "Updates a concurrent value after comparison succeeds."
@@ -8019,9 +8019,9 @@ Attribute TryUpdate.VB_Description = "Updates a concurrent value after compariso
     If Not ValuesEqual(picked, expected) Then Exit Function
     If HashIndexSupported Then
         ReplaceKeyedValueAtSlot itemIndex, slot, _
-            WrapElement(replacementValue, "TryUpdate")
+            WrapElement(newvalue, "TryUpdate")
     Else
-        ReplaceCollectionItem itemIndex, WrapElement(replacementValue, "TryUpdate")
+        ReplaceCollectionItem itemIndex, WrapElement(newvalue, "TryUpdate")
     End If
     TryUpdate = True
 End Function
