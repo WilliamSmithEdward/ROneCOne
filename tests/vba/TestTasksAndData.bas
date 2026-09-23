@@ -571,7 +571,6 @@ End Function
 Private Sub TestSnapshotCachingAndViewRefresh()
     Dim enumerated As Long
     Dim row As Variant
-    Dim Score As Variant
     Dim table As ROneCOne
     Dim view As ROneCOne
 
@@ -1585,7 +1584,6 @@ End Sub
 Private Sub TestDataViewAndMerge()
     Dim copied As ROneCOne
     Dim merged As ROneCOne
-    Dim Score As Variant
     Dim table As ROneCOne
     Dim view As ROneCOne
 
@@ -1655,7 +1653,6 @@ Private Sub TestRangeBridge()
 End Sub
 
 Private Sub TestExcelTableBridge(ByVal sheet As Object)
-    Dim Amount As Variant
     Dim errNumber As Long
     Dim listObject As Object
     Dim loose As ROneCOne
@@ -1963,7 +1960,6 @@ Private Sub TestCsvSurface()
     Dim document As String
     Dim filePath As String
     Dim roundTripped As ROneCOne
-    Dim Score As Variant
     Dim table As ROneCOne
     Dim view As ROneCOne
 

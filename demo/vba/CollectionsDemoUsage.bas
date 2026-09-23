@@ -168,13 +168,11 @@ End Sub
 ' -----------------------------------------------------------------------------
 
 Private Sub WriteUserClassLinqExamples()
-    Dim Age As Variant
     Dim allExperienced As Boolean
     Dim anyLondon As Boolean
     Dim ada As DemoCustomer
     Dim allowedCities As ROneCOne
     Dim ignoreCaseOrder As ROneCOne
-    Dim City As Variant
     Dim customers As ROneCOne
     Dim distinctCities As ROneCOne
     Dim experienced As ROneCOne

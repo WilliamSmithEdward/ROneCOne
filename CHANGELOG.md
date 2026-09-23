@@ -17,6 +17,10 @@ checksums for each version are on the
   Data, HTTP, and Tasks demos drop the same throwaway variables, and the Data and Tasks worksheets
   show the plain calls.
 
+- The Collections, Data, and Excel Table demos no longer declare locals such as
+  `Dim Age As Variant` for the names they reach through bang syntax. pyVBAanalysis versions
+  before 2.2.0 reported `!Age` as an undeclared variable without them.
+
 ## 1.10.0 - 2026-09-22
 
 ### Fixed

@@ -82,7 +82,6 @@ Private Sub TestPredicateSystem()
     Dim actualError As Long
     Dim ada As GenericCustomer
     Dim allowedCities As ROneCOne
-    Dim City As Variant
     Dim cityList As ROneCOne
     Dim comparer As ROneCOne
     Dim customers As ROneCOne
@@ -296,7 +295,6 @@ Private Sub TestCollectionActions()
 End Sub
 
 Private Sub TestSyntaxSugar()
-    Dim Age As Variant
     Dim actualError As Long
     Dim ada As GenericCustomer
     Dim customers As ROneCOne

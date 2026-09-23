@@ -84,7 +84,6 @@ Private Sub WriteDataExamples( _
     Dim customers As ROneCOne
     Dim parentRow As ROneCOne
     Dim scalarTask As ROneCOne
-    Dim Score As Variant
     Dim people As ROneCOne
     Dim topScorers As ROneCOne
 

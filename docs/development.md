@@ -121,11 +121,14 @@ with the Microsoft OLE DB driver installed and a Windows login allowed into temp
 scratch object is a session temp table, so nothing persists. No credential is stored in the
 repository.
 
-pyVBAanalysis 1.2.0 treats a VBA bang identifier such as `!Age` as an ordinary variable token.
-Live bang examples therefore declare the token name in their local scope even though VBA uses it
-as a default-member name, not a variable value. This keeps both the normal and
-`--no-inline-suppression` complete-project gates clean. Excel compilation and execution remain the
-decisive host-level checks for that syntax.
+pyVBAanalysis 2.2.0 reports locals, module-private variables, and constants that nothing uses, and
+variables that are assigned but never read. The gate fails on these like any other diagnostic. VBA
+has no discard syntax, so a Function called only for its effect is written as a statement, such as
+`dictionary.EnsureCapacity 10000&`, rather than assigned to a throwaway variable. Where VBA
+requires the assignment, because the value comes from a property read, a conversion probe, or a
+`delegate(args)` call, the code reads the value it got: a test asserts on it, and the runtime's CSV
+classifier returns its probe's type. Bang expressions such as `!Age` are member access to the
+analyzer, so they need no local declaration, which versions before 2.2.0 required.
 
 ## Identifier casing
 

@@ -168,10 +168,7 @@ End Sub
 
 ' --- Querying ----------------------------------------------------------------
 Private Sub WriteQueryExamples(ByVal salesTable As Object)
-    Dim Amount As Variant
     Dim grouped As ROneCOne
-    Dim Region As Variant
-    Dim Rep As Variant
     Dim sales As ROneCOne
     Dim topWest As ROneCOne
 
@@ -220,7 +217,6 @@ Private Sub WriteMappingExamples(ByVal salesTable As Object)
     Dim factory As ROneCOne
     Dim objects As ROneCOne
     Dim rebuilt As ROneCOne
-    Dim Region As Variant
     Dim sales As ROneCOne
     Dim topWest As ROneCOne
 
@@ -265,7 +261,6 @@ End Sub
 Private Sub WriteWriteBackExamples(ByVal salesTable As Object)
     Dim afterGrow As Long
     Dim afterShrink As Long
-    Dim Region As Variant
     Dim sales As ROneCOne
     Dim ws As Worksheet
     Dim topWest As ROneCOne
