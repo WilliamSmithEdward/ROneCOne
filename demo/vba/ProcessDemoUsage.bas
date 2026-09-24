@@ -71,6 +71,7 @@ Private Sub WriteProcessExamples()
     Dim hello As ROneCOne
     Dim located As ROneCOne
     Dim echoes As ROneCOne
+    Dim sortedText As String
     Dim warning As ROneCOne
 
     ' Step 1: run one command and await it. The result object carries the
@@ -120,11 +121,10 @@ Private Sub WriteProcessExamples()
         .Range("E13").Value2 = mTrace
         ' Step 6: feed a command standard input. The lines go in unsorted
         ' and sort hands them back alphabetized, apple before banana.
-        .Range("E14").Value2 = (InStr(1, ROneCOne.Process.RunAsync("sort", _
-            , , "banana" & vbCrLf & "apple" & vbCrLf).Await.StandardOutput, _
-            "apple") < InStr(1, ROneCOne.Process.RunAsync("sort", , , _
-            "banana" & vbCrLf & "apple" & vbCrLf).Await.StandardOutput, _
-            "banana"))
+        sortedText = ROneCOne.Process.RunAsync("sort", , , _
+            "banana" & vbCrLf & "apple" & vbCrLf).Await.StandardOutput
+        .Range("E14").Value2 = _
+            (InStr(sortedText, "apple") < InStr(sortedText, "banana"))
         ' Step 7: a session is a conversation. One process stays alive and
         ' answers twice, which RunAsync cannot do because it waits for the
         ' command to finish before you see anything.

@@ -142,7 +142,7 @@ section(start.getRange("F5:H5"));
 start.getRange("F6:G10").values = [
   ["Examples passing", null],
   ["Examples total", null],
-  ["Feature slice", "Universal delegates + expressions"],
+  ["Feature slice", "Universal delegates and expressions"],
   ["Runtime files", 1],
   ["Runtime dependencies", 0],
 ];
@@ -258,8 +258,9 @@ benchmarks.getRange("E6").formulas = [["=IF(C6=0,0,B6/C6)"]];
 benchmarks.getRange("A6:E6").format = {
   borders: { preset: "all", style: "thin", color: colors.line },
 };
+benchmarks.getRange("B6").format.numberFormat = "#,##0";
 benchmarks.getRange("C6").format.numberFormat = "0.000000";
-benchmarks.getRange("E6").format.numberFormat = "#,##0";
+benchmarks.getRange("D6:E6").format.numberFormat = "#,##0";
 benchmarks.getRange("A8:F8").merge();
 benchmarks.getRange("A8").values = [[
   "This benchmark tracks expression-delegate overhead as a release-to-release performance baseline.",

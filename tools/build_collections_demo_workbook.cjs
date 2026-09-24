@@ -113,7 +113,7 @@ async function main() {
 
   titleBand(
     start,
-    "ROneCOne Collections + LINQ",
+    "ROneCOne Collections and LINQ",
     "Filter, sort, and summarize ordinary VBA objects without writing loop after loop",
     "H",
   );
@@ -142,7 +142,7 @@ async function main() {
   start.getRange("F6:G10").values = [
     ["Examples passing", null],
     ["Examples total", null],
-    ["Feature slice", "List<T> + LINQ"],
+    ["Feature slice", "List<T> and LINQ"],
     ["Runtime files", 1],
     ["Runtime dependencies", 0],
   ];
@@ -216,7 +216,12 @@ async function main() {
     ["See newly added matches", "query observes later mutation", "Set x = numbers.Element\nSet filtered = numbers.Where(x.GreaterThan(10))\nnumbers.Add 30", "2 matches; last: 30"],
     ["Filter and rank values", "Where.Select.OrderBy.Take", ".Where(...).Map(...).OrderDescending.Take(2)", "Top results: 60, 40"],
     ["Clean and reshape values", "Distinct.Prepend.Append\n.Reverse.Skip", "digits.Distinct.Prepend(1).Append(4) _\n    .Reverse.Skip(1)", "Sequence: 3, 2, 1"],
-    ["Summarize numbers", "Sum/Average/Min/Max", "Range(1, 5).Sum / Average / Min / Max", "Sum 15; average 3; min 1; max 5"],
+    [
+      "Summarize numbers",
+      "Sum/Average/Min/Max",
+      "Set numbers = ROneCOne.Range(1, 5)\n\"Sum \" & numbers.Sum & \"; average \" _\n    & numbers.Average & \"; min \" & numbers.Min _\n    & \"; max \" & numbers.Max",
+      "Sum 15; average 3; min 1; max 5",
+    ],
     ["Run work for every item", "values.ForEach(action)", "enumerationValues.ForEach ROneCOne.Action(...)", 10],
   ];
   writeExamples(examples, exampleRows);

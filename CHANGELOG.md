@@ -6,6 +6,23 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
+## Unreleased
+
+### Fixed
+
+- The demo worksheets' code cells hold only VBA. Three cells mixed English into the code. The
+  Exceptions clean-import row also wrote a fixed string, and now checks the trace for a skipped
+  row. The Process standard-input row runs `sort` once and compares positions in its output. The
+  Query composition row shows the narrower query it derives. The Collections summary shows its
+  concatenation rather than "Sum / Average / Min / Max", and the Files text row reads with
+  `ReadAllText(helloPath)` instead of a statement that discards the text. The Files logging and
+  watcher rows, the Process session rows, and the Query refusal row show the calls the demo makes,
+  and the Zip row names the folder Expand-Archive fills.
+
+- Start Here and Benchmarks titles say "and" where they said "+", as in "ROneCOne Data and
+  Providers" and "Tasks and async benchmark", and the Excel Table demo names its feature "Excel
+  Tables" rather than "ListObject". Benchmark counts show thousands separators on every sheet.
+
 ## 1.10.1 - 2026-09-23
 
 ### Changed

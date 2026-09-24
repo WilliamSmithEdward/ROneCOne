@@ -172,63 +172,43 @@ public static class ROneCOneDemoProcess
             "Benchmarks").Range("C7").Value2
         $orderingSeconds = [double]$workbook.Worksheets.Item(
             "Benchmarks").Range("C8").Value2
-        if ($featureName -eq "List<T> + LINQ" -and $memberDispatchSeconds -gt 0.75) {
+        # Each demo's benchmark gate, keyed by the feature its Start Here sheet
+        # names. A feature missing from the table fails the run, so renaming
+        # one on the sheet cannot quietly drop its gate. $null marks a demo
+        # whose benchmark carries no release gate.
+        $benchmarkGates = @{
+            "Universal delegates and expressions" = $null
+            "List<T> and LINQ" = $null
+            "Typed events" = $null
+            "Try / Catch / Finally" = $null
+            "Tasks and async" = $MaxTaskBenchmarkSeconds
+            "Data and providers" = $null
+            "HTTP and async" = $null
+            "JSON" = $MaxJsonBenchmarkSeconds
+            "Files and CSV" = $MaxFilesBenchmarkSeconds
+            "Processes" = $MaxProcessBenchmarkSeconds
+            "Text and hashing" = $MaxTextBenchmarkSeconds
+            "Dates and times" = $MaxDateTimeBenchmarkSeconds
+            "XML" = $MaxXmlBenchmarkSeconds
+            "Zip" = $MaxZipBenchmarkSeconds
+            "Query" = $MaxQueryBenchmarkSeconds
+            "Excel Tables" = $MaxListObjectBenchmarkSeconds
+        }
+        if (-not $benchmarkGates.ContainsKey($featureName)) {
+            throw "No benchmark gate is defined for the demo feature '$featureName'."
+        }
+        $benchmarkGate = $benchmarkGates[$featureName]
+        if ($null -ne $benchmarkGate -and `
+            ($benchmarkSeconds -le 0 -or $benchmarkSeconds -gt $benchmarkGate)) {
+            throw "The $featureName benchmark exceeded the $benchmarkGate-second gate."
+        }
+        if ($featureName -eq "List<T> and LINQ" -and $memberDispatchSeconds -gt 0.75) {
             throw "Member-dispatch benchmark exceeded the 0.75-second release gate."
         }
-        if ($featureName -eq "List<T> + LINQ" -and `
+        if ($featureName -eq "List<T> and LINQ" -and `
             ($orderingSeconds -le 0 -or `
                 $orderingSeconds -gt $MaxOrderingBenchmarkSeconds)) {
             throw "Composite ordering benchmark exceeded the $MaxOrderingBenchmarkSeconds-second gate."
-        }
-        if ($featureName -eq "Tasks + async" -and `
-            ($benchmarkSeconds -le 0 -or `
-                $benchmarkSeconds -gt $MaxTaskBenchmarkSeconds)) {
-            throw "Task benchmark exceeded the $MaxTaskBenchmarkSeconds-second gate."
-        }
-        if ($featureName -eq "JSON" -and `
-            ($benchmarkSeconds -le 0 -or `
-                $benchmarkSeconds -gt $MaxJsonBenchmarkSeconds)) {
-            throw "JSON benchmark exceeded the $MaxJsonBenchmarkSeconds-second gate."
-        }
-        if ($featureName -eq "Files + CSV" -and `
-            ($benchmarkSeconds -le 0 -or `
-                $benchmarkSeconds -gt $MaxFilesBenchmarkSeconds)) {
-            throw "Files benchmark exceeded the $MaxFilesBenchmarkSeconds-second gate."
-        }
-        if ($featureName -eq "Processes" -and `
-            ($benchmarkSeconds -le 0 -or `
-                $benchmarkSeconds -gt $MaxProcessBenchmarkSeconds)) {
-            throw "Process benchmark exceeded the $MaxProcessBenchmarkSeconds-second gate."
-        }
-        if ($featureName -eq "Text + hashing" -and `
-            ($benchmarkSeconds -le 0 -or `
-                $benchmarkSeconds -gt $MaxTextBenchmarkSeconds)) {
-            throw "Text benchmark exceeded the $MaxTextBenchmarkSeconds-second gate."
-        }
-        if ($featureName -eq "Dates + times" -and `
-            ($benchmarkSeconds -le 0 -or `
-                $benchmarkSeconds -gt $MaxDateTimeBenchmarkSeconds)) {
-            throw "DateTime benchmark exceeded the $MaxDateTimeBenchmarkSeconds-second gate."
-        }
-        if ($featureName -eq "XML" -and `
-            ($benchmarkSeconds -le 0 -or `
-                $benchmarkSeconds -gt $MaxXmlBenchmarkSeconds)) {
-            throw "XML benchmark exceeded the $MaxXmlBenchmarkSeconds-second gate."
-        }
-        if ($featureName -eq "Zip" -and `
-            ($benchmarkSeconds -le 0 -or `
-                $benchmarkSeconds -gt $MaxZipBenchmarkSeconds)) {
-            throw "Zip benchmark exceeded the $MaxZipBenchmarkSeconds-second gate."
-        }
-        if ($featureName -eq "Query" -and `
-            ($benchmarkSeconds -le 0 -or `
-                $benchmarkSeconds -gt $MaxQueryBenchmarkSeconds)) {
-            throw "Query benchmark exceeded the $MaxQueryBenchmarkSeconds-second gate."
-        }
-        if ($featureName -eq "ListObject" -and `
-            ($benchmarkSeconds -le 0 -or `
-                $benchmarkSeconds -gt $MaxListObjectBenchmarkSeconds)) {
-            throw "ListObject benchmark exceeded the $MaxListObjectBenchmarkSeconds-second gate."
         }
         [pscustomobject]@{
             workbook = $resolvedWorkbook

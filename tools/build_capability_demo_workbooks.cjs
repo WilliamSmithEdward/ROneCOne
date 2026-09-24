@@ -66,7 +66,7 @@ const capabilities = [
         "3 rows imported; file closed",
       ],
       ["Keep recovery ready", "catch (InvalidAmount)", ".Catch(INVALID_AMOUNT_ERROR, skipBadRowAction)", true],
-      ["Confirm a clean import", "no exception", "The Catch handler was not needed", "No import error"],
+      ["Confirm a clean import", "no exception", "If InStr(1, mTrace, \"skipped\") = 0 Then ...", "No import error"],
       ["Close after success", "try { ImportSales(); } finally { CloseFile(); }", "Set attempt = ROneCOne.Try(validImport) _\n    .Finally(closeFile)\nattempt.Execute", "3 rows imported; file closed"],
     ],
   },
@@ -75,7 +75,7 @@ const capabilities = [
     title: "ROneCOne Tasks",
     subtitle: "Coordinate calculations, cancellation, and progress on Excel's thread",
     macro: "RunROneCOneTasksDemo",
-    feature: "Tasks + async",
+    feature: "Tasks and async",
     exampleLabel: "task and async",
     output: "ROneCOne_Tasks_Demo.xlsx",
     benchmark: "Cooperative Task.Run startup + Await",
@@ -94,10 +94,10 @@ const capabilities = [
   },
   {
     key: "data",
-    title: "ROneCOne Data + Providers",
+    title: "ROneCOne Data and Providers",
     subtitle: "Build validated tables, query them, and load local Excel data",
     macro: "RunROneCOneDataDemo",
-    feature: "Data + providers",
+    feature: "Data and providers",
     exampleLabel: "data and provider",
     output: "ROneCOne_Data_Demo.xlsx",
     benchmark: "Build 1,000 typed rows and query them",
@@ -120,7 +120,7 @@ const capabilities = [
     title: "ROneCOne HTTP",
     subtitle: "Download web data with awaitable requests that keep Excel responsive",
     macro: "RunROneCOneHttpDemo",
-    feature: "HTTP + async",
+    feature: "HTTP and async",
     exampleLabel: "HTTP",
     valueWidth: 31,
     output: "ROneCOne_Http_Demo.xlsx",
@@ -331,10 +331,10 @@ const capabilities = [
   },
   {
     key: "files",
-    title: "ROneCOne Files + CSV",
+    title: "ROneCOne Files and CSV",
     subtitle: "Read, write, and round-trip real files without leaving the workbook",
     macro: "RunROneCOneFilesDemo",
-    feature: "Files + CSV",
+    feature: "Files and CSV",
     exampleLabel: "file and CSV",
     output: "ROneCOne_Files_Demo.xlsx",
     benchmark: "Round-trip 1,000 rows via a CSV file",
@@ -350,7 +350,7 @@ const capabilities = [
       [
         "Write and read UTF-8 text",
         "File.WriteAllText(path, text)",
-        "ROneCOne.File.WriteAllText helloPath, \"hello files\"\nROneCOne.File.ReadAllText helloPath",
+        "ROneCOne.File.WriteAllText helloPath, \"hello files\"\nROneCOne.File.ReadAllText(helloPath)",
         "hello files",
       ],
       [
@@ -410,13 +410,13 @@ const capabilities = [
       [
         "Log level-coded lines to a file",
         "ILogger.LogInformation / LogWarning",
-        "runLog.LogInformation \"...\": runLog.LogDebug \"...\"\nlogLines.Count",
+        "runLog.LogInformation \"processed {0} rows\", 3\nrunLog.LogDebug \"this line is filtered out\"\nrunLog.LogWarning \"keep an eye on row {0}\", 2\nlogLines.Count",
         2,
       ],
       [
         "Await the next folder change",
         "FileSystemWatcher.Changed",
-        "Set watchTask = watcher.WaitForChangeAsync\nfileChange.ChangeType & \" \" & fileChange.Name",
+        "Set watchTask = watcher.WaitForChangeAsync\nROneCOne.File.WriteAllText _\n    demoRoot & \"\\signal.dat\", \"ready\"\nSet fileChange = watchTask.Await\nfileChange.ChangeType & \" \" & fileChange.Name",
         "Created signal.dat",
       ],
     ],
@@ -490,29 +490,29 @@ const capabilities = [
       [
         "Feed a command standard input",
         "process.StandardInput.Write(...)",
-        "ROneCOne.Process.RunAsync(\"sort\", , , _\n    \"banana\" & vbCrLf & \"apple\" & vbCrLf) _\n    .Await.StandardOutput has apple before banana",
+        "sortedText = ROneCOne.Process.RunAsync(\"sort\", , , _\n    \"banana\" & vbCrLf & \"apple\" & vbCrLf) _\n    .Await.StandardOutput\nInStr(sortedText, \"apple\") < InStr(sortedText, \"banana\")",
         true,
       ],
       [
         "Hold a conversation with one process",
         "StartSession, then WriteLineAsync",
-        "Set session = ROneCOne.Process.StartSession(\"echo ready\")\nsession.WriteLineAsync(\"echo alpha\").Await",
+        "Set session = ROneCOne.Process.StartSession(\"echo ready\")\nsession.WriteLineAsync(\"echo alpha\").Await\nalphaLine = SessionLineWith(session, \"alpha\")\nsession.WriteLineAsync(\"echo beta\").Await\nbetaLine = SessionLineWith(session, \"beta\")\nalphaLine & \" then \" & betaLine",
         "alpha then beta",
       ],
       [
         "CloseInput lets a filter finish",
         "session.CloseInput",
-        "session.WriteLineAsync(\"banana\").Await\nsession.CloseInput\nsession.ReadLineAsync(4000).Await",
+        "Set session = ROneCOne.Process.StartSession(\"sort\")\nsession.WriteLineAsync(\"banana\").Await\nsession.WriteLineAsync(\"apple\").Await\nsession.CloseInput\nSessionLineWith(session, \"apple\")",
         "apple",
       ],
     ],
   },
   {
     key: "text",
-    title: "ROneCOne Text + Hashing",
+    title: "ROneCOne Text and Hashing",
     subtitle: "Match, format, build, hash, and encode text, all offline",
     macro: "RunROneCOneTextDemo",
-    feature: "Text + hashing",
+    feature: "Text and hashing",
     exampleLabel: "text and hashing",
     valueWidth: 24,
     output: "ROneCOne_Text_Demo.xlsx",
@@ -608,10 +608,10 @@ const capabilities = [
   },
   {
     key: "datetime",
-    title: "ROneCOne Dates + Times",
+    title: "ROneCOne Dates and Times",
     subtitle: "Parse ISO 8601 and epochs, convert zones, and add durations",
     macro: "RunROneCOneDateTimeDemo",
-    feature: "Dates + times",
+    feature: "Dates and times",
     exampleLabel: "date and time",
     valueWidth: 28,
     output: "ROneCOne_DateTime_Demo.xlsx",
@@ -812,7 +812,7 @@ const capabilities = [
       [
         "ROneCOne writes, PowerShell reads",
         "CreateFromDirectory then Expand-Archive",
-        "ROneCOne.File.ReadAllText(ps_out & \"\\readme.txt\")",
+        "ROneCOne.File.ReadAllText( _\n    ROneCOne.Path.Combine(psOutDir, \"readme.txt\"))",
         "read me first",
       ],
       [
@@ -856,7 +856,7 @@ const capabilities = [
       [
         "Composition never mutates the base",
         "base.Where(...) leaves base alone",
-        "baseQuery.Count after deriving a narrower query",
+        "Set narrower = baseQuery.Where(\"Total\").AtMost(12.5)\nbaseQuery.Count",
         3,
       ],
       [
@@ -892,7 +892,7 @@ const capabilities = [
       [
         "Untranslatable expressions refuse",
         "ROneCOne.QueryError",
-        "On Error Resume Next\norders.Where(orders.Condition(\"Name.Length\") _\n    .AtLeast(1)).Count",
+        "On Error Resume Next\nrefusedCount = orders.Where( _\n    orders.Condition(\"Name.Length\").AtLeast(1)).Count\nIf Err.Number = ROneCOne.QueryError Then ...",
         "refused, not scanned locally",
       ],
     ],
@@ -902,7 +902,7 @@ const capabilities = [
     title: "ROneCOne Excel Tables",
     subtitle: "Capture a ListObject, query it, map it, and write it back",
     macro: "RunROneCOneListObjectDemo",
-    feature: "ListObject",
+    feature: "Excel Tables",
     exampleLabel: "Excel Table",
     valueWidth: 24,
     output: "ROneCOne_ListObject_Demo.xlsx",
@@ -1393,10 +1393,9 @@ async function buildCapability(config) {
   benchmarks.getRange("A6:D6").format = {
     borders: { preset: "all", style: "thin", color: colors.line },
   };
+  benchmarks.getRange("B6").format.numberFormat = "#,##0";
   benchmarks.getRange("C6").format.numberFormat = "0.000000";
-  if (config.benchmarkResultFormat) {
-    benchmarks.getRange("D6").format.numberFormat = config.benchmarkResultFormat;
-  }
+  benchmarks.getRange("D6").format.numberFormat = config.benchmarkResultFormat || "#,##0";
   if (config.benchmarkNote) {
     benchmarks.getRange("A8:F8").merge();
     benchmarks.getRange("A8").values = [[config.benchmarkNote]];

@@ -84,6 +84,7 @@ Private Sub WriteZipExamples(ByVal demoRoot As String)
     Dim archive As ROneCOne
     Dim madePath As String
     Dim psMadePath As String
+    Dim psOutDir As String
     Dim slipBytes As Variant
     Dim slipPath As String
     Dim slipTrace As String
@@ -114,8 +115,9 @@ Private Sub WriteZipExamples(ByVal demoRoot As String)
         sourceRoot, "sub") & "' -DestinationPath '" & _
         ROneCOne.Path.Combine(demoRoot, "ps_made.zip") & "'"
     psMadePath = ROneCOne.Path.Combine(demoRoot, "ps_made.zip")
+    psOutDir = ROneCOne.Path.Combine(demoRoot, "ps_out")
     Shell80 "Expand-Archive -Path '" & madePath & "' -DestinationPath '" & _
-        ROneCOne.Path.Combine(demoRoot, "ps_out") & "'"
+        psOutDir & "'"
 
     ' Step 4: the traversal guard. A hostile entry name is spliced into a
     ' real archive; extraction refuses it before writing anything.
@@ -146,8 +148,7 @@ Private Sub WriteZipExamples(ByVal demoRoot As String)
             psMadePath).GetEntry("readme.txt").ReadAllText(), _
             "read me first") > 0
         .Range("E12").Value2 = ROneCOne.File.ReadAllText( _
-            ROneCOne.Path.Combine(ROneCOne.Path.Combine( _
-            demoRoot, "ps_out"), "readme.txt"))
+            ROneCOne.Path.Combine(psOutDir, "readme.txt"))
         .Range("E13").Value2 = slipTrace
     End With
 End Sub

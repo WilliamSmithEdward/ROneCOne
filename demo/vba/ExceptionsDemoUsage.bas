@@ -93,7 +93,13 @@ Private Sub WriteExceptionExamples()
     With ThisWorkbook.Worksheets(EXAMPLES_SHEET)
         .Range("E6").Value2 = mTrace
         .Range("E7").Value2 = Not importAttempt Is Nothing
-        .Range("E8").Value2 = "No import error"
+        ' The import succeeded, so the Catch handler never ran and left no
+        ' skipped row in the trace.
+        If InStr(1, mTrace, "skipped") = 0 Then
+            .Range("E8").Value2 = "No import error"
+        Else
+            .Range("E8").Value2 = "a row was skipped"
+        End If
     End With
 
     ' Finally is not only for failures. Here the import succeeds and the very
