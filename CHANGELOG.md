@@ -8,6 +8,13 @@ checksums for each version are on the
 
 ## Unreleased
 
+### Changed
+
+- The runtime's private constant for a file watcher's change record is `ROLE_FILE_EVENT` rather
+  than `ROLE_FILE_CHANGE`. olevba treats any name ending in `_Change` as an ActiveX event handler,
+  so it reported the runtime and every demo workbook as code that runs when the file opens. None
+  of them does, and olevba now reports no auto-run code. Behavior is unchanged.
+
 ### Fixed
 
 - The demo worksheets' code cells hold only VBA. Three cells mixed English into the code. The

@@ -301,7 +301,7 @@ Private Const ROLE_URI_FACTORY As Long = 68
 Private Const ROLE_WEB_UTILITY_FACTORY As Long = 69
 Private Const ROLE_LOGGER As Long = 70
 Private Const ROLE_FILE_WATCHER As Long = 71
-Private Const ROLE_FILE_CHANGE As Long = 72
+Private Const ROLE_FILE_EVENT As Long = 72
 Private Const ROLE_ZIPFILE_FACTORY As Long = 73
 Private Const ROLE_ZIP_ARCHIVE As Long = 74
 Private Const ROLE_ZIP_ENTRY As Long = 75
@@ -4025,7 +4025,7 @@ End Function
 
 Public Property Get ChangeType() As String
 Attribute ChangeType.VB_Description = "Gets Created, Changed, or Deleted for a file change."
-    If mRole <> ROLE_FILE_CHANGE Then
+    If mRole <> ROLE_FILE_EVENT Then
         RaiseContractError ERROR_INVALID_OPERATION, "ChangeType", _
             "ChangeType requires a file change value."
     End If
@@ -4317,7 +4317,7 @@ Attribute Name.VB_Description = "Gets an XML node, file change, or zip entry nam
     Select Case mRole
         Case ROLE_XML_NODE
             Name = mProviderObject.nodeName
-        Case ROLE_FILE_CHANGE
+        Case ROLE_FILE_EVENT
             Name = mName
         Case ROLE_ZIP_ENTRY
             Name = Mid$(mName, InStrRev(mName, "/") + 1)
@@ -11674,7 +11674,7 @@ Friend Sub ConfigureFileChange( _
     ByVal changeKind As String, _
     ByVal nameOfFile As String _
 )
-    mRole = ROLE_FILE_CHANGE
+    mRole = ROLE_FILE_EVENT
     mWatcherChangeType = changeKind
     mName = nameOfFile
 End Sub
