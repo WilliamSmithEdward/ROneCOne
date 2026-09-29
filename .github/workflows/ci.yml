@@ -52,19 +52,20 @@ jobs:
       # All three folders in one invocation, deliberately. The whole-project
       # checks (late-bound-friend-member, undeclared-variable, unknown-call,
       # member-not-found) need every module present, and a narrower input is
-      # treated as a project fragment and skips them silently. Analyzing src
-      # alone reports "no diagnostics" on source that a full run rejects.
-      #
-      # property-accessor-signature-mismatch is ignored because pyVBAanalysis
-      # 2.3.0 reports it on the runtime's Item property, a Variant Property Get
-      # beside an Object Property Set that the VBE compiles
-      # (WilliamSmithEdward/xlide_vscode#152). Drop the flag once a release
-      # stops reporting it.
+      # treated as a project fragment and skips them silently.
       - name: Static analysis of the sources
         run: >-
           pyvbaanalysis src tests/vba demo/vba
-          --no-inline-suppression --ignore property-accessor-signature-mismatch
-          --format text
+          --no-inline-suppression --format text
+
+      # ROneCOne.cls ships as one file, so it must stand on its own. In the run
+      # above, a call from the runtime into a test or demo module resolves.
+      # --whole-project analyzes the runtime alone as the complete project it
+      # is when a user imports it, and a call like that fails here.
+      - name: Static analysis of the runtime on its own
+        run: >-
+          pyvbaanalysis --whole-project src/ROneCOne.cls
+          --no-inline-suppression --format text
 
       # The sixteen demo workbooks are what ships, so they meet the same gate.
       # Each one is a whole VBA project on its own, so one invocation per
@@ -76,5 +77,4 @@ jobs:
       - name: Static analysis of the demo workbooks
         run: >-
           printf '%s\n' demo/*.xlsm
-          | xargs -P 4 -n 1 pyvbaanalysis --no-inline-suppression
-          --ignore property-accessor-signature-mismatch --format text
+          | xargs -P 4 -n 1 pyvbaanalysis --no-inline-suppression --format text

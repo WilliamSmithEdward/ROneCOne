@@ -75,6 +75,8 @@ Repository validation commands:
 - source contracts: `.venv\Scripts\python.exe -m unittest discover -s tests\python -v`
 - whole-project static analysis: `.venv\Scripts\pyvbaanalysis.exe src tests\vba demo\vba
   --no-inline-suppression --format text`, followed by the same check over every final `.xlsm`
+- the runtime on its own: `.venv\Scripts\pyvbaanalysis.exe --whole-project src\ROneCOne.cls
+  --no-inline-suppression --format text`
 - olevba and mraptor security scan against the reviewed baseline: `.venv\Scripts\python.exe
   tools\security_scan.py`
 - test workbook build: `.venv\Scripts\python.exe tools\build_test_workbook.py`

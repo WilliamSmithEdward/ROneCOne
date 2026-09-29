@@ -11,7 +11,7 @@ ROneCOne uses five independent gates:
 1. Python source-contract tests enforce the one-file invariant, public API, ASCII portability,
    IntelliSense metadata, identifier casing, absence of runtime VBIDE/process dependencies, and
    the security scan's rules.
-2. pyVBAanalysis checks the runtime and all VBA fixtures as one project.
+2. pyVBAanalysis checks the runtime on its own, and with all VBA fixtures as one project.
 3. pyOpenVBA builds test and demo workbooks and verifies byte-for-byte module round trips.
 4. Microsoft Excel compiles and executes the VBA suite, records worksheet-observed assertions,
    runs delegate and collection benchmarks, and exports a host project through the VBE to prove
@@ -143,9 +143,18 @@ analyzer, so they need no local declaration, which versions before 2.2.0 require
 
 `requirements-dev.txt` pins the pyVBAanalysis a local checkout runs, while CI installs the newest
 release, so each new rule meets this code as soon as it ships and can fail CI with no change here.
-CI ignores `property-accessor-signature-mismatch` while pyVBAanalysis 2.3.0 reports it on the
-runtime's `Item` property, a Variant `Property Get` beside an Object `Property Set` that the VBE
-compiles ([xlide_vscode#152](https://github.com/WilliamSmithEdward/xlide_vscode/issues/152)).
+
+`ROneCOne.cls` ships as one file, so it is also analyzed alone:
+
+```powershell
+.venv\Scripts\pyvbaanalysis.exe --whole-project src\ROneCOne.cls `
+    --no-inline-suppression --format text
+```
+
+In the run over `src`, `tests\vba`, and `demo\vba` together, a call from the runtime into a test or
+demo module resolves. A single file is otherwise analyzed as a project fragment, which skips the
+whole-project checks; `--whole-project`, added in pyVBAanalysis 2.3.1, analyzes the runtime as the
+complete project it is when a user imports it, and a call like that fails.
 
 ## Security scan
 
