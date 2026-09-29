@@ -43,8 +43,9 @@ jobs:
           python -m pip install --upgrade pyVBAanalysis
           pyvbaanalysis --version
 
-      # Pure stdlib: these read the runtime, demo, and tool sources and pin
-      # their shapes. No Excel, no third-party runtime dependency.
+      # These read the runtime, demo, and tool sources and pin their shapes,
+      # and run the security scan's rules on small modules written for them.
+      # No Excel.
       - name: Source and demo contracts
         run: python -m unittest discover -s tests/python -v
 

@@ -8,6 +8,16 @@ checksums for each version are on the
 
 ## Unreleased
 
+### Added
+
+- A security policy in `SECURITY.md`, with vulnerabilities reported privately from the
+  repository's Security tab. It sets out what the runtime can reach and what the scans report.
+  The README gains CI and Security status badges and a Security section.
+- Every release from 1.10.2 on carries `vX.Y.Z-security-report.md`: what olevba and mraptor find
+  in `ROneCOne.cls` and each demo workbook, their SHA-256 hashes, and how the results compare
+  with the reviewed baseline. A Security workflow fails any push whose olevba findings or mraptor
+  flags differ from that baseline, or that adds code that runs on its own.
+
 ### Changed
 
 - The runtime's private constant for a file watcher's change record is `ROLE_FILE_EVENT` rather

@@ -1,0 +1,39 @@
+name: Security
+
+# olevba and MacroRaptor (mraptor) report what the shipped VBA could do. The
+# runtime reads files, runs processes, and calls native code by design, so the
+# scan holds each shipped file's olevba findings and mraptor flags to
+# tools/security_baseline.json and fails on any change in either direction, on
+# code that runs on its own, and on P-code that its source does not explain.
+# The release report lives in release-security.yml, the one workflow that needs
+# write access.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: olevba and mraptor against the reviewed baseline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install analysis tooling
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Scan the runtime and the demo workbooks
+        run: python tools/security_scan.py

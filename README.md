@@ -2,6 +2,8 @@
 
 **Give VBA the love it deserves.**
 
+[![CI](https://github.com/WilliamSmithEdward/ROneCOne/actions/workflows/ci.yml/badge.svg)](https://github.com/WilliamSmithEdward/ROneCOne/actions/workflows/ci.yml)
+[![Security](https://github.com/WilliamSmithEdward/ROneCOne/actions/workflows/security.yml/badge.svg)](https://github.com/WilliamSmithEdward/ROneCOne/actions/workflows/security.yml)
 [![Latest release](https://img.shields.io/github/v/release/WilliamSmithEdward/ROneCOne)](https://github.com/WilliamSmithEdward/ROneCOne/releases/latest)
 [![MIT license](https://img.shields.io/github/license/WilliamSmithEdward/ROneCOne)](LICENSE)
 [![Microsoft 365 Excel on Windows x64](https://img.shields.io/badge/Excel-Microsoft_365_Windows_x64-217346)](docs/user-guide/getting-started.md)
@@ -91,6 +93,15 @@ only by the HTTP client, and only for URLs you request. It never launches a seco
 | Exact contracts and semantics | [Technical documentation index](docs/README.md) |
 | Design and runtime boundaries | [Architecture](docs/architecture.md) |
 | Release history | [Changelog](CHANGELOG.md) |
+| Vulnerability reports and release scans | [Security policy](SECURITY.md) |
+
+## Security
+
+ROneCOne runs nothing when a workbook opens, and it reaches files, processes, Windows APIs, and
+the network only when your code calls it to. Every change is scanned with olevba and mraptor
+against a reviewed baseline, and every release carries the scan's report beside its SHA-256
+manifest. Report a vulnerability privately from the repository's Security tab, as the
+[security policy](SECURITY.md) describes.
 
 ## License
 

@@ -1,20 +1,24 @@
 # Development and Excel Safety
 
 This document is for contributors and reviewers. It records how the runtime is validated: the
-four test gates, the popup-adaptive Excel harness, benchmark baselines, and the demo rebuild
+five test gates, the popup-adaptive Excel harness, benchmark baselines, and the demo rebuild
 pipeline. Using the runtime requires none of this tooling.
 
 ## Test layers
 
-ROneCOne uses four independent gates:
+ROneCOne uses five independent gates:
 
 1. Python source-contract tests enforce the one-file invariant, public API, ASCII portability,
-   IntelliSense metadata, identifier casing, and absence of runtime VBIDE/process dependencies.
+   IntelliSense metadata, identifier casing, absence of runtime VBIDE/process dependencies, and
+   the security scan's rules.
 2. pyVBAanalysis checks the runtime and all VBA fixtures as one project.
 3. pyOpenVBA builds test and demo workbooks and verifies byte-for-byte module round trips.
 4. Microsoft Excel compiles and executes the VBA suite, records worksheet-observed assertions,
    runs delegate and collection benchmarks, and exports a host project through the VBE to prove
    the runtime recases none of its names.
+5. olevba and MacroRaptor scan `ROneCOne.cls` and every demo workbook, and
+   `tools/security_scan.py` holds their results to the reviewed baseline in
+   `tools/security_baseline.json`.
 
 The live suite exercises explicit and inferred lambda creation, `Var`/`VarLike`, unary and binary
 calls, explicit and default invocation, comparisons, short-circuit behavior, typed failures,
@@ -135,6 +139,33 @@ release, so each new rule meets this code as soon as it ships and can fail CI wi
 CI ignores `property-accessor-signature-mismatch` while pyVBAanalysis 2.3.0 reports it on the
 runtime's `Item` property, a Variant `Property Get` beside an Object `Property Set` that the VBE
 compiles ([xlide_vscode#152](https://github.com/WilliamSmithEdward/xlide_vscode/issues/152)).
+
+## Security scan
+
+olevba and MacroRaptor (mraptor), both from oletools, report what the shipped VBA could do. The
+runtime reads and writes files, runs processes, calls native code, and talks HTTP by design, so
+olevba always reports Suspicious keywords and IOCs for it and mraptor always flags it `-WX`, which
+[SECURITY.md](../SECURITY.md) explains. `tools/security_scan.py` scans `src/ROneCOne.cls` and every
+`demo/*.xlsm` and compares each file's olevba findings and mraptor flags with
+`tools/security_baseline.json`. It fails on a finding that appears or disappears and on flags that
+change. It also fails on code that runs on its own, which olevba reports as AutoExec and mraptor
+flags A, and on P-code its source does not explain, and `--update-baseline` refuses to record
+either. olevba's own VBA stomping flag is set aside, because pcodedmp prints eight runtime names
+with a trailing type character the source never spells; the script repeats olevba's comparison
+with that suffix allowed and fails on anything else it finds. `tests/python/test_security_scan.py`
+runs each of those failures on small modules written for it.
+
+```powershell
+.venv\Scripts\python.exe tools\security_scan.py
+.venv\Scripts\python.exe tools\security_scan.py --update-baseline
+```
+
+Update the baseline only after reviewing what it records, in the same commit as the change that
+caused it. Repackaging the demo workbooks can change their findings, so a release runs the scan
+once the workbooks are final. The Security workflow runs the check on every push and pull request.
+When a release is published, the release-security workflow downloads its assets, writes
+`<tag>-security-report.md` with each asset's olevba findings, mraptor verdict, SHA-256 hash, and
+comparison with the baseline at the tag, and attaches the report to the release.
 
 ## Identifier casing
 

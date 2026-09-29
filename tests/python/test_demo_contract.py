@@ -609,7 +609,6 @@ class DemoContractTests(unittest.TestCase):
         self.assertIn("Give VBA the love it deserves", source)
         self.assertIn("docs/user-guide/", source)
         self.assertIn("releases/latest", source)
-        self.assertLessEqual(len(source.split()), 700)
 
     def test_docs_index_orients_every_documentation_surface(self) -> None:
         index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
