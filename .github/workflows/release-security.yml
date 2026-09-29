@@ -23,17 +23,17 @@ concurrency:
 jobs:
   report:
     name: olevba and mraptor report
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag }}
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.12'
 

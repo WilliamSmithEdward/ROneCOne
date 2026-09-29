@@ -93,12 +93,11 @@ exception applies only to that detection in those exact bytes. An exception that
 also fails, so it must be removed or reviewed again. Do not bypass a failed signature download or
 scanner error with an exception.
 
-The current exception list records one YARA Forge rule, `ARKBIRD_SOLG_TA505_Maldoc_21Nov_2`,
-against the VBA project in each of the 16 demo workbooks. Its matching patterns are ordinary
-Office/VBA library reference strings (`MSO.DLL`, `VBE7.DLL`, and the matching type-library
-references). The rule's sample-specific paths and long payload strings did not match. Each
-exception names that rule and the exact reviewed workbook hash; ClamAV found no infections in
-these files when scanned with engine 1.5.4 and 3,628,083 signatures on 2026-09-29.
+The prior 1.10.2 demo workbooks matched YARA Forge rule
+`ARKBIRD_SOLG_TA505_Maldoc_21Nov_2` on four ordinary Office/VBA library reference strings.
+Its sample-specific paths and long payload strings did not match. Repackaging the 1.10.3
+workbooks removed the match. The current exception list is empty; ClamAV found no infections
+in the repackaged files when scanned with engine 1.5.4 on 2026-09-29.
 
 VBA's `ReDim` sizes a dynamic array, while `ReDim Preserve` resizes one without discarding its
 current elements. For example, `SessionAppendBytes` doubles a byte buffer's capacity before

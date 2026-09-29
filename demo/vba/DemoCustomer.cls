@@ -12,7 +12,7 @@ Attribute VB_TemplateDerived = False
 Attribute VB_Customizable = False
 Option Explicit
 
-' ROneCOne 1.10.2, released 2026-09-28
+' ROneCOne 1.10.3, released 2026-09-29
 '
 ' MIT License
 '

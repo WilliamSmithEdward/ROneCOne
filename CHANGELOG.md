@@ -6,6 +6,17 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
+## 1.10.3 - 2026-09-29
+
+### Added
+
+- Security CI scans the shipped runtime and all demo workbooks with ClamAV and YARA-X. YARA-X
+  uses a pinned, checksum-verified YARA Forge Core release and also scans the unpacked workbook
+  members. Scanner and signature-download errors fail the check.
+- The reviewed YARA false positives in the 1.10.2 demo workbooks disappeared after the 1.10.3
+  repackaging. `SECURITY.md` records the cause; the current exception list is empty. New
+  detections and stale exceptions fail CI.
+
 ## 1.10.2 - 2026-09-28
 
 ### Added
