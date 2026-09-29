@@ -29,12 +29,19 @@ jobs:
         with:
           python-version: '3.12'
 
-      # From requirements-dev.txt rather than a version repeated here, so the
-      # gate and a local checkout cannot drift. They already had: the file
-      # said 1.2.0 while this workflow said 1.3.1. Bumping is now one edit in
-      # one place, reviewed like any other.
+      # requirements-dev.txt pins the versions a local checkout validates
+      # against, in one place, reviewed like any other change.
       - name: Install analysis tooling
         run: python -m pip install -r requirements-dev.txt
+
+      # pyVBAanalysis alone runs at its newest release here, so each new rule
+      # meets this code as soon as it ships. A release that reports something
+      # fails the run even when nothing in this repository changed; the fix is
+      # in the code or, for a false positive, in pyVBAanalysis.
+      - name: Use the newest pyVBAanalysis
+        run: |
+          python -m pip install --upgrade pyVBAanalysis
+          pyvbaanalysis --version
 
       # Pure stdlib: these read the runtime, demo, and tool sources and pin
       # their shapes. No Excel, no third-party runtime dependency.
@@ -46,10 +53,17 @@ jobs:
       # member-not-found) need every module present, and a narrower input is
       # treated as a project fragment and skips them silently. Analyzing src
       # alone reports "no diagnostics" on source that a full run rejects.
+      #
+      # property-accessor-signature-mismatch is ignored because pyVBAanalysis
+      # 2.3.0 reports it on the runtime's Item property, a Variant Property Get
+      # beside an Object Property Set that the VBE compiles
+      # (WilliamSmithEdward/xlide_vscode#152). Drop the flag once a release
+      # stops reporting it.
       - name: Static analysis of the sources
         run: >-
           pyvbaanalysis src tests/vba demo/vba
-          --no-inline-suppression --format text
+          --no-inline-suppression --ignore property-accessor-signature-mismatch
+          --format text
 
       # The sixteen demo workbooks are what ships, so they meet the same gate.
       # Each one is a whole VBA project on its own, so one invocation per
@@ -61,4 +75,5 @@ jobs:
       - name: Static analysis of the demo workbooks
         run: >-
           printf '%s\n' demo/*.xlsm
-          | xargs -P 4 -n 1 pyvbaanalysis --no-inline-suppression --format text
+          | xargs -P 4 -n 1 pyvbaanalysis --no-inline-suppression
+          --ignore property-accessor-signature-mismatch --format text

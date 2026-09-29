@@ -130,6 +130,12 @@ requires the assignment, because the value comes from a property read, a convers
 classifier returns its probe's type. Bang expressions such as `!Age` are member access to the
 analyzer, so they need no local declaration, which versions before 2.2.0 required.
 
+`requirements-dev.txt` pins the pyVBAanalysis a local checkout runs, while CI installs the newest
+release, so each new rule meets this code as soon as it ships and can fail CI with no change here.
+CI ignores `property-accessor-signature-mismatch` while pyVBAanalysis 2.3.0 reports it on the
+runtime's `Item` property, a Variant `Property Get` beside an Object `Property Set` that the VBE
+compiles ([xlide_vscode#152](https://github.com/WilliamSmithEdward/xlide_vscode/issues/152)).
+
 ## Identifier casing
 
 VBA keeps one spelling per identifier across a whole project, and a declaration in any module
