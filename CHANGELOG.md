@@ -40,6 +40,11 @@ checksums for each version are on the
   Providers" and "Tasks and async benchmark", and the Excel Table demo names its feature "Excel
   Tables" rather than "ListObject". Benchmark counts show thousands separators on every sheet.
 
+- The Zip demo's benchmark inflates a 50,000-line file rather than a 1,000-line one. VBA's
+  `Timer` moves in 1/128-second steps after 18:12, and the smaller file inflated inside one step
+  often enough that about one evening run in three measured zero seconds and the demo runner
+  failed it. The benchmark now takes about 0.09 seconds against its 5-second gate.
+
 ## 1.10.1 - 2026-09-23
 
 ### Changed

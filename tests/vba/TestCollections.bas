@@ -505,6 +505,7 @@ Public Sub RunROneCOneCollectionBenchmark()
     Dim listWriteCheck As Long
     Dim listWriteElapsed As Double
     Dim mutationElapsed As Double
+    Dim readPass As Long
     Dim rowsLoopElapsed As Double
     Dim rowsTotal As Long
     Dim table As ROneCOne
@@ -599,16 +600,21 @@ Public Sub RunROneCOneCollectionBenchmark()
     rowsLoopElapsed = Timer - started
     If rowsLoopElapsed < 0 Then rowsLoopElapsed = rowsLoopElapsed + 86400#
 
-    ' Generic positional-read scenario: 10,000 indexed reads over a hash set.
-    ' A materialized collection must index its own array directly.
+    ' Generic positional-read scenario: 100,000 indexed reads, ten passes over
+    ' a 10,000-item hash set. A materialized collection must index its own
+    ' array directly. Timer returns a Single, which after 18:12 moves in
+    ' 1/128-second steps, and one pass takes about one step, so it could
+    ' read as zero and fail the gate.
     Set hashSet = ROneCOne.HashSetOf(vbLong)
     For index = 1 To 10000
         hashSet.Add index
     Next index
     started = Timer
-    For index = 0 To 9999
-        genericReadCheck = hashSet.Item(index)
-    Next index
+    For readPass = 1 To 10
+        For index = 0 To 9999
+            genericReadCheck = hashSet.Item(index)
+        Next index
+    Next readPass
     genericReadElapsed = Timer - started
     If genericReadElapsed < 0 Then genericReadElapsed = genericReadElapsed + 86400#
 
@@ -656,7 +662,7 @@ Public Sub RunROneCOneCollectionBenchmark()
         .Range("B20").Value2 = 2000
         .Range("B21").Value2 = rowsLoopElapsed
         .Range("B22").Value2 = rowsTotal
-        .Range("B23").Value2 = 10000
+        .Range("B23").Value2 = 100000
         .Range("B24").Value2 = genericReadElapsed
         .Range("B25").Value2 = genericReadCheck
         .Range("B26").Value2 = 6000

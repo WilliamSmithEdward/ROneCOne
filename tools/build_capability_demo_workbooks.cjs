@@ -763,7 +763,7 @@ const capabilities = [
     feature: "Zip",
     exampleLabel: "zip",
     output: "ROneCOne_Zip_Demo.xlsx",
-    benchmark: "Inflate a 1,000-line archived file",
+    benchmark: "Inflate a 50,000-line archived file",
     benchmarkResult: "Summed value",
     architecture: [
       ["Single-file core", "ROneCOne.cls", "One import", "ENFORCED", 1, 0],

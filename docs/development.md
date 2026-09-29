@@ -113,6 +113,13 @@ against a 2.5-second gate. The task and data suite adds the JSON contracts, and 
 workbook exercises the JSON surface offline. Three fresh processes repeat every gate and all
 548 live assertions. Measurements are recorded in `benchmarks/v1.5.0-baseline.json`.
 
+Every benchmark reads VBA's `Timer`, which returns a Single, so it moves in 1/256-second steps
+before 18:12 and 1/128-second steps after. A scenario that finishes inside one step reads as zero,
+and the live suite and the demo runner fail a zero reading, because a scenario that never ran
+leaves the same value. Each gated scenario therefore runs for several steps. Since 1.10.2 the
+hash-set read scenario makes ten passes over its 10,000 items, 100,000 reads, and the Zip demo
+inflates a 50,000-line file; at one pass and 1,000 lines both took about one step.
+
 The HTTP contract in the task and data suite, and the HTTP demo workbook, make live requests to
 https://pokeapi.co, so those runs need internet access; every other gate runs offline. No other
 host is contacted.

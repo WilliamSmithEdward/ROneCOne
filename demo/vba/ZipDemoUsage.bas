@@ -44,7 +44,7 @@ Option Explicit
 ' To run it: press Alt+F8, choose RunROneCOneZipDemo, and click Run.
 ' ============================================================================
 
-Private Const BENCHMARK_ROWS As Long = 1000
+Private Const BENCHMARK_ROWS As Long = 50000
 Private Const BENCHMARKS_SHEET As String = "Benchmarks"
 Private Const EXAMPLES_SHEET As String = "Examples"
 Private Const START_SHEET As String = "Start Here"
@@ -161,8 +161,10 @@ Private Sub RunZipBenchmark(ByVal demoRoot As String)
     Dim runningTotal As Double
     Dim zipPath As String
 
-    ' PowerShell deflates a thousand-line file; the pure-VBA engine inflates
-    ' it and sums the numbers back out, timing the read and inflate.
+    ' PowerShell deflates a 50,000-line file; the pure-VBA engine inflates
+    ' it and sums the numbers back out, timing the read and inflate. Timer
+    ' returns a Single, which after 18:12 moves in 1/128-second steps, and a
+    ' thousand lines inflated inside one step and read as zero.
     Set builder = ROneCOne.StringBuilder()
     For idx = 1 To BENCHMARK_ROWS
         builder.AppendLine CStr(idx)
