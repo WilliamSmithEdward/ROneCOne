@@ -1,7 +1,7 @@
 Attribute VB_Name = "DemoUsage"
 Option Explicit
 
-' ROneCOne 1.10.1, released 2026-09-23
+' ROneCOne 1.10.2, released 2026-09-28
 '
 ' MIT License
 '

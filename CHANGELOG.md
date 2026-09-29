@@ -6,7 +6,7 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
-## Unreleased
+## 1.10.2 - 2026-09-28
 
 ### Added
 
@@ -21,9 +21,10 @@ checksums for each version are on the
 ### Changed
 
 - The runtime's private constant for a file watcher's change record is `ROLE_FILE_EVENT` rather
-  than `ROLE_FILE_CHANGE`. olevba treats any name ending in `_Change` as an ActiveX event handler,
-  so it reported the runtime and every demo workbook as code that runs when the file opens. None
-  of them does, and olevba now reports no auto-run code. Behavior is unchanged.
+  than `ROLE_FILE_CHANGE`. olevba and mraptor treat any name ending in `_Change` as an ActiveX
+  event handler, so they reported the runtime and every demo workbook as code that runs when the
+  file opens. None of them does, and neither tool now reports auto-run code. Behavior is
+  unchanged.
 
 ### Fixed
 
