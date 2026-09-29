@@ -186,11 +186,13 @@ comparison with the baseline at the tag, and attaches the report to the release.
 The same Security workflow runs `tools/malware_scan.py` using ClamAV's official signatures and a
 pinned YARA Forge Core package through YARA-X. The scan covers the shipped runtime, every demo
 workbook, and each workbook ZIP member. See [SECURITY.md](../SECURITY.md#malware-signatures) for
-the reviewed, exact-hash exception format and failure behavior. To run it locally, install ClamAV,
-update its signatures with `freshclam`, install `yara-x==1.20.0` in the project environment, and
-download the Core ZIP from the pinned YARA Forge release:
+the reviewed, exact-hash exception format and failure behavior. The Security workflow also runs
+daily, and `update-yara-rules.yml` proposes newer YARA Forge Core releases in a weekly PR. To run
+the scan locally, install ClamAV, update its signatures with `freshclam`, and install the pinned
+development requirements:
 
 ```powershell
+.venv\Scripts\python.exe tools\yara_forge_rules.py download yara-forge-rules-core.zip
 .venv\Scripts\python.exe tools\malware_scan.py yara-forge-rules-core.zip
 ```
 

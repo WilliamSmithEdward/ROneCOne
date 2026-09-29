@@ -1,0 +1,62 @@
+name: Propose YARA Forge rule update
+
+on:
+  schedule:
+    - cron: '43 18 * * 1'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: yara-forge-rule-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+
+      - name: Check the latest public Core package
+        id: pin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(gh api repos/YARAHQ/yara-forge/releases/latest --jq .tag_name)"
+          [[ "$tag" =~ ^20[0-9]{6}$ ]] || exit 1
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/yara-forge"
+          gh release download "$tag" --repo YARAHQ/yara-forge \
+            --pattern yara-forge-rules-core.zip --dir "$RUNNER_TEMP/yara-forge"
+          python tools/yara_forge_rules.py update "$tag" \
+            "$RUNNER_TEMP/yara-forge/yara-forge-rules-core.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update review PR
+        if: steps.pin.outputs.changed == 'true'
+        id: pr
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
+        with:
+          branch: codex/yara-forge-rules
+          add-paths: tools/yara_forge_pin.json
+          delete-branch: true
+          commit-message: Update YARA Forge Core rules to ${{ steps.pin.outputs.tag }}
+          title: Update YARA Forge Core rules to ${{ steps.pin.outputs.tag }}
+          body: |
+            Proposes the latest public YARA Forge Core package with its SHA-256 pinned.
+            Review the upstream rules and the Security workflow results before merging.
+            Scanner detections and reviewed exceptions are not changed automatically.
+
+      # GITHUB_TOKEN-created PR events may require approval before running CI.
+      # workflow_dispatch explicitly runs the read-only Security workflow on the PR branch.
+      - name: Scan the proposed branch
+        if: steps.pr.outputs.pull-request-operation == 'created' || steps.pr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run security.yml --ref codex/yara-forge-rules

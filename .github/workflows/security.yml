@@ -13,6 +13,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: '17 19 * * *'
 
 permissions:
   contents: read
@@ -57,11 +59,7 @@ jobs:
           python -m pip install -r requirements-dev.txt
 
       - name: Download reviewed public rules
-        run: |
-          curl --fail --location --retry 3 --output yara-forge-rules-core.zip \
-            https://github.com/YARAHQ/yara-forge/releases/download/20260726/yara-forge-rules-core.zip
-          echo '8d370f848885aca8cb0ae5e27ef8e79601fbd454fd0675182d5f5e9a98e7c029  yara-forge-rules-core.zip' \
-            | sha256sum --check
+        run: python tools/yara_forge_rules.py download yara-forge-rules-core.zip
 
       - name: Scan shipped artifacts
         run: python tools/malware_scan.py yara-forge-rules-core.zip
