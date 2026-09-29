@@ -6,7 +6,7 @@ name: Security
 # tools/security_baseline.json and fails on any change in either direction, on
 # code that runs on its own, and on P-code that its source does not explain.
 # The release report lives in release-security.yml, the one workflow that needs
-# write access.
+# write access. ClamAV and YARA-X run in malware-scan.yml.
 
 on:
   push:
@@ -24,8 +24,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  scan:
-    name: olevba and mraptor against the reviewed baseline
+  macros:
+    name: olevba and mraptor
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -40,32 +40,18 @@ jobs:
       - name: Scan the runtime and the demo workbooks
         run: python tools/security_scan.py
 
-  malware:
-    name: ClamAV and YARA-X on shipped artifacts
+  security-passed:
+    name: Security passed
+    if: always()
+    needs: [macros]
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: '3.12.14'
-
-      # The ClamAV engine is pinned to an exact Ubuntu package version; no
-      # updater follows apt, so move it by hand to the version
-      # `apt-cache policy clamav` offers on ubuntu-24.04. Signatures are
-      # fetched fresh by freshclam, which verifies them, on every run.
-      - name: Install scanners
+      - name: Check every security job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            clamav=1.5.4+dfsg-0ubuntu0.24.04.1 \
-            clamav-freshclam=1.5.4+dfsg-0ubuntu0.24.04.1
-          sudo systemctl stop clamav-freshclam || true
-          sudo freshclam
-          python -m pip install --require-hashes -r requirements-dev.txt
-
-      - name: Download reviewed public rules
-        run: python tools/yara_forge_rules.py download yara-forge-rules-core.zip
-
-      - name: Scan shipped artifacts
-        run: python tools/malware_scan.py yara-forge-rules-core.zip
+          echo "Results: $RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = success ] || exit 1
+          done

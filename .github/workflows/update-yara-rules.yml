@@ -1,4 +1,4 @@
-name: Propose YARA Forge rule update
+name: Update YARA rules
 
 on:
   schedule:
@@ -11,11 +11,12 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: yara-forge-rule-update
+  group: update-yara-rules
   cancel-in-progress: false
 
 jobs:
-  update:
+  propose:
+    name: Propose a YARA rule update
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -51,7 +52,7 @@ jobs:
           title: Update YARA Forge Core rules to ${{ steps.pin.outputs.tag }}
           body: |
             Proposes the latest public YARA Forge Core package with its SHA-256 pinned.
-            Review the upstream rules and the Security workflow results before merging.
+            Review the upstream rules and the Malware scan workflow results before merging.
             Scanner detections and reviewed exceptions are not changed automatically.
 
       # PRs created by GITHUB_TOKEN do not start push-triggered checks automatically.
@@ -60,5 +61,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          gh workflow run malware-scan.yml --ref codex/yara-forge-rules
           gh workflow run security.yml --ref codex/yara-forge-rules
           gh workflow run ci.yml --ref codex/yara-forge-rules

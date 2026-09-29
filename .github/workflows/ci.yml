@@ -79,3 +79,19 @@ jobs:
         run: >-
           printf '%s\n' demo/*.xlsm
           | xargs -P 4 -n 1 pyvbaanalysis --no-inline-suppression --format text
+
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs: [static]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check every CI job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Results: $RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = success ] || exit 1
+          done

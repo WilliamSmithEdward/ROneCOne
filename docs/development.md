@@ -183,10 +183,10 @@ When a release is published, the release-security workflow downloads its assets,
 `<tag>-security-report.md` with each asset's olevba findings, mraptor verdict, SHA-256 hash, and
 comparison with the baseline at the tag, and attaches the report to the release.
 
-The same Security workflow runs `tools/malware_scan.py` using ClamAV's official signatures and a
+The Malware scan workflow runs `tools/malware_scan.py`, once per scanner with `--only`, using ClamAV's official signatures and a
 pinned YARA Forge Core package through YARA-X. The scan covers the shipped runtime, every demo
 workbook, and each workbook ZIP member. See [SECURITY.md](../SECURITY.md#malware-signatures) for
-the reviewed, exact-hash exception format and failure behavior. The Security workflow also runs
+the reviewed, exact-hash exception format and failure behavior. The Malware scan workflow also runs
 daily, and `update-yara-rules.yml` proposes newer YARA Forge Core releases in a weekly PR. To run
 the scan locally, install ClamAV, update its signatures with `freshclam`, and install the pinned
 development requirements:

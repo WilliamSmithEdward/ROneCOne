@@ -76,7 +76,8 @@ demo workbook.
 
 ## Malware signatures
 
-The Security workflow runs daily as well as on pushes and pull requests. It scans the shipped
+The [Malware scan workflow](.github/workflows/malware-scan.yml) runs daily as well as on pushes
+and pull requests, with ClamAV and YARA-X in separate jobs. It scans the shipped
 `src/ROneCOne.cls` and every `demo/*.xlsm` with ClamAV's current official signature database and
 YARA-X 1.20.0. YARA-X uses the public
 [YARA Forge Core collection](https://github.com/YARAHQ/yara-forge/releases), pinned to the release
@@ -86,10 +87,10 @@ including `xl/vbaProject.bin`. ClamAV handles its own archive inspection. Public
 contain heuristic matches; a match warrants review, not an automatic malware verdict.
 
 The rule updater checks YARA Forge weekly and opens a PR when a newer Core package exists. The
-PR changes only the release and SHA-256 pin. It starts read-only Security and CI workflows on
+PR changes only the release and SHA-256 pin. It starts read-only Malware scan, Security and CI workflows on
 the proposed branch; rule changes and any new detections require review before merging.
 Exceptions are never added by the updater. ClamAV signatures refresh through `freshclam` on every
-Security workflow run.
+Malware scan workflow run.
 
 The check fails on new detections and on scanner, signature update, rule download, compilation, or
 workbook read errors. A reviewed false positive may be listed in
