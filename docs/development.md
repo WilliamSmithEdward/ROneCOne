@@ -183,6 +183,17 @@ When a release is published, the release-security workflow downloads its assets,
 `<tag>-security-report.md` with each asset's olevba findings, mraptor verdict, SHA-256 hash, and
 comparison with the baseline at the tag, and attaches the report to the release.
 
+The same Security workflow runs `tools/malware_scan.py` using ClamAV's official signatures and a
+pinned YARA Forge Core package through YARA-X. The scan covers the shipped runtime, every demo
+workbook, and each workbook ZIP member. See [SECURITY.md](../SECURITY.md#malware-signatures) for
+the reviewed, exact-hash exception format and failure behavior. To run it locally, install ClamAV,
+update its signatures with `freshclam`, install `yara-x==1.20.0` in the project environment, and
+download the Core ZIP from the pinned YARA Forge release:
+
+```powershell
+.venv\Scripts\python.exe tools\malware_scan.py yara-forge-rules-core.zip
+```
+
 ## Identifier casing
 
 VBA keeps one spelling per identifier across a whole project, and a declaration in any module

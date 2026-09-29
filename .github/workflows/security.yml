@@ -37,3 +37,31 @@ jobs:
 
       - name: Scan the runtime and the demo workbooks
         run: python tools/security_scan.py
+
+  malware:
+    name: ClamAV and YARA-X on shipped artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install scanners
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clamav clamav-freshclam
+          sudo systemctl stop clamav-freshclam || true
+          sudo freshclam
+          python -m pip install -r requirements-dev.txt
+
+      - name: Download reviewed public rules
+        run: |
+          curl --fail --location --retry 3 --output yara-forge-rules-core.zip \
+            https://github.com/YARAHQ/yara-forge/releases/download/20260726/yara-forge-rules-core.zip
+          echo '8d370f848885aca8cb0ae5e27ef8e79601fbd454fd0675182d5f5e9a98e7c029  yara-forge-rules-core.zip' \
+            | sha256sum --check
+
+      - name: Scan shipped artifacts
+        run: python tools/malware_scan.py yara-forge-rules-core.zip

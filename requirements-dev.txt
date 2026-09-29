@@ -1,4 +1,5 @@
 oletools==0.60.2
 pyOpenVBA==6.0.0
 pyVBAanalysis==2.3.1
+yara-x==1.20.0
 pywin32==312; sys_platform == "win32"

@@ -73,3 +73,35 @@ olevba and mraptor report some results on this code by design:
 
 The [CI workflow](.github/workflows/ci.yml) also runs pyVBAanalysis over the sources and every
 demo workbook.
+
+## Malware signatures
+
+The Security workflow also scans the shipped `src/ROneCOne.cls` and every `demo/*.xlsm` with
+ClamAV's current official signature database and YARA-X 1.20.0. YARA-X uses the public
+[YARA Forge Core collection](https://github.com/YARAHQ/yara-forge/releases/tag/20260726), pinned
+to its 20260726 release and verified against its reviewed SHA-256. It scans each workbook as a file
+and scans its decompressed ZIP members,
+including `xl/vbaProject.bin`. ClamAV handles its own archive inspection. Public collections can
+contain heuristic matches; a match warrants review, not an automatic malware verdict.
+
+The check fails on new detections and on scanner, signature update, rule download, compilation, or
+workbook read errors. A reviewed false positive may be listed in
+[`tools/malware_exceptions.json`](tools/malware_exceptions.json) with `scanner`, `path`,
+`detection`, the shipped file's `sha256`, and a specific `reason`. For a workbook member, `path`
+has the form `demo/Name.xlsm!xl/vbaProject.bin`; its hash is the whole workbook's hash. The
+exception applies only to that detection in those exact bytes. An exception that no longer matches
+also fails, so it must be removed or reviewed again. Do not bypass a failed signature download or
+scanner error with an exception.
+
+The current exception list records one YARA Forge rule, `ARKBIRD_SOLG_TA505_Maldoc_21Nov_2`,
+against the VBA project in each of the 16 demo workbooks. Its matching patterns are ordinary
+Office/VBA library reference strings (`MSO.DLL`, `VBE7.DLL`, and the matching type-library
+references). The rule's sample-specific paths and long payload strings did not match. Each
+exception names that rule and the exact reviewed workbook hash; ClamAV found no infections in
+these files when scanned with engine 1.5.4 and 3,628,083 signatures on 2026-09-29.
+
+VBA's `ReDim` sizes a dynamic array, while `ReDim Preserve` resizes one without discarding its
+current elements. For example, `SessionAppendBytes` doubles a byte buffer's capacity before
+appending data, and the CSV parser grows its field and quote-state arrays when a row has more than
+eight fields. Their presence alone is expected VBA behavior; a rule matching them still needs its
+full condition and surrounding code reviewed before any exception is added.
