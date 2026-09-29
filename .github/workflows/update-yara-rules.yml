@@ -6,7 +6,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  actions: write
+  contents: write
+  pull-requests: write
 
 concurrency:
   group: yara-forge-rule-update
@@ -36,22 +38,12 @@ jobs:
           python tools/yara_forge_rules.py update "$tag" \
             "$RUNNER_TEMP/yara-forge/yara-forge-rules-core.zip" >> "$GITHUB_OUTPUT"
 
-      - name: Require scoped PR token
-        if: steps.pin.outputs.changed == 'true'
-        env:
-          YARA_UPDATE_TOKEN: ${{ secrets.YARA_UPDATE_TOKEN }}
-        run: |
-          if [[ -z "$YARA_UPDATE_TOKEN" ]]; then
-            echo '::error::Configure YARA_UPDATE_TOKEN with Contents and Pull requests write access.'
-            exit 1
-          fi
-
       - name: Open or update review PR
         if: steps.pin.outputs.changed == 'true'
         id: pr
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
-          token: ${{ secrets.YARA_UPDATE_TOKEN }}
+          token: ${{ github.token }}
           branch: codex/yara-forge-rules
           add-paths: tools/yara_forge_pin.json
           delete-branch: true
@@ -61,3 +53,12 @@ jobs:
             Proposes the latest public YARA Forge Core package with its SHA-256 pinned.
             Review the upstream rules and the Security workflow results before merging.
             Scanner detections and reviewed exceptions are not changed automatically.
+
+      # PRs created by GITHUB_TOKEN do not start push-triggered checks automatically.
+      - name: Check the proposed branch
+        if: steps.pr.outputs.pull-request-operation == 'created' || steps.pr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run security.yml --ref codex/yara-forge-rules
+          gh workflow run ci.yml --ref codex/yara-forge-rules

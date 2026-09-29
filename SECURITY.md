@@ -85,12 +85,11 @@ and scans its decompressed ZIP members,
 including `xl/vbaProject.bin`. ClamAV handles its own archive inspection. Public collections can
 contain heuristic matches; a match warrants review, not an automatic malware verdict.
 
-The rule updater checks YARA Forge weekly and opens a PR when a newer Core package exists. It
-requires the `YARA_UPDATE_TOKEN` repository secret: a fine-grained token with Contents and Pull
-requests write access to this repository. The PR changes only the release and SHA-256 pin, and
-the normal read-only Security workflow scans its branch.
-Rule changes and any new detections require review before merging; exceptions are never added by
-the updater. ClamAV signatures refresh through `freshclam` on every Security workflow run.
+The rule updater checks YARA Forge weekly and opens a PR when a newer Core package exists. The
+PR changes only the release and SHA-256 pin. It starts read-only Security and CI workflows on
+the proposed branch; rule changes and any new detections require review before merging.
+Exceptions are never added by the updater. ClamAV signatures refresh through `freshclam` on every
+Security workflow run.
 
 The check fails on new detections and on scanner, signature update, rule download, compilation, or
 workbook read errors. A reviewed false positive may be listed in
