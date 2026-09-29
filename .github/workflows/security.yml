@@ -32,10 +32,10 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: '3.12'
+          python-version: '3.12.14'
 
       - name: Install analysis tooling
-        run: python -m pip install -r requirements-dev.txt
+        run: python -m pip install --require-hashes -r requirements-dev.txt
 
       - name: Scan the runtime and the demo workbooks
         run: python tools/security_scan.py
@@ -48,15 +48,21 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: '3.12'
+          python-version: '3.12.14'
 
+      # The ClamAV engine is pinned to an exact Ubuntu package version; no
+      # updater follows apt, so move it by hand to the version
+      # `apt-cache policy clamav` offers on ubuntu-24.04. Signatures are
+      # fetched fresh by freshclam, which verifies them, on every run.
       - name: Install scanners
         run: |
           sudo apt-get update
-          sudo apt-get install -y clamav clamav-freshclam
+          sudo apt-get install -y \
+            clamav=1.5.4+dfsg-0ubuntu0.24.04.1 \
+            clamav-freshclam=1.5.4+dfsg-0ubuntu0.24.04.1
           sudo systemctl stop clamav-freshclam || true
           sudo freshclam
-          python -m pip install -r requirements-dev.txt
+          python -m pip install --require-hashes -r requirements-dev.txt
 
       - name: Download reviewed public rules
         run: python tools/yara_forge_rules.py download yara-forge-rules-core.zip

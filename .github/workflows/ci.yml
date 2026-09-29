@@ -27,17 +27,18 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: '3.12'
+          python-version: '3.12.14'
 
       # requirements-dev.txt pins the versions a local checkout validates
       # against, in one place, reviewed like any other change.
       - name: Install analysis tooling
-        run: python -m pip install -r requirements-dev.txt
+        run: python -m pip install --require-hashes -r requirements-dev.txt
 
       # pyVBAanalysis alone runs at its newest release here, so each new rule
       # meets this code as soon as it ships. A release that reports something
       # fails the run even when nothing in this repository changed; the fix is
-      # in the code or, for a false positive, in pyVBAanalysis.
+      # in the code or, for a false positive, in pyVBAanalysis. This is the one
+      # deliberately unpinned install, by the owner's choice.
       - name: Use the newest pyVBAanalysis
         run: |
           python -m pip install --upgrade pyVBAanalysis
