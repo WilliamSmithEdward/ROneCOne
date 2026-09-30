@@ -81,7 +81,7 @@ and pull requests, with ClamAV and YARA-X in separate jobs. It scans the shipped
 `src/ROneCOne.cls` and every `demo/*.xlsm` with ClamAV's current official signature database and
 YARA-X 1.20.0. YARA-X uses the public
 [YARA Forge Core collection](https://github.com/YARAHQ/yara-forge/releases), pinned to the release
-and SHA-256 in [`tools/yara_forge_pin.json`](tools/yara_forge_pin.json). It scans each workbook as a file
+and SHA-256 in [`.github/security/yara.json`](.github/security/yara.json). It scans each workbook as a file
 and scans its decompressed ZIP members,
 including `xl/vbaProject.bin`. ClamAV handles its own archive inspection. Public collections can
 contain heuristic matches; a match warrants review, not an automatic malware verdict.
