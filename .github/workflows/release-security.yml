@@ -5,8 +5,9 @@ name: Release security report
 # results compare with the reviewed baseline at the release tag. The report is
 # attached to the release as <tag>-security-report.md.
 #
-# Started by hand with a release's tag it is always a dry run: it writes the
-# report on that release's assets exactly as a release would, and uploads it
+# Started by hand with a release's tag it is always a dry run: it runs the
+# scanner as it stands on the branch it was started from, which is what the
+# next release will run, over that release's assets, and uploads the report
 # as the release-preview artifact instead of attaching it.
 
 on:
@@ -35,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          ref: ${{ github.event.release.tag_name || github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
