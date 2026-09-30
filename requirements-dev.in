@@ -1,5 +1,6 @@
-oletools==0.60.2
-pyOpenVBA==6.0.0
-pyVBAanalysis==2.3.1
-yara-x==1.20.0
+# Local development tools: the CI lock plus pywin32 for live Excel on Windows.
+# Compile from the repository root with:
+#   uv pip compile requirements-dev.in --universal --generate-hashes --python-version 3.12 -o requirements-dev.txt
+# Dependabot proposes each new release.
+-r .github/requirements/ci.in
 pywin32==312; sys_platform == "win32"

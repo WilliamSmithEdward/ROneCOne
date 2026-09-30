@@ -29,10 +29,10 @@ jobs:
         with:
           python-version: '3.12.14'
 
-      # requirements-dev.txt pins the versions a local checkout validates
+      # .github/requirements/ci.txt locks the versions a local checkout validates
       # against, in one place, reviewed like any other change.
       - name: Install analysis tooling
-        run: python -m pip install --require-hashes -r requirements-dev.txt
+        run: python -m pip install --require-hashes -r .github/requirements/ci.txt
 
       # These read the runtime, demo, and tool sources and pin their shapes,
       # and run the security scan's rules on small modules written for them.
@@ -50,11 +50,12 @@ jobs:
         with:
           python-version: '3.12.14'
 
-      # requirements-dev.txt pins pyVBAanalysis with the rest of the tooling;
+      # .github/requirements/ci.txt locks pyVBAanalysis with the rest of the
+      # tooling;
       # Dependabot proposes each new release.
       - name: Install analysis tooling
         run: |
-          python -m pip install --require-hashes -r requirements-dev.txt
+          python -m pip install --require-hashes -r .github/requirements/ci.txt
           pyvbaanalysis --version
 
       # All three folders in one invocation, deliberately. The whole-project

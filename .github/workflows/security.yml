@@ -35,7 +35,7 @@ jobs:
           python-version: '3.12.14'
 
       - name: Install analysis tooling
-        run: python -m pip install --require-hashes -r requirements-dev.txt
+        run: python -m pip install --require-hashes -r .github/requirements/security.txt
 
       - name: Scan the runtime and the demo workbooks
         run: python tools/security_scan.py

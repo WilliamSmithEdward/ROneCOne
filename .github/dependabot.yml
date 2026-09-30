@@ -8,9 +8,18 @@ updates:
     cooldown:
       default-days: 7
 
-  # requirements-dev.txt is locked with hashes from requirements-dev.in:
+  # .github/requirements holds the hash-locked tools each workflow installs.
+  - package-ecosystem: pip
+    directory: /.github/requirements
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+
+  # requirements-dev.txt locks the local tools (the CI lock plus pywin32)
+  # from requirements-dev.in:
   # uv pip compile requirements-dev.in --universal --generate-hashes
-  #   --python-version 3.12 --no-header -o requirements-dev.txt
+  #   --python-version 3.12 -o requirements-dev.txt
   - package-ecosystem: pip
     directory: /
     schedule:

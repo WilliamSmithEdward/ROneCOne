@@ -141,8 +141,9 @@ requires the assignment, because the value comes from a property read, a convers
 classifier returns its probe's type. Bang expressions such as `!Age` are member access to the
 analyzer, so they need no local declaration, which versions before 2.2.0 required.
 
-`requirements-dev.txt` pins the pyVBAanalysis a local checkout runs, while CI installs the newest
-release, so each new rule meets this code as soon as it ships and can fail CI with no change here.
+`requirements-dev.txt` takes its pyVBAanalysis pin from `.github/requirements/ci.in`, so a local
+checkout runs the version CI runs. Dependabot proposes each new release, and a new rule that
+reports on this code fails that update's CI rather than an unrelated change.
 
 `ROneCOne.cls` ships as one file, so it is also analyzed alone:
 
