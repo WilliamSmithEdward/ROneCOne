@@ -140,11 +140,12 @@ jobs:
           path: release-files/
 
       - name: Write the report
-        run: >-
-          python tools/security_scan.py
-          --report "security-report/v$VERSION-security-report.md"
-          --title "Security report for ROneCOne v$VERSION"
-          release-files/ROneCOne.cls
+        run: |
+          mkdir -p security-report
+          python tools/security_scan.py \
+            --report "security-report/v$VERSION-security-report.md" \
+            --title "Security report for ROneCOne v$VERSION" \
+            release-files/ROneCOne.cls
 
       - name: Keep the report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
