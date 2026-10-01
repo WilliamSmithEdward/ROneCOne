@@ -74,6 +74,14 @@ olevba and mraptor report some results on this code by design:
 The [CI workflow](.github/workflows/ci.yml) also runs pyVBAanalysis over the sources and every
 demo workbook.
 
+[OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/WilliamSmithEdward/ROneCOne)
+rates the repository's security practices on every change to main and weekly, and publishes the
+result the README badge shows. Some of its checks do not fit this project: a single maintainer
+cannot have a second person approve every change, the class module and workbooks are built
+locally rather than by CI, so a release carries `vX.Y.Z-sha256.txt` and the security report
+rather than a build provenance signature, and ROneCOne is VBA, which no fuzzer can run outside
+Office.
+
 ## Malware signatures
 
 The [Malware scan workflow](.github/workflows/malware-scan.yml) runs daily as well as on pushes
@@ -88,8 +96,8 @@ contain heuristic matches; a match warrants review, not an automatic malware ver
 
 The rule updater checks YARA Forge weekly and opens a PR when a newer Core package exists. The
 PR changes only the release and SHA-256 pin. It starts read-only Malware scan, Security and CI workflows on
-the proposed branch; rule changes and any new detections require review before merging.
-Exceptions are never added by the updater. ClamAV signatures refresh through `freshclam` on every
+the proposed branch, and the PR merges itself only once all three pass, so a new detection holds
+it until it is reviewed. Exceptions are never added by the updater. ClamAV signatures refresh through `freshclam` on every
 Malware scan workflow run.
 
 The check fails on new detections and on scanner, signature update, rule download, compilation, or

@@ -6,6 +6,16 @@ All notable changes to ROneCOne are documented here. The format is based on
 checksums for each version are on the
 [releases page](https://github.com/WilliamSmithEdward/ROneCOne/releases).
 
+## Unreleased
+
+- OpenSSF Scorecard rates the repository's security practices on every change to main and
+  weekly, and the README shows its badge.
+- The release security workflow grants write access to the one job that uploads the report,
+  rather than to the whole workflow.
+- `requirements-dev.txt` installs on Windows again: it had been compiled without pywin32 and
+  win-unicode-console, so `--require-hashes` refused it there. Recompiled with its own command.
+  No change to ROneCOne itself.
+
 ## 1.10.3 - 2026-09-29
 
 ### Added
