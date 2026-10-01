@@ -1,14 +1,16 @@
 # ROneCOne
 
-**Give VBA the love it deserves.**
-
-[![CI](https://github.com/WilliamSmithEdward/ROneCOne/actions/workflows/ci.yml/badge.svg)](https://github.com/WilliamSmithEdward/ROneCOne/actions/workflows/ci.yml)
-[![Security](https://github.com/WilliamSmithEdward/ROneCOne/actions/workflows/security.yml/badge.svg)](https://github.com/WilliamSmithEdward/ROneCOne/actions/workflows/security.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/WilliamSmithEdward/ROneCOne/badge)](https://scorecard.dev/viewer/?uri=github.com/WilliamSmithEdward/ROneCOne)
 [![Latest release](https://img.shields.io/github/v/release/WilliamSmithEdward/ROneCOne)](https://github.com/WilliamSmithEdward/ROneCOne/releases/latest)
-[![MIT license](https://img.shields.io/github/license/WilliamSmithEdward/ROneCOne)](LICENSE)
-[![Microsoft 365 Excel on Windows x64](https://img.shields.io/badge/Excel-Microsoft_365_Windows_x64-217346)](docs/user-guide/getting-started.md)
-[![Single class module runtime](https://img.shields.io/badge/runtime-one_class_module-0078D4)](src/ROneCOne.cls)
+[![Downloads](https://img.shields.io/github/downloads/WilliamSmithEdward/ROneCOne/total)](https://github.com/WilliamSmithEdward/ROneCOne/releases)
+[![CI](https://github.com/WilliamSmithEdward/ROneCOne/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/WilliamSmithEdward/ROneCOne/actions/workflows/ci.yml)
+[![Security](https://github.com/WilliamSmithEdward/ROneCOne/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/WilliamSmithEdward/ROneCOne/actions/workflows/security.yml)
+[![Malware scan](https://github.com/WilliamSmithEdward/ROneCOne/actions/workflows/malware-scan.yml/badge.svg?branch=main)](https://github.com/WilliamSmithEdward/ROneCOne/actions/workflows/malware-scan.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/WilliamSmithEdward/ROneCOne/badge)](https://scorecard.dev/viewer/?uri=github.com/WilliamSmithEdward/ROneCOne)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/WilliamSmithEdward/ROneCOne/blob/main/LICENSE)
+[![Microsoft 365 Excel on Windows x64](https://img.shields.io/badge/Excel-Microsoft_365_Windows_x64-217346)](https://github.com/WilliamSmithEdward/ROneCOne/blob/main/docs/user-guide/getting-started.md)
+[![Single class module runtime](https://img.shields.io/badge/runtime-one_class_module-0078D4)](https://github.com/WilliamSmithEdward/ROneCOne/blob/main/src/ROneCOne.cls)
+
+**Give VBA the love it deserves.**
 
 ROneCOne is the standard library Excel VBA never had, shaped after C# and .NET. Import one
 class module, `ROneCOne.cls`, and ordinary workbook code can query typed collections with
