@@ -174,8 +174,8 @@ so.
 ## See it running
 
 The Excel Tables demo workbook builds a real table and works through all of
-the above, live, with the result next to what was expected. Download it from
-the [release page](https://github.com/WilliamSmithEdward/ROneCOne/releases/latest).
+the above, live, with the result next to what was expected. Download
+`ROneCOne_ListObject_Demo.xlsm` from the repository's [`demo/` folder](../../demo/).
 
 ## Related
 

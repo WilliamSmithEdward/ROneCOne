@@ -82,11 +82,9 @@ severity. Security and Malware scan also run daily at 19:17 UTC.
 - **OpenSSF Scorecard** rates the repository's security practices on every
   change to `main` and weekly, and the README badge shows the result.
   Some of its checks do not fit this project. A single maintainer cannot
-  have a second person approve every change. The class module and
-  workbooks are built locally rather than by CI, so a release carries
-  `vX.Y.Z-sha256.txt` and the security report rather than a build
-  provenance signature. Fuzzing does not apply: ROneCOne is VBA, which runs
-  only inside Office.
+  have a second person approve every change. Fuzzing does not apply:
+  ROneCOne is VBA, which runs only inside Office. Signed-Releases rises as
+  releases carry the provenance bundle; it counts the last five.
 
 ## Accepted findings
 
@@ -165,22 +163,41 @@ Malware scan pass; a third-party major version waits for review.
 
 ## Releases
 
-The class module and demo workbooks are built locally, and the GitHub
-release carries `ROneCOne.cls`, every demo workbook, and
-`vX.Y.Z-sha256.txt`, the SHA-256 of each of those files.
+Pushing a `vX.Y.Z` tag runs the Publish workflow. It refuses a tag that
+is not the version in `src/ROneCOne.cls`'s release header, and fails if
+restamping the release headers would change a committed module. It writes
+`ROneCOne.cls` from the tagged commit, with the CRLF line endings the
+Visual Basic Editor imports, runs Security and Malware scan on that commit,
+scans the built file with olevba and mraptor, and only when all of that
+passes signs the build provenance and creates the GitHub release with:
 
-Publishing the release starts `.github/workflows/release-security.yml`. It
-downloads the release's `.cls` and `.xlsm` files, scans them with olevba
-and mraptor against the baseline at the release tag, and attaches
-`vX.Y.Z-security-report.md`: what olevba and mraptor find in every file,
-their hashes, and whether the results match the reviewed baseline.
-Releases from 1.10.2 on carry it. Started by hand with a release's tag,
-the workflow is a dry run and attaches nothing.
+- `ROneCOne.cls`: the runtime.
+- `vX.Y.Z-sha256.txt`: its SHA-256.
+- `ROneCOne-X.Y.Z.sigstore.json`: the signed build provenance of both.
+- `vX.Y.Z-security-report.md`: what olevba and mraptor find in
+  `ROneCOne.cls`, its hash, and whether the results match the reviewed
+  baseline at the tag. Releases from 1.10.2 on carry it.
+
+Releases no longer attach the demo workbooks. They are in the repository's
+`demo/` folder, and every change to them is scanned as described above.
+Releases up to 1.10.3 were built locally, carry no provenance, and also
+attach the demo workbooks.
+
+Started by hand, Publish is a dry run: it builds, scans and assembles the
+same files and keeps them as a workflow artifact instead of releasing
+anything.
 
 ### Verifying a release
 
-Compare a download's SHA-256 with `vX.Y.Z-sha256.txt` or the security
-report:
+To check that a file was built by this repository's Publish workflow from
+a tagged commit:
+
+```bash
+gh attestation verify ROneCOne.cls --repo WilliamSmithEdward/ROneCOne
+```
+
+Without the GitHub CLI, compare a download's SHA-256 with
+`vX.Y.Z-sha256.txt` or the security report:
 
 ```powershell
 Get-FileHash .\ROneCOne.cls -Algorithm SHA256

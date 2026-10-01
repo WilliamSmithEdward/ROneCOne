@@ -96,6 +96,24 @@ visual review of every demo worksheet. Preserve
 ASCII VBA sources, 100-character source lines, MIT licensing, local-only diagnostics, and exact
 task-owned Excel process cleanup.
 
+### Releasing
+
+A release carries `ROneCOne.cls`, `vX.Y.Z-sha256.txt`, the security report, and the signed
+provenance bundle. The demo workbooks are not attached; users take them from `demo/`.
+
+1. Date the version's section in `CHANGELOG.md`, write its notes in `docs/releases/vX.Y.Z.md`,
+   restamp with `tools\stamp_release_headers.py`, repackage the demo workbooks with
+   `tools\package_demo_workbook.py` so `demo/` carries the same modules, and run the gates above.
+2. Merge that to `main` through a pull request.
+3. Optionally dry-run Publish: `gh workflow run publish.yml --ref main`, then
+   `gh run download <run-id> -n release-preview`.
+4. The owner pushes the `vX.Y.Z` tag on that commit. Publish refuses a tag that differs from the
+   release header in `src/ROneCOne.cls` or a module the restamp would change, writes the release
+   files from the commit, and creates the release with `docs/releases/vX.Y.Z.md` as its notes.
+
+Publish writes `vX.Y.Z-sha256.txt`, so there is no need to commit one to `docs/releases/`; one
+that is committed must match the file Publish builds, or the release stops.
+
 ## Excel and VBA Authority
 
 The user has authorized project-scoped use of these tools for Excel workbook and VBA work:
@@ -449,7 +467,7 @@ limits carry the result.
 
 These rules are the same in every WilliamSmithEdward repository.
 
-- **How a release happens here:** publishing a GitHub release starts the release reports, which scan it and attach their reports to it. Any other step, such as a marketplace upload, is described elsewhere in this file.
+- **How a release happens here:** pushing a `vX.Y.Z` tag runs Publish, which builds the release files in CI and creates the GitHub release with them, their signed provenance and the security reports. Any other step, such as a marketplace upload, is described elsewhere in this file.
 - **Starting a workflow by hand never releases anything.** Publish and every
   release report are dry runs when started with `gh workflow run` or the Run
   workflow button. They build, scan and assemble the release files exactly
