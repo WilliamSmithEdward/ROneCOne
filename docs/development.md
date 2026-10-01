@@ -180,9 +180,9 @@ runs each of those failures on small modules written for it.
 Update the baseline only after reviewing what it records, in the same commit as the change that
 caused it. Repackaging the demo workbooks can change their findings, so a release runs the scan
 once the workbooks are final. The Security workflow runs the check on every push and pull request.
-When a release is published, the release-security workflow downloads its assets, writes
-`<tag>-security-report.md` with each asset's olevba findings, mraptor verdict, SHA-256 hash, and
-comparison with the baseline at the tag, and attaches the report to the release.
+When a `vX.Y.Z` tag is pushed, the Publish workflow builds `ROneCOne.cls` from the tagged commit,
+writes `vX.Y.Z-security-report.md` with its olevba findings, mraptor verdict, SHA-256 hash, and
+comparison with the baseline at the tag, and attaches the report to the release it creates.
 
 The Malware scan workflow runs `tools/malware_scan.py`, once per scanner with `--only`, using ClamAV's official signatures and a
 pinned YARA Forge Core package through YARA-X. The scan covers the shipped runtime, every demo

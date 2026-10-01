@@ -5,10 +5,10 @@ installation is one class import.
 
 ## Option 1: see it working first
 
-1. Open the [latest release](https://github.com/WilliamSmithEdward/ROneCOne/releases/latest).
+1. Open the repository's [`demo/` folder](../../demo/).
 2. Download the demo workbook for the capability you want to explore.
 3. Save it to a trusted local folder and open it in Excel.
-4. Enable macros only after confirming that the file came from the ROneCOne release.
+4. Enable macros only after confirming that the file came from the ROneCOne repository.
 5. Press `Alt+F8`, select the demo macro, and choose **Run**.
 
 | Workbook | Macro |

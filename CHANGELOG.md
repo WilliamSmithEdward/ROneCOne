@@ -12,6 +12,9 @@ checksums for each version are on the
   weekly, and the README shows its badge.
 - The release security workflow grants write access to the one job that uploads the report,
   rather than to the whole workflow.
+- Releases are built and signed in CI: pushing a `vX.Y.Z` tag builds `ROneCOne.cls` and its
+  SHA-256 file, signs their build provenance, writes the security report, and creates the release.
+  Releases no longer attach the demo workbooks; they stay in `demo/`.
 - `requirements-dev.txt` installs on Windows again: it had been compiled without pywin32 and
   win-unicode-console, so `--require-hashes` refused it there. Recompiled with its own command.
   No change to ROneCOne itself.

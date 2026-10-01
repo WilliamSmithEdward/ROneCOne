@@ -1,0 +1,262 @@
+name: Publish
+
+# A v*.*.* tag releases ROneCOne. The build job refuses a tag that does not
+# match the release header in src/ROneCOne.cls, restamps every module and
+# fails if that changes a committed file, then writes the release files:
+# ROneCOne.cls and vX.Y.Z-sha256.txt. Security and Malware scan run on the
+# tagged commit, the security report is written over the built file, this
+# workflow signs the build provenance, and it creates the GitHub release with
+# the release files, the signed bundle and the report. The notes are
+# docs/releases/vX.Y.Z.md. The demo workbooks are not attached; they stay in
+# demo/.
+#
+# Started by hand, this is always a dry run: it builds, scans and assembles
+# the release files exactly as a release would, for the version in the
+# release header, and uploads them as the release-preview artifact instead of
+# signing or releasing anything.
+
+"on":
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the release files
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12.14"
+
+      # First, so a mistyped tag fails in seconds. The release header is the
+      # version the runtime itself carries; the restamp below proves it is the
+      # newest dated version in CHANGELOG.md.
+      - name: Read the version from the release header
+        id: version
+        run: |
+          VERSION=$(sed -n "s/^' ROneCOne \([0-9]*\.[0-9]*\.[0-9]*\), released [0-9-]*\r\{0,1\}$/\1/p" src/ROneCOne.cls)
+          if [ "$(printf '%s\n' "$VERSION" | grep -c .)" != 1 ]; then
+            echo "::error::src/ROneCOne.cls has no single release header."
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "${GITHUB_REF_NAME#v}" != "$VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the release header $VERSION."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Version $VERSION"
+
+      # The release ships the committed modules exactly. Restamping is pure
+      # text and changes nothing when every header already matches CHANGELOG.md
+      # and LICENSE.
+      - name: Check the committed modules are stamped
+        run: |
+          python tools/stamp_release_headers.py
+          git diff --exit-code
+
+      - name: Check the release notes exist
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [ ! -s "docs/releases/v$VERSION.md" ]; then
+            echo "::error::docs/releases/v$VERSION.md is missing or empty."
+            exit 1
+          fi
+
+      # Git stores the module with LF line endings. Every release has shipped
+      # it as a Windows checkout writes it, with CRLF, which is the form the
+      # Visual Basic Editor's Import File reads; only the line endings change.
+      # A committed docs/releases/vX.Y.Z-sha256.txt must agree with the one
+      # written here.
+      - name: Write the release files
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir release-files
+          python -c 'import sys; data = open(sys.argv[1], "rb").read(); assert b"\r" not in data, "CR in the stored module"; open(sys.argv[2], "wb").write(data.replace(b"\n", b"\r\n"))' src/ROneCOne.cls release-files/ROneCOne.cls
+          (cd release-files && sha256sum ROneCOne.cls > "v$VERSION-sha256.txt")
+          cat "release-files/v$VERSION-sha256.txt"
+          committed="docs/releases/v$VERSION-sha256.txt"
+          if [ -f "$committed" ] && ! diff "$committed" "release-files/v$VERSION-sha256.txt"; then
+            echo "::error::$committed does not match the file built here."
+            exit 1
+          fi
+
+      - name: Keep the release files
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-files
+          path: release-files/
+          if-no-files-found: error
+
+  security:
+    name: Security
+    uses: ./.github/workflows/security.yml
+    permissions:
+      contents: read
+      security-events: write
+
+  malware-scan:
+    name: Malware scan
+    uses: ./.github/workflows/malware-scan.yml
+    permissions:
+      contents: read
+
+  # olevba and mraptor over the built file, compared with the reviewed
+  # baseline at this commit: what each release has carried since 1.10.2.
+  security-report:
+    name: Write the security report
+    needs: build
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12.14"
+
+      - name: Install analysis tooling
+        run: python -m pip install --require-hashes -r .github/requirements/security.txt
+
+      - name: Download the release files
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-files
+          path: release-files/
+
+      - name: Write the report
+        run: >-
+          python tools/security_scan.py
+          --report "security-report/v$VERSION-security-report.md"
+          --title "Security report for ROneCOne v$VERSION"
+          release-files/ROneCOne.cls
+
+      - name: Keep the report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: security-report
+          path: security-report/
+          if-no-files-found: error
+
+  publish:
+    name: Attest the release files
+    needs: [build, security, malware-scan, security-report]
+    if: ${{ startsWith(github.ref, 'refs/tags/') && github.event_name != 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write # sign the attestation
+      attestations: write # store it
+    steps:
+      - name: Download the release files
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-files
+          path: release-files/
+
+      # Signed build provenance: `gh attestation verify <file> --repo
+      # WilliamSmithEdward/ROneCOne` shows which commit and run built a file.
+      - name: Attest the release files
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: release-files/*
+
+      # The signed bundle goes on the GitHub release too, so a download can be
+      # checked offline: gh attestation verify <file> --bundle <bundle>.
+      - name: Keep the provenance bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: provenance
+          path: ${{ steps.attest.outputs.bundle-path }}
+          if-no-files-found: error
+
+  # On a dry run `publish` is skipped; this job still assembles the release
+  # and uploads it as an artifact, and only the last step is skipped.
+  github-release:
+    name: Create GitHub release
+    needs: [build, security, malware-scan, security-report, publish]
+    if: >-
+      ${{ !cancelled() && needs.build.result == 'success'
+      && needs.security.result == 'success' && needs.malware-scan.result == 'success'
+      && needs.security-report.result == 'success'
+      && (needs.publish.result == 'success' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the release files
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-files
+          path: release/
+
+      - name: Download the security report
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: security-report
+          path: release/
+
+      - name: Download the provenance bundle
+        if: env.DRY_RUN != 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: provenance
+          path: provenance/
+
+      - name: Name the bundle after the release
+        if: env.DRY_RUN != 'true'
+        run: |
+          test "$(find provenance -type f | wc -l)" = 1
+          mv provenance/* "release/ROneCOne-$VERSION.sigstore.json"
+
+      - name: Take the release notes
+        run: |
+          cp "docs/releases/v$VERSION.md" release_notes.md
+          if [ ! -s release_notes.md ]; then
+            echo "::error::docs/releases/v$VERSION.md is empty."
+            exit 1
+          fi
+          ls -l release
+
+      - name: Keep what the release would carry
+        if: env.DRY_RUN == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-preview
+          path: |
+            release/
+            release_notes.md
+          if-no-files-found: error
+
+      - name: Create GitHub release
+        if: env.DRY_RUN != 'true'
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          # The title is the tag and nothing else. The headline is in the body.
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          body_path: release_notes.md
+          files: release/*
+          fail_on_unmatched_files: true

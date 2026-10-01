@@ -72,6 +72,7 @@ syntax. Each technical document links back to its user guide.
 ## Release history
 
 - [Changelog](../CHANGELOG.md) records every released change.
-- [Release notes](releases/) archive the published notes and SHA-256 checksums for each version.
+- [Release notes](releases/) archive the published notes for each version, and the SHA-256
+  checksums up to 1.10.2. Later checksums are on each GitHub release.
 
 [Back to the project overview](../README.md)

@@ -80,8 +80,8 @@ only by the HTTP client, and only for URLs you request. It never launches a seco
 
 ## Start in three steps
 
-1. **[Run a demo](https://github.com/WilliamSmithEdward/ROneCOne/releases/latest)** - each
-   release ships self-contained demo workbooks with visible, worksheet-by-worksheet results.
+1. **[Run a demo](demo/)** - the `demo/` folder holds self-contained demo workbooks with
+   visible, worksheet-by-worksheet results.
 2. **[Follow the getting-started guide](docs/user-guide/getting-started.md)** - import one class
    file and run your first query in about five minutes.
 3. **[Pick a recipe](docs/user-guide/README.md)** - short guides cover collections, delegates,

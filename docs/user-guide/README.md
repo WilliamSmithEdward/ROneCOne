@@ -26,8 +26,7 @@ class module, and copy the smallest example that solves your problem.
 
 ## Fastest route to the first result
 
-1. Download the latest demo workbooks from the
-   [release page](https://github.com/WilliamSmithEdward/ROneCOne/releases/latest).
+1. Download the demo workbooks from the repository's [`demo/` folder](../../demo/).
 2. Open the Collections demo and run its main macro.
 3. Follow [Getting started](getting-started.md) to import `ROneCOne.cls` into a copy of your own
    workbook.
