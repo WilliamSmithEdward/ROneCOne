@@ -4,6 +4,6 @@
 #   uv pip compile ci.in --universal --generate-hashes --python-version 3.12 -o ci.txt
 # Dependabot proposes each new release.
 oletools==0.60.2
-pyOpenVBA==6.3.3
+pyOpenVBA==6.3.5
 pyVBAanalysis==2.3.1
 yara-x==1.20.0
