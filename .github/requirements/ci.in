@@ -5,5 +5,5 @@
 # Dependabot proposes each new release.
 oletools==0.60.2
 pyOpenVBA==6.5.0
-pyVBAanalysis==3.0.0
+pyVBAanalysis==3.0.1
 yara-x==1.21.0
