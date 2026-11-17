@@ -33,6 +33,34 @@ class YaraForgeRuleTests(unittest.TestCase):
                     yara_forge_rules.download(output)
             self.assertFalse(output.exists())
 
+    def test_a_transient_failure_is_retried_and_a_final_one_is_not(self):
+        request = yara_forge_rules.urllib.request.Request(URL)
+        good = MagicMock()
+        good.__enter__.return_value.read.return_value = b"rules"
+
+        def http(code):
+            return yara_forge_rules.urllib.error.HTTPError(URL, code, "error", {}, None)
+
+        with (patch.object(yara_forge_rules.urllib.request, "urlopen",
+                           side_effect=[http(504), http(503), good]) as urlopen,
+              patch.object(yara_forge_rules.time, "sleep") as sleep):
+            self.assertEqual(yara_forge_rules.fetch(request), b"rules")
+        self.assertEqual(urlopen.call_count, 3)
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [5, 10])
+        with (patch.object(yara_forge_rules.urllib.request, "urlopen",
+                           side_effect=[http(404)]) as urlopen,
+              patch.object(yara_forge_rules.time, "sleep") as sleep):
+            with self.assertRaises(yara_forge_rules.urllib.error.HTTPError):
+                yara_forge_rules.fetch(request)
+        self.assertEqual(urlopen.call_count, 1)
+        sleep.assert_not_called()
+        with (patch.object(yara_forge_rules.urllib.request, "urlopen",
+                           side_effect=[http(504)] * (yara_forge_rules.RETRIES + 1)) as urlopen,
+              patch.object(yara_forge_rules.time, "sleep")):
+            with self.assertRaises(yara_forge_rules.urllib.error.HTTPError):
+                yara_forge_rules.fetch(request)
+        self.assertEqual(urlopen.call_count, yara_forge_rules.RETRIES + 1)
+
     def test_the_pin_file_is_one_the_standard_updater_accepts(self):
         spec = importlib.util.spec_from_file_location(
             "yara_update", ROOT / ".github" / "security" / "yara_update.py")

@@ -11,12 +11,33 @@ import hashlib
 import json
 import re
 import sys
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
 PIN = Path(__file__).resolve().parents[1] / ".github" / "security" / "yara.json"
 ASSET = "yara-forge-rules-core.zip"
 MAX_BYTES = 50 * 1024 * 1024
+# A transient failure, such as a 504 from GitHub's release storage, is tried
+# again after 5, 10 and 20 seconds; any other failure is final at once.
+RETRIES = 3
+TRANSIENT_STATUS = {408, 429, 500, 502, 503, 504}
+
+
+def fetch(request: urllib.request.Request) -> bytes:
+    for attempt in range(RETRIES + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=45) as response:
+                return response.read(MAX_BYTES + 1)
+        except urllib.error.HTTPError as error:
+            if error.code not in TRANSIENT_STATUS or attempt == RETRIES:
+                raise
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            if attempt == RETRIES:
+                raise
+        time.sleep(5 * 2 ** attempt)
+    raise AssertionError("unreachable")
 
 
 def read_pin() -> dict[str, str]:
@@ -31,8 +52,7 @@ def read_pin() -> dict[str, str]:
 def download(output: Path) -> None:
     pin = read_pin()
     request = urllib.request.Request(pin["url"], headers={"User-Agent": "ROneCOne-security-ci"})
-    with urllib.request.urlopen(request, timeout=45) as response:
-        data = response.read(MAX_BYTES + 1)
+    data = fetch(request)
     if len(data) > MAX_BYTES:
         raise ValueError("YARA Forge archive exceeds the 50 MiB limit")
     digest = hashlib.sha256(data).hexdigest()
