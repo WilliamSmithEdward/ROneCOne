@@ -22,11 +22,11 @@ on:
 permissions:
   contents: read
 
-# The event is in the group so a Publish dry run on main, which calls this
-# workflow, neither cancels nor is cancelled by a push run on main.
+# A new push to a pull request cancels its older runs. A push to main waits
+# for the run before it, and only the newest waiting run starts.
 concurrency:
-  group: security-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: security-${{ github.workflow }}-${{ (github.event_name == 'pull_request' || github.event_name == 'push') && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   macros:
